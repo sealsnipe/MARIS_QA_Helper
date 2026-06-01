@@ -1,0 +1,101 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+  background: #f4f6f8;
+  color: #1f2933;
+}
+
+.container {
+  max-width: 720px;
+  margin: 3rem auto;
+  padding: 0 1rem;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid #d9e2ec;
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.login-card {
+  text-align: center;
+}
+
+.subtitle {
+  color: #627d98;
+  margin-top: -0.5rem;
+}
+
+.form {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  text-align: left;
+}
+
+label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+input {
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #bcccdc;
+  border-radius: 8px;
+  font: inherit;
+}
+
+button {
+  padding: 0.65rem 1rem;
+  border: none;
+  border-radius: 8px;
+  background: #243b53;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #829ab1;
+}
+
+.error {
+  color: #ba2525;
+  background: #ffe3e3;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+}
+
+.warning {
+  color: #8a2c0a;
+}
+
+.hint {
+  color: #627d98;
+  font-size: 0.95rem;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.page-header h1 {
+  margin: 0;
+}
+
+code {
+  background: #f0f4f8;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}

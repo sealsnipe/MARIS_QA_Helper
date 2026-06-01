@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}SUP_QA_Helper{% endblock %}
+
+{% block content %}
+<section class="card">
+  <header class="page-header">
+    <h1>SUP_QA_Helper</h1>
+    <form method="post" action="/logout">
+      <button type="submit" class="secondary">Abmelden</button>
+    </form>
+  </header>
+
+  <p>Angemeldet als <strong>{{ user.email }}</strong></p>
+
+  {% if customers|length == 0 %}
+  <p class="warning">Kein Kunde zugeordnet.</p>
+  {% elif customers|length == 1 %}
+  <p>Aktiver Kunde: <strong>{{ customers[0].name }}</strong> ({{ customers[0].id }})</p>
+  {% else %}
+  <p>
+    Aktiver Kunde:
+    {% if active_customer %}
+      <strong>{{ active_customer.name }}</strong> ({{ active_customer.id }})
+    {% else %}
+      <em>noch nicht gewählt</em>
+    {% endif %}
+  </p>
+  {% endif %}
+
+  <p class="hint">Vollständige UI folgt in M6. Kunden-API ist unter <code>/api/customers</code> verfügbar.</p>
+</section>
+{% endblock %}
