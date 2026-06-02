@@ -40,6 +40,7 @@ Empfohlene Reihenfolge: **01 → 02 → 03**, danach themenspezifisch.
 | 11 | `11_setup_and_operations.md` | Env, Docker, WSL2-Dev, Ubuntu-Deploy, Seed, Betrieb | Engineering, Ops |
 | 12 | `12_roadmap.md` | Spätere Phasen: Jira, SSO, Admin-UI | PO, Engineering |
 | 13 | `13_coding_agent_brief.md` | Verbindliche Bau-Anweisung (M1–M7, Invarianten, Git, Setup) | Coding-Agent |
+| 14 | `14_customer_administration.md` | **Entscheidungsvorlage:** Kunden-Administration, 4 Produktiv-Kunden, Optionen A–D | PM, PO |
 
 > **`13_coding_agent_brief.md`** ist die Einstiegs- und Bau-Anweisung für den bauenden
 > Coding-Agent und referenziert die übrigen Dokumente als Quelle der Wahrheit.

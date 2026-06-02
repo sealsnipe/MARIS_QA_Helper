@@ -1,7 +1,11 @@
 from functools import lru_cache
+from pathlib import Path
+from typing import Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+LLMAuthMode = Literal["api_key", "chatgpt_oauth"]
 
 
 class Settings(BaseSettings):
@@ -21,8 +25,12 @@ class Settings(BaseSettings):
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_DIM: int = 1536
+    LLM_AUTH_MODE: LLMAuthMode = "chatgpt_oauth"
     CHAT_MODEL: str = "gpt-4.1-mini"
-    TOP_K_DEFAULT: int = 6
+    CODEX_AUTH_PATH: str = "~/.codex/auth.json"
+    CODEX_OAUTH_AUTH_PATH: str = "~/.oauth_codex/auth.json"
+    CODEX_BASE_URL: str = "https://chatgpt.com/backend-api/codex"
+    TOP_K_DEFAULT: int = 4
     MIN_SCORE_DEFAULT: float = 0.25
     MAX_TOOL_ROUNDS: int = 4
     MAX_UPLOAD_MB: int = 30
@@ -42,6 +50,14 @@ class Settings(BaseSettings):
     @property
     def max_upload_bytes(self) -> int:
         return self.MAX_UPLOAD_MB * 1024 * 1024
+
+    @property
+    def codex_oauth_auth_path(self) -> str:
+        return str(Path(self.CODEX_OAUTH_AUTH_PATH).expanduser())
+
+    @property
+    def uses_chatgpt_oauth(self) -> bool:
+        return self.LLM_AUTH_MODE == "chatgpt_oauth"
 
 
 @lru_cache

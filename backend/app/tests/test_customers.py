@@ -32,6 +32,7 @@ def test_collection_name_rejects_invalid_slug():
 
 
 def test_list_customers_only_returns_assigned(client, db_session):
+    create_customer(db_session, "global", "Global")
     create_customer(db_session, "acme", "Acme GmbH")
     create_customer(db_session, "globex", "Globex AG")
     create_user(db_session, "sven@example.com", "secret123", ("acme", "globex"))
@@ -40,7 +41,8 @@ def test_list_customers_only_returns_assigned(client, db_session):
     response = client.get("/api/customers")
     assert response.status_code == 200
     body = response.json()
-    assert {item["id"] for item in body["customers"]} == {"acme", "globex"}
+    assert {item["id"] for item in body["customers"]} == {"global", "acme", "globex"}
+    assert body["customers"][0]["id"] == "global"
     assert body["active"] is None
 
 

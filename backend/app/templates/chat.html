@@ -1,0 +1,22 @@
+{% extends "layout.html" %}
+
+{% block title %}Chat · MARIS - Q/A Helper{% endblock %}
+{% block page_title %}Chat{% endblock %}
+
+{% block content %}
+<section class="panel chat-panel">
+  <div id="chat-log" class="chat-log" aria-live="polite"></div>
+  <footer class="chat-composer">
+    <p id="chat-status" class="status chat-status" aria-live="polite"></p>
+    <form id="chat-form" class="chat-form">
+      <textarea id="chat-input" rows="2" placeholder="Frage eingeben…" required></textarea>
+      <button type="submit" id="chat-submit">Senden</button>
+    </form>
+  </footer>
+</section>
+{% endblock %}
+
+{% block vendor_scripts %}
+<script src="/static/vendor/marked.min.js"></script>
+<script src="/static/vendor/purify.min.js"></script>
+{% endblock %}

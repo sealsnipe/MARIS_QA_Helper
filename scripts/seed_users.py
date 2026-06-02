@@ -9,7 +9,8 @@ import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "backend"))
+sys.path.insert(0, str(ROOT / "scripts"))
 
 from sqlalchemy import select
 
@@ -17,22 +18,10 @@ from app.auth import hash_password
 from app.customers import validate_customer_slug
 from app.db import SessionLocal, init_db
 from app.models import Customer, User, UserCustomer, utc_now_iso
-
-DEFAULT_USERS = (
-    {
-        "email": "sven@example.com",
-        "password": "GeheimesPW!",
-        "customers": ("acme", "globex"),
-    },
-    {
-        "email": "anna@example.com",
-        "password": "GeheimesPW!",
-        "customers": ("globex",),
-    },
-)
+from seed_data import ADMIN_EMAILS, DEFAULT_USERS
 
 
-def _ensure_user(db, email: str, password: str) -> User:
+def _ensure_user(db, email: str, password: str, *, is_admin: bool = False) -> User:
     normalized = email.strip().lower()
     user = db.scalar(select(User).where(User.email == normalized))
     if user is None:
@@ -41,13 +30,18 @@ def _ensure_user(db, email: str, password: str) -> User:
             email=normalized,
             password_hash=hash_password(password),
             is_active=1,
+            is_admin=1 if is_admin else 0,
             created_at=utc_now_iso(),
         )
         db.add(user)
         db.flush()
-        print(f"Created user {normalized}")
+        print(f"Created user {normalized}" + (" (admin)" if is_admin else ""))
     else:
-        print(f"User exists {normalized}")
+        if is_admin and not user.is_admin:
+            user.is_admin = 1
+            print(f"Promoted to admin {normalized}")
+        else:
+            print(f"User exists {normalized}")
     return user
 
 
@@ -56,7 +50,7 @@ def _ensure_membership(db, user: User, customer_ids: tuple[str, ...]) -> None:
         if not validate_customer_slug(customer_id):
             raise ValueError(f"invalid customer slug: {customer_id!r}")
         if db.get(Customer, customer_id) is None:
-            raise ValueError(f"unknown customer: {customer_id!r}")
+            raise ValueError(f"unknown customer: {customer_id!r} — run seed_customers.py first")
 
         link = db.get(UserCustomer, {"user_id": user.id, "customer_id": customer_id})
         if link is None:
@@ -64,17 +58,28 @@ def _ensure_membership(db, user: User, customer_ids: tuple[str, ...]) -> None:
             print(f"Linked {user.email} -> {customer_id}")
 
 
-def seed_user(email: str, password: str, customers: tuple[str, ...]) -> None:
+def seed_user(email: str, password: str, customers: tuple[str, ...], *, is_admin: bool = False) -> None:
     init_db()
     with SessionLocal() as db:
-        user = _ensure_user(db, email, password)
+        user = _ensure_user(db, email, password, is_admin=is_admin)
         _ensure_membership(db, user, customers)
         db.commit()
 
 
 def seed_defaults() -> None:
     for entry in DEFAULT_USERS:
-        seed_user(entry["email"], entry["password"], entry["customers"])
+        seed_user(
+            entry["email"],
+            entry["password"],
+            entry["customers"],
+            is_admin=entry.get("is_admin", False),
+        )
+    with SessionLocal() as db:
+        for email in ADMIN_EMAILS:
+            user = db.scalar(select(User).where(User.email == email))
+            if user and not user.is_admin:
+                user.is_admin = 1
+        db.commit()
 
 
 def parse_args() -> argparse.Namespace:
@@ -83,12 +88,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--password", help="User password")
     parser.add_argument(
         "--customers",
-        help="Comma-separated customer slugs (e.g. acme,globex)",
+        help="Comma-separated customer slugs (e.g. bg-ludwigshafen,kkrr)",
     )
     parser.add_argument(
         "--defaults",
         action="store_true",
-        help="Seed demo users sven@example.com and anna@example.com",
+        help="Seed default users (admin + demo users for tests)",
     )
     return parser.parse_args()
 

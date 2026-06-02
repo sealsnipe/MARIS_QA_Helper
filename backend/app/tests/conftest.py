@@ -12,8 +12,39 @@ os.environ.setdefault("SESSION_SECRET", "test-session-secret-for-pytest-only")
 from app.auth import hash_password
 from app.customers import validate_customer_slug
 from app.db import SessionLocal, get_db, init_db
+from app.embeddings import set_embeddings_backend
 from app.main import app
 from app.models import Customer, User, UserCustomer, utc_now_iso
+from app.qdrant_store import InMemoryVectorStore, set_vector_store
+
+
+class FakeEmbeddings:
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [[0.01] * 1536 for _ in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        return [0.01] * 1536
+
+
+@pytest.fixture()
+def fake_embeddings():
+    backend = FakeEmbeddings()
+    set_embeddings_backend(backend)
+    yield backend
+    set_embeddings_backend(None)
+
+
+@pytest.fixture()
+def fake_vector_store():
+    store = InMemoryVectorStore(vector_dim=1536)
+    set_vector_store(store)
+    yield store
+    set_vector_store(None)
+
+
+@pytest.fixture(autouse=True)
+def _auto_mock_ai(fake_embeddings, fake_vector_store):
+    yield
 
 
 @pytest.fixture()
@@ -65,12 +96,15 @@ def create_user(
     email: str,
     password: str = "secret123",
     customer_ids: tuple[str, ...] = (),
+    *,
+    is_admin: bool = False,
 ) -> User:
     user = User(
         id=f"user-{email.split('@')[0]}",
         email=email.lower(),
         password_hash=hash_password(password),
         is_active=1,
+        is_admin=1 if is_admin else 0,
         created_at=utc_now_iso(),
     )
     db.add(user)

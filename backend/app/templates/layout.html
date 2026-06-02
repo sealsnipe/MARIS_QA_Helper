@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}MARIS - Q/A Helper{% endblock %}</title>
+  <link rel="icon" href="/static/brand-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="page-{{ active_page }}">
+  <div class="app-layout">
+    <aside class="sidebar">
+      <header class="sidebar-header">
+        <a href="/chat" class="sidebar-brand-link" aria-label="MARIS Q/A Helper">
+          <img src="/static/brand-banner.svg?v=3" alt="" class="sidebar-banner" width="240" height="58">
+          <p class="sidebar-brand-title">MARIS Q/A Helper</p>
+        </a>
+      </header>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section sidebar-customer">
+          <div class="nav-heading">Kunde</div>
+          {% if customers|length == 0 %}
+            <p class="sidebar-warning">Kein Kunde zugeordnet</p>
+          {% else %}
+            <select id="customer-select" class="customer-select sidebar-select" aria-label="Kunde wählen">
+              <option value="">— Bitte wählen —</option>
+              {% for customer in customers %}
+              <option value="{{ customer.id }}" {% if active_customer and active_customer.id == customer.id %}selected{% endif %}>
+                {{ customer.name }}
+              </option>
+              {% endfor %}
+            </select>
+          {% endif %}
+        </div>
+
+        <div class="nav-section" id="chat-nav-section">
+          <div class="nav-heading">Chats</div>
+          <button type="button" id="new-chat-btn" class="nav-button">+ Neuer Chat</button>
+          <ul id="chat-history-list" class="chat-history-list" aria-label="Gespeicherte Chats"></ul>
+        </div>
+
+        <div class="nav-section">
+          <div class="nav-heading">Einstellungen</div>
+          <a href="/kb" class="nav-link {% if active_page == 'kb' %}active{% endif %}">Wissensdatenbanken</a>
+          {% if is_admin %}
+          <a href="/admin" class="nav-link {% if active_page == 'admin' %}active{% endif %}">Administration</a>
+          {% endif %}
+        </div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <span class="user-email">{{ user.email }}</span>
+        <form method="post" action="/logout">
+          <button type="submit" class="secondary small">Abmelden</button>
+        </form>
+      </div>
+    </aside>
+
+    <div class="main-area">
+      <header class="app-header">
+        <h1>{% block page_title %}MARIS - Q/A Helper{% endblock %}</h1>
+      </header>
+
+      <div id="no-customer-banner" class="banner warning hidden">
+        Bitte wählen Sie zuerst einen Kunden.
+      </div>
+
+      <div class="page-content" id="page-content">
+        {% block content %}{% endblock %}
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.APP_BOOT = {
+      page: {{ active_page | tojson }},
+      activeCustomerId: {{ (active_customer.id if active_customer else "") | tojson }},
+      activeCustomerName: {{ (active_customer.name if active_customer else "") | tojson }},
+      globalCustomerId: {{ global_customer_id | tojson }},
+      customerLabels: {{ customer_labels | tojson }},
+      isAdmin: {{ is_admin | tojson }},
+      adminCustomers: {{ admin_customers | map(attribute='id') | list | tojson }},
+      adminCustomerNames: {{ admin_customers | map(attribute='name') | list | tojson }}
+    };
+  </script>
+  {% block vendor_scripts %}{% endblock %}
+  <script src="/static/app.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

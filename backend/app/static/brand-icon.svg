@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="MARIS">
+  <defs>
+    <linearGradient id="maris" x1="0" y1="24" x2="48" y2="24" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#004A85"/>
+      <stop offset="0.45" stop-color="#0062AE"/>
+      <stop offset="1" stop-color="#96C45A"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="24" y1="4" x2="24" y2="28" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <circle cx="24" cy="24" r="20" fill="url(#maris)"/>
+  <ellipse cx="24" cy="14" rx="13" ry="9" fill="url(#shine)"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 15.5 14 V 34"/>
+    <path d="M 15.5 14 L 24 27"/>
+    <path d="M 32.5 14 L 24 27"/>
+    <path d="M 32.5 14 V 34"/>
+  </g>
+  <circle cx="24" cy="27" r="1.6" fill="#0F1115" stroke="#B8E06A" stroke-width="0.9"/>
+</svg>

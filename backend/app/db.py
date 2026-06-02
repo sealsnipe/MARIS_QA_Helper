@@ -1,6 +1,7 @@
 from collections.abc import Generator
+from pathlib import Path
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import get_settings
@@ -30,8 +31,25 @@ engine = _create_engine(settings.DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
+def _migrate_schema(engine) -> None:
+    inspector = inspect(engine)
+    if "users" in inspector.get_table_names():
+        columns = {col["name"] for col in inspector.get_columns("users")}
+        if "is_admin" not in columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+                )
+
+
 def init_db() -> None:
+    import app.models  # noqa: F401 — register all ORM tables before create_all
+
+    settings = get_settings()
+    if settings.DATABASE_URL.startswith("sqlite:///./data/"):
+        Path("data").mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(bind=engine)
+    _migrate_schema(engine)
 
 
 def get_db() -> Generator[Session, None, None]:

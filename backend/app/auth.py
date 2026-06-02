@@ -1,5 +1,3 @@
-import re
-
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from fastapi import Depends, Request
@@ -13,6 +11,10 @@ _password_hasher = PasswordHasher()
 
 
 class NotAuthenticatedError(Exception):
+    pass
+
+
+class ForbiddenError(Exception):
     pass
 
 
@@ -46,4 +48,10 @@ async def get_current_user(
         request.session.clear()
         raise NotAuthenticatedError()
 
+    return user
+
+
+async def get_admin_user(user: User = Depends(get_current_user)) -> User:
+    if not user.is_admin:
+        raise ForbiddenError()
     return user

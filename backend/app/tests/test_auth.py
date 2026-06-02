@@ -26,7 +26,7 @@ def test_get_current_user_without_session_returns_401(client):
 
 
 def test_protected_html_redirects_to_login(client):
-    response = client.get("/", follow_redirects=False)
+    response = client.get("/chat", follow_redirects=False)
     assert response.status_code == 302
     assert response.headers["location"] == "/login"
 

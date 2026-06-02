@@ -1,10 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Anmelden — SUP_QA_Helper{% endblock %}
+{% block title %}Anmelden — MARIS - Q/A Helper{% endblock %}
 
 {% block content %}
 <section class="card login-card">
-  <h1>SUP_QA_Helper</h1>
+  <div class="login-brand">
+    <img src="/static/brand-banner.svg?v=3" alt="" class="login-brand-banner" width="240" height="58">
+    <p class="login-brand-title">MARIS Q/A Helper</p>
+  </div>
   <p class="subtitle">Support-Wissensassistent</p>
 
   {% if error %}

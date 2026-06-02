@@ -17,6 +17,7 @@ dependencies = [
     "httpx>=0.27",
     "pydantic-settings>=2.0",
     "itsdangerous>=2.2",
+    "oauth-codex>=0.1",
 ]
 
 [build-system]

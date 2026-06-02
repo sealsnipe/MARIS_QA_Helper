@@ -1,0 +1,46 @@
+"""Shared customer/user definitions for seed scripts."""
+
+GLOBAL_CUSTOMER: tuple[str, str] = ("global", "Global")
+
+PRODUCTION_CUSTOMERS: tuple[tuple[str, str], ...] = (
+    ("bg-ludwigshafen", "BG Ludwigshafen"),
+    ("bg-frankfurt", "BG Frankfurt"),
+    ("detmold-lippe", "Detmold Lippe"),
+    ("kkrr", "Katholische Kliniken Rhein Ruhr"),
+)
+
+# Demo-Kunden für Isolation-Tests (acme/globex).
+DEMO_CUSTOMERS: tuple[tuple[str, str], ...] = (
+    ("acme", "Acme GmbH"),
+    ("globex", "Globex AG"),
+)
+
+ALL_CUSTOMERS = (GLOBAL_CUSTOMER,) + PRODUCTION_CUSTOMERS + DEMO_CUSTOMERS
+
+ADMIN_EMAILS: frozenset[str] = frozenset(
+    {
+        "admin@example.com",
+        "matthias.schindler@maris-healthcare.de",
+    }
+)
+
+DEFAULT_PASSWORD = "GeheimesPW!"
+
+DEFAULT_USERS: tuple[dict, ...] = (
+    {
+        "email": "admin@example.com",
+        "password": DEFAULT_PASSWORD,
+        "customers": tuple(slug for slug, _ in PRODUCTION_CUSTOMERS),
+        "is_admin": True,
+    },
+    {
+        "email": "sven@example.com",
+        "password": DEFAULT_PASSWORD,
+        "customers": ("acme", "globex"),
+    },
+    {
+        "email": "anna@example.com",
+        "password": DEFAULT_PASSWORD,
+        "customers": ("globex",),
+    },
+)

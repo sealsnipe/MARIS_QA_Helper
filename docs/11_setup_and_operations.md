@@ -67,10 +67,31 @@ volumes:
 Uvicorn mit **einem** Worker (SQLite-Locking), WAL aktiv.
 
 ## 5. Erststart (Ubuntu)
+
+**Interaktiv (empfohlen):** Embedding-Key + Chat-Auth (API oder OAuth) in einem Durchlauf:
+
+```bash
+cd ~/projects/SUP_QA_Helper
+./setup.sh
+# oder: python3 scripts/setup.py
+```
+
+Ablauf:
+1. Voraussetzungen prüfen (Python, Docker)
+2. `.env` aus `.env.example` anlegen
+3. **OpenAI API-Key** für Embeddings (immer Pflicht, Platform-Billing)
+4. **Chat-Modus wählen:**
+   - **API-Key** — gleicher Key für Chat (`LLM_AUTH_MODE=api_key`, für Produktion/Docker)
+   - **ChatGPT OAuth** — Browser-Login mit Einmalcode (`LLM_AUTH_MODE=chatgpt_oauth`, Dev/WSL)
+5. Optional: `docker compose up --build -d`
+
+**Manuell:**
+
 ```bash
 cd ~/projects/SUP_QA_Helper
 cp .env.example .env
-# .env: OPENAI_API_KEY und SESSION_SECRET setzen
+python3 scripts/setup_env.py          # nur OPENAI_API_KEY + SESSION_SECRET
+python3 scripts/login_chat_oauth.py   # nur bei OAuth-Chat
 docker compose up --build
 curl http://localhost:8088/api/health      # -> {"ok":true}
 ```
