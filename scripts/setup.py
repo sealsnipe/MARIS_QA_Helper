@@ -471,22 +471,26 @@ def _maybe_run_seed(
 
     if runtime == "docker":
         if not compose_started:
-            print("  ⚠ Stack nicht gestartet — Seed manuell nach ./scripts/start.sh:")
             print(
-                f"    SEED_ADMIN_PASSWORD='…' docker compose exec -T api "
-                f"python scripts/seed_setup.py --profile {profile} --email {admin_email}"
+                "  ⚠ Stack nicht gestartet — Seed manuell nach ./scripts/start.sh:"
+            )
+            print(
+                f"    docker compose exec -T -e SEED_ADMIN_PASSWORD='…' api "
+                f"python scripts/seed_setup.py --profile {profile} --email {shlex.quote(admin_email)}"
             )
             return False
 
         env = _compose_env(profile, llm_mode, oauth_path)
-        env["SEED_ADMIN_EMAIL"] = admin_email
-        env["SEED_ADMIN_PASSWORD"] = admin_password
         cmd = [
             "docker",
             "compose",
             *_compose_file_args(profile, llm_mode),
             "exec",
             "-T",
+            "-e",
+            f"SEED_ADMIN_EMAIL={admin_email}",
+            "-e",
+            f"SEED_ADMIN_PASSWORD={admin_password}",
             "api",
             "python",
             "scripts/seed_setup.py",
@@ -502,7 +506,9 @@ def _maybe_run_seed(
         if result.returncode != 0:
             print("  ✗ Seed fehlgeschlagen.")
             print(
-                f"  Manuell: SEED_ADMIN_PASSWORD='…' {_format_compose_hint(cmd, env)}"
+                "  Manuell: docker compose exec -T "
+                f"-e SEED_ADMIN_PASSWORD='…' api python scripts/seed_setup.py "
+                f"--profile {profile} --email {shlex.quote(admin_email)}"
             )
             return False
         print(f"  ✓ Login: {admin_email}")
@@ -547,8 +553,8 @@ def _print_next_steps(
             print(f"  • Login:        {admin_email} + dein Setup-Passwort")
         else:
             print(
-                "  • Seed:         SEED_ADMIN_PASSWORD='…' docker compose exec -T api "
-                f"python scripts/seed_setup.py --profile {profile} --email {admin_email}"
+                "  • Seed:         docker compose exec -T -e SEED_ADMIN_PASSWORD='…' api "
+                f"python scripts/seed_setup.py --profile {profile} --email {shlex.quote(admin_email)}"
             )
 
         if profile == "prod":
