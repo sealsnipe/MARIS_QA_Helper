@@ -95,7 +95,7 @@ _start_api() {
   set +a
   export APP_PORT="$DEV_PORT"
   cd "$ROOT"
-  nohup env PYTHONPATH=backend uvicorn app.main:app --host 0.0.0.0 --port "$DEV_PORT" --workers 1 \
+  nohup env PYTHONPATH=backend uvicorn app.main:app --host 0.0.0.0 --port "$DEV_PORT" --workers 1 --reload --reload-dir backend \
     >"$ROOT/data-dev/api.log" 2>&1 &
   echo $! >"$API_PID"
   for _ in $(seq 1 30); do
@@ -149,6 +149,7 @@ case "$cmd" in
     echo "Dev-Instanz: http://127.0.0.1:${DEV_PORT}  (Windows: http://localhost:${DEV_PORT})"
     echo "Logs: tail -f data-dev/api.log"
     echo "Stop: ./scripts/dev_local.sh stop"
+    echo "Hinweis: --reload aktiv — Änderungen an .py-Dateien werden automatisch übernommen (nach kurzer Wartezeit)."
     ;;
   stop)
     _stop_one "$API_PID" "API"
