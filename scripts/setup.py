@@ -278,8 +278,9 @@ def _configure_chat_oauth(lines: list[str], *, oauth_path: Path, skip_login: boo
         from login_chat_oauth import login_device_code
     except ImportError as exc:
         raise SystemExit(
-            "login_chat_oauth.py nicht ladbar. Bitte httpx installieren:\n"
-            "  pip install httpx"
+            "OAuth-Setup braucht httpx auf dem Host (nicht im Docker-Container).\n"
+            "  pip3 install --user httpx oauth-codex --break-system-packages\n"
+            "Oder Setup mit API-Key: Auswahl [2] bei Chat-Authentifizierung."
         ) from exc
 
     login_device_code(oauth_path)

@@ -81,10 +81,15 @@ if [[ "$CONTINUE" -eq 1 ]]; then
   python3 scripts/docker_preflight.py --check-bootstrap
   log "Docker bereit."
 else
-  log "=== Schritt 1/3: System-Pakete (git, python3, curl) ==="
-  run_as_root apt-get update
-  run_as_root apt-get install -y git python3 curl ca-certificates
-  log "Schritt 1/3 fertig."
+log "=== Schritt 1/3: System-Pakete (git, python3, curl) ==="
+run_as_root apt-get update
+run_as_root apt-get install -y git python3 python3-pip curl ca-certificates
+if ! python3 -c "import httpx" 2>/dev/null; then
+  log "→ Python: httpx für OAuth-Setup (Host, optional)"
+  python3 -m pip install --user httpx oauth-codex --break-system-packages 2>/dev/null \
+    || python3 -m pip install --user httpx oauth-codex
+fi
+log "Schritt 1/3 fertig."
 
   log "=== Schritt 2/3: Docker Engine + Compose (kann 5–15 Min. dauern) ==="
   python3 scripts/docker_preflight.py --install
