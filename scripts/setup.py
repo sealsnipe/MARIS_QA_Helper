@@ -328,7 +328,7 @@ def _compose_command(profile: DeployProfile, llm_mode: LlmAuthMode, oauth_path: 
         if not COMPOSE_OAUTH.exists():
             raise SystemExit(f"Fehlt: {COMPOSE_OAUTH}")
         cmd.extend(["-f", str(COMPOSE_OAUTH)])
-    cmd.extend(["up", "--build", "-d"])
+    cmd.extend(["up", "--build", "-d", "--progress", "plain"])
     return cmd
 
 

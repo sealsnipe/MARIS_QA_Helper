@@ -266,6 +266,7 @@ def install_docker_engine(*, force: bool = False) -> None:
     )
 
     _sudo_run(["apt-get", "update", "-qq"])
+    print("  → apt: ca-certificates, curl …", flush=True)
     _sudo_run(["apt-get", "install", "-y", "ca-certificates", "curl"])
     _sudo_run(["install", "-m", "0755", "-d", str(keyring.parent)])
 
