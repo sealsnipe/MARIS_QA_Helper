@@ -15,6 +15,7 @@ from app.ingestion import IngestionError
 from app.routes import router
 from app.tenant import CustomerNotFoundError, ForbiddenCustomerError
 from app.customers import ensure_global_customer, CustomerAdminError
+from app.users_admin import UserAdminError
 from app.system_prompts import ensure_default_global_prompt
 from app.upload import UploadError
 
@@ -81,6 +82,14 @@ async def customer_not_found_handler(_request: Request, _exc: CustomerNotFoundEr
 
 @app.exception_handler(CustomerAdminError)
 async def customer_admin_error_handler(_request: Request, exc: CustomerAdminError):
+    body: dict[str, str] = {"error": exc.code}
+    if exc.detail:
+        body["detail"] = exc.detail
+    return JSONResponse(body, status_code=exc.status_code)
+
+
+@app.exception_handler(UserAdminError)
+async def user_admin_error_handler(_request: Request, exc: UserAdminError):
     body: dict[str, str] = {"error": exc.code}
     if exc.detail:
         body["detail"] = exc.detail

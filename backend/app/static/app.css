@@ -117,6 +117,60 @@ body {
   font-weight: 600;
 }
 
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.nav-group-toggle {
+  width: 100%;
+  text-align: left;
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nav-group-toggle::after {
+  content: "▸";
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.nav-group.expanded .nav-group-toggle::after {
+  transform: rotate(90deg);
+}
+
+.nav-group-toggle:hover,
+.nav-group-toggle.active-parent {
+  background: rgba(76, 139, 245, 0.1);
+}
+
+.nav-submenu {
+  display: none;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding-left: 0.35rem;
+  margin-left: 0.35rem;
+  border-left: 1px solid var(--border);
+}
+
+.nav-group.expanded .nav-submenu {
+  display: flex;
+}
+
+.nav-sublink {
+  font-size: 0.92rem;
+  padding-left: 0.75rem;
+}
+
 .nav-button {
   width: 100%;
   text-align: left;
@@ -659,6 +713,51 @@ select:focus-visible,
 .customer-table input[type="text"] {
   width: 100%;
   min-width: 160px;
+}
+
+.user-form-row {
+  grid-template-columns: minmax(200px, 1.5fr) minmax(160px, 1fr) auto;
+}
+
+.user-admin-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.35rem;
+}
+
+.user-customers-fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.user-customer-checkboxes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.35rem 1rem;
+}
+
+.user-customer-checkboxes label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: normal;
+}
+
+.user-edit-row td {
+  background: rgba(76, 139, 245, 0.06);
+}
+
+.user-badge-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.user-badge-list .badge {
+  font-size: 0.78rem;
 }
 
 .badge {

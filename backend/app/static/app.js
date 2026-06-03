@@ -3,6 +3,7 @@
   const page = boot.page || "chat";
   const globalCustomerId = boot.globalCustomerId || "global";
   const customerLabels = boot.customerLabels || {};
+  const isAdmin = Boolean(boot.isAdmin);
   let activeCustomerId = boot.activeCustomerId || "";
   let activeCustomerName = boot.activeCustomerName || "";
 
@@ -13,7 +14,6 @@
   const customerSelect = document.getElementById("customer-select");
   const noCustomerBanner = document.getElementById("no-customer-banner");
   const pageContent = document.getElementById("page-content");
-  const adminWorkspace = document.getElementById("admin-workspace");
 
   async function api(path, options = {}) {
     const response = await fetch(path, {
@@ -263,8 +263,11 @@
           await api(`${deletePath}/${doc.id}`, { method: "DELETE" });
           if (deletePath === "/api/documents") {
             await refreshKbDocuments();
+          } else if (deletePath.startsWith("/api/admin/customers/")) {
+            const match = deletePath.match(/\/api\/admin\/customers\/([^/]+)\/documents/);
+            await refreshAdminDocuments(match ? match[1] : "global");
           } else {
-            await refreshAdminDocuments();
+            await refreshAdminDocuments("global");
           }
         });
         item.appendChild(delBtn);
@@ -301,15 +304,35 @@
     );
   }
 
-  async function refreshAdminDocuments() {
-    const data = await api("/api/admin/documents");
+  async function refreshAdminDocuments(scope = "global") {
+    const base =
+      scope === "global"
+        ? "/api/admin/documents"
+        : `/api/admin/customers/${encodeURIComponent(scope)}/documents`;
+    const data = await api(base);
     renderDocuments(
       data.documents || [],
       document.getElementById("admin-doc-list"),
       document.getElementById("admin-doc-count"),
       document.getElementById("admin-doc-empty"),
-      "/api/admin/documents",
+      base,
     );
+  }
+
+  function knowledgeScopeLabel(scope) {
+    if (scope === "global") return "Global";
+    return customerLabels[scope] || scope;
+  }
+
+  function initAdminNav() {
+    const group = document.getElementById("admin-nav-group");
+    const toggle = document.getElementById("admin-nav-toggle");
+    if (!group || !toggle) return;
+
+    toggle.addEventListener("click", () => {
+      group.classList.toggle("expanded");
+      toggle.setAttribute("aria-expanded", group.classList.contains("expanded") ? "true" : "false");
+    });
   }
 
   function setupDropzone(dropzone, fileInput, fileLabel, onSelect) {
@@ -380,7 +403,8 @@
       if (selectedFile) formData.append("file", selectedFile);
 
       try {
-        await api(apiPath, { method: "POST", body: formData });
+        const resolvedPath = typeof apiPath === "function" ? apiPath() : apiPath;
+        await api(resolvedPath, { method: "POST", body: formData });
         showStatus(statusEl, "Wissen erfolgreich indexiert.", "ok");
         if (titleInput) titleInput.value = "";
         if (textInput) textInput.value = "";
@@ -562,7 +586,63 @@
     }
   }
 
-  function initAdminPage() {
+  function initAdminKnowledgePage() {
+    const scopeSelect = document.getElementById("knowledge-scope");
+    const scopeLabel = document.getElementById("knowledge-scope-label");
+    const scopeHint = document.getElementById("knowledge-scope-hint");
+    const statusEl = document.getElementById("admin-ingest-status");
+
+    function currentScope() {
+      return scopeSelect?.value || "global";
+    }
+
+    function updateScopeUi() {
+      const scope = currentScope();
+      if (scopeLabel) scopeLabel.textContent = `(${knowledgeScopeLabel(scope)})`;
+      if (scopeHint) {
+        scopeHint.textContent =
+          scope === "global"
+            ? "Gilt mandantenübergreifend — wird zusätzlich zur Kunden-KB durchsucht."
+            : `Kunden-Wissensdatenbank für ${knowledgeScopeLabel(scope)}.`;
+      }
+    }
+
+    async function refreshScopeDocuments() {
+      await refreshAdminDocuments(currentScope());
+    }
+
+    scopeSelect?.addEventListener("change", () => {
+      updateScopeUi();
+      refreshScopeDocuments().catch(() =>
+        showStatus(statusEl, "Dokumente konnten nicht geladen werden.", "error"),
+      );
+    });
+
+    bindIngestForm({
+      form: document.getElementById("admin-ingest-form"),
+      titleInput: document.getElementById("admin-ingest-title"),
+      textInput: document.getElementById("admin-ingest-text"),
+      submitBtn: document.getElementById("admin-ingest-submit"),
+      statusEl,
+      fileInput: document.getElementById("admin-file-input"),
+      dropzone: document.getElementById("admin-dropzone"),
+      fileLabel: document.getElementById("admin-file-label"),
+      apiPath: () => {
+        const scope = currentScope();
+        return scope === "global"
+          ? "/api/admin/documents"
+          : `/api/admin/customers/${encodeURIComponent(scope)}/documents`;
+      },
+      onSuccess: refreshScopeDocuments,
+    });
+
+    updateScopeUi();
+    refreshScopeDocuments().catch(() =>
+      showStatus(statusEl, "Dokumente konnten nicht geladen werden.", "error"),
+    );
+  }
+
+  function initAdminPromptsPage() {
     const promptScope = document.getElementById("prompt-scope");
     const promptContent = document.getElementById("prompt-content");
     const promptForm = document.getElementById("prompt-form");
@@ -597,21 +677,216 @@
       }
     });
 
-    bindIngestForm({
-      form: document.getElementById("admin-ingest-form"),
-      titleInput: document.getElementById("admin-ingest-title"),
-      textInput: document.getElementById("admin-ingest-text"),
-      submitBtn: document.getElementById("admin-ingest-submit"),
-      statusEl: document.getElementById("admin-ingest-status"),
-      fileInput: document.getElementById("admin-file-input"),
-      dropzone: document.getElementById("admin-dropzone"),
-      fileLabel: document.getElementById("admin-file-label"),
-      apiPath: "/api/admin/documents",
-      onSuccess: refreshAdminDocuments,
+    loadPrompt().catch(() => showStatus(promptStatus, "Prompt konnte nicht geladen werden.", "error"));
+  }
+
+  function renderCustomerCheckboxes(container, customers, selectedIds, namePrefix) {
+    if (!container) return;
+    const selected = new Set(selectedIds || []);
+    container.innerHTML = "";
+    (customers || []).forEach((customer) => {
+      const id = `${namePrefix}-${customer.id}`;
+      const label = document.createElement("label");
+      label.innerHTML = `<input type="checkbox" name="${namePrefix}" value="${escapeHtml(customer.id)}" id="${id}" ${selected.has(customer.id) ? "checked" : ""}> ${escapeHtml(customer.name)}`;
+      container.appendChild(label);
+    });
+  }
+
+  function readCustomerCheckboxValues(container, namePrefix) {
+    if (!container) return [];
+    return Array.from(container.querySelectorAll(`input[name="${namePrefix}"]:checked`)).map(
+      (el) => el.value,
+    );
+  }
+
+  function initUsersPage() {
+    const tbody = document.getElementById("user-table-body");
+    const emptyEl = document.getElementById("user-empty");
+    const countEl = document.getElementById("user-count");
+    const listStatus = document.getElementById("user-list-status");
+    const createForm = document.getElementById("user-create-form");
+    const createEmail = document.getElementById("user-create-email");
+    const createPassword = document.getElementById("user-create-password");
+    const createAdmin = document.getElementById("user-create-admin");
+    const createCustomers = document.getElementById("user-create-customers");
+    const createStatus = document.getElementById("user-create-status");
+    let assignableCustomers = [];
+
+    function customerBadges(ids) {
+      const labels = (ids || []).map((id) => customerLabels[id] || id);
+      if (!labels.length) return '<span class="muted">—</span>';
+      return `<span class="user-badge-list">${labels.map((l) => `<span class="badge">${escapeHtml(l)}</span>`).join("")}</span>`;
+    }
+
+    function renderUsers(users) {
+      if (!tbody) return;
+      tbody.innerHTML = "";
+      const rows = users || [];
+      if (countEl) countEl.textContent = `(${rows.length})`;
+      if (emptyEl) emptyEl.classList.toggle("hidden", rows.length > 0);
+
+      rows.forEach((user) => {
+        const row = document.createElement("tr");
+        row.dataset.userId = user.id;
+        row.innerHTML = `
+          <td><span class="user-email-display">${escapeHtml(user.email)}</span></td>
+          <td class="user-customers-cell">${customerBadges(user.customer_ids)}</td>
+          <td>${user.is_admin ? "Admin" : "Benutzer"}</td>
+          <td>${user.is_active ? "Aktiv" : "Inaktiv"}</td>
+          <td>
+            <div class="customer-actions">
+              <button type="button" class="secondary small user-edit-btn">Bearbeiten</button>
+              <button type="button" class="danger small user-delete-btn">Entfernen</button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(row);
+
+        const editRow = document.createElement("tr");
+        editRow.className = "user-edit-row hidden";
+        editRow.dataset.userId = user.id;
+        editRow.innerHTML = `
+          <td colspan="5">
+            <div class="ingest-form">
+              <div class="customer-form-row user-form-row">
+                <label>E-Mail<input type="email" class="user-edit-email" value="${escapeHtml(user.email)}" maxlength="200"></label>
+                <label>Neues Passwort (optional)<input type="password" class="user-edit-password" minlength="8" placeholder="leer = unverändert"></label>
+                <label class="user-admin-checkbox"><input type="checkbox" class="user-edit-admin" ${user.is_admin ? "checked" : ""}> Administrator</label>
+                <label class="user-admin-checkbox"><input type="checkbox" class="user-edit-active" ${user.is_active ? "checked" : ""}> Aktiv</label>
+              </div>
+              <fieldset class="user-customers-fieldset">
+                <legend>Kunden</legend>
+                <div class="user-edit-customers user-customer-checkboxes"></div>
+              </fieldset>
+              <div class="customer-actions">
+                <button type="button" class="secondary small user-save-btn">Speichern</button>
+                <button type="button" class="secondary small user-cancel-btn">Abbrechen</button>
+              </div>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(editRow);
+        renderCustomerCheckboxes(
+          editRow.querySelector(".user-edit-customers"),
+          assignableCustomers,
+          user.customer_ids,
+          `edit-${user.id}`,
+        );
+      });
+    }
+
+    async function loadUsers() {
+      const data = await api("/api/admin/users");
+      assignableCustomers = data.customers || [];
+      renderCustomerCheckboxes(createCustomers, assignableCustomers, [], "create");
+      renderUsers(data.users || []);
+    }
+
+    tbody?.addEventListener("click", async (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const row = target.closest("tr");
+      if (!row) return;
+      const userId = row.dataset.userId;
+      const editRow = tbody.querySelector(`tr.user-edit-row[data-user-id="${userId}"]`);
+
+      if (target.classList.contains("user-edit-btn")) {
+        tbody.querySelectorAll(".user-edit-row").forEach((el) => el.classList.add("hidden"));
+        editRow?.classList.remove("hidden");
+        return;
+      }
+
+      if (target.classList.contains("user-cancel-btn")) {
+        editRow?.classList.add("hidden");
+        return;
+      }
+
+      if (target.classList.contains("user-save-btn")) {
+        const email = editRow?.querySelector(".user-edit-email")?.value.trim() || "";
+        const password = editRow?.querySelector(".user-edit-password")?.value || "";
+        const isAdmin = Boolean(editRow?.querySelector(".user-edit-admin")?.checked);
+        const isActive = Boolean(editRow?.querySelector(".user-edit-active")?.checked);
+        const customerIds = readCustomerCheckboxValues(editRow?.querySelector(".user-edit-customers"), `edit-${userId}`);
+        if (!email) {
+          showStatus(listStatus, "E-Mail ist Pflicht.", "error");
+          return;
+        }
+        showStatus(listStatus, "Speichern…");
+        try {
+          const body = { email, customer_ids: customerIds, is_admin: isAdmin, is_active: isActive };
+          if (password) body.password = password;
+          await api(`/api/admin/users/${encodeURIComponent(userId)}`, {
+            method: "PATCH",
+            body: JSON.stringify(body),
+          });
+          editRow?.classList.add("hidden");
+          await loadUsers();
+          showStatus(listStatus, "Benutzer gespeichert.", "ok");
+        } catch (err) {
+          const msg =
+            err?.code === "user_exists"
+              ? "E-Mail existiert bereits."
+              : err?.code === "cannot_demote_self"
+                ? "Eigenes Admin-Recht kann nicht entzogen werden."
+                : err?.code === "cannot_deactivate_self"
+                  ? "Eigenes Konto kann nicht deaktiviert werden."
+                  : "Speichern fehlgeschlagen.";
+          showStatus(listStatus, msg, "error");
+        }
+        return;
+      }
+
+      if (target.classList.contains("user-delete-btn")) {
+        const email = row.querySelector(".user-email-display")?.textContent || userId;
+        if (!window.confirm(`Benutzer „${email}“ wirklich deaktivieren?`)) return;
+        showStatus(listStatus, "Entfernen…");
+        try {
+          await api(`/api/admin/users/${encodeURIComponent(userId)}`, { method: "DELETE" });
+          await loadUsers();
+          showStatus(listStatus, "Benutzer deaktiviert.", "ok");
+        } catch (err) {
+          const msg = err?.code === "cannot_deactivate_self" ? "Eigenes Konto kann nicht deaktiviert werden." : "Entfernen fehlgeschlagen.";
+          showStatus(listStatus, msg, "error");
+        }
+      }
     });
 
-    loadPrompt().catch(() => showStatus(promptStatus, "Prompt konnte nicht geladen werden.", "error"));
-    refreshAdminDocuments().catch(() => showStatus(document.getElementById("admin-ingest-status"), "Dokumente konnten nicht geladen werden.", "error"));
+    createForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const email = (createEmail?.value || "").trim();
+      const password = createPassword?.value || "";
+      const isAdmin = Boolean(createAdmin?.checked);
+      const customerIds = readCustomerCheckboxValues(createCustomers, "create");
+      if (!email || !password) {
+        showStatus(createStatus, "E-Mail und Passwort sind Pflicht.", "error");
+        return;
+      }
+      showStatus(createStatus, "Anlegen…");
+      try {
+        await api("/api/admin/users", {
+          method: "POST",
+          body: JSON.stringify({ email, password, customer_ids: customerIds, is_admin: isAdmin }),
+        });
+        if (createEmail) createEmail.value = "";
+        if (createPassword) createPassword.value = "";
+        if (createAdmin) createAdmin.checked = false;
+        createCustomers?.querySelectorAll("input[type=checkbox]").forEach((el) => {
+          el.checked = false;
+        });
+        showStatus(createStatus, "Benutzer angelegt.", "ok");
+        await loadUsers();
+      } catch (err) {
+        const msg =
+          err?.code === "user_exists"
+            ? "E-Mail existiert bereits."
+            : err?.code === "invalid_password"
+              ? "Passwort zu kurz (mind. 8 Zeichen)."
+              : "Anlegen fehlgeschlagen.";
+        showStatus(createStatus, msg, "error");
+      }
+    });
+
+    loadUsers().catch(() => showStatus(listStatus, "Benutzer konnten nicht geladen werden.", "error"));
   }
 
   function initCustomersPage() {
@@ -808,13 +1083,12 @@
   initChatSidebar();
   refreshChatHistory().catch(() => {});
 
+  if (isAdmin) initAdminNav();
+
   if (page === "chat") initChatPage();
   if (page === "kb") initKbPage();
-  if (page === "admin") {
-    adminWorkspace?.classList.remove("disabled");
-    initAdminPage();
-  }
-  if (page === "customers") {
-    initCustomersPage();
-  }
+  if (page === "admin_knowledge") initAdminKnowledgePage();
+  if (page === "admin_prompts") initAdminPromptsPage();
+  if (page === "admin_users") initUsersPage();
+  if (page === "customers") initCustomersPage();
 })();

@@ -1,0 +1,50 @@
+{% extends "layout.html" %}
+
+{% block title %}Wissensdatenbanken · MARIS - Q/A Helper{% endblock %}
+{% block page_title %}Wissensdatenbanken{% endblock %}
+
+{% block content %}
+<div class="admin-toolbar">
+  <label>
+    Gültig für
+    <select id="knowledge-scope" class="customer-select">
+      <option value="global">Global (alle Kunden)</option>
+      {% for customer in admin_customers %}
+      <option value="{{ customer.id }}">{{ customer.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+</div>
+
+<section class="panel kb-panel full-page" id="admin-knowledge-panel">
+  <h2>Wissensdatenbank <span id="knowledge-scope-label" class="muted"></span></h2>
+  <p class="muted" id="knowledge-scope-hint">Gilt mandantenübergreifend — wird zusätzlich zur Kunden-KB durchsucht.</p>
+
+  <form id="admin-ingest-form" class="ingest-form">
+    <label>
+      Titel
+      <input type="text" id="admin-ingest-title" maxlength="200" placeholder="Optional — sonst Dateiname">
+    </label>
+    <label>
+      Text / Einleitung / Schlagworte
+      <textarea id="admin-ingest-text" rows="5" placeholder="Optional…"></textarea>
+    </label>
+    <label>
+      Datei
+      <div id="admin-dropzone" class="dropzone" tabindex="0">
+        <p id="admin-file-label">Datei hierher ziehen oder klicken</p>
+        <p class="muted">Optional · .txt · .md · .pdf · .docx</p>
+        <input type="file" id="admin-file-input" accept=".txt,.md,.pdf,.docx" hidden>
+      </div>
+    </label>
+    <button type="submit" id="admin-ingest-submit">Einpflegen</button>
+    <p id="admin-ingest-status" class="status" aria-live="polite"></p>
+  </form>
+
+  <div class="doc-list-wrap">
+    <h3>Dokumente <span id="admin-doc-count" class="muted">(0)</span></h3>
+    <ul id="admin-doc-list" class="doc-list"></ul>
+    <p id="admin-doc-empty" class="muted">Noch keine Dokumente.</p>
+  </div>
+</section>
+{% endblock %}

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -53,6 +53,15 @@ from app.system_prompts import get_system_prompt, set_system_prompt
 from app.retrieval import filter_sources_by_answer_citations
 
 from app.upload import UploadError, ingest_combined
+from app.users_admin import (
+    UserAdminError,
+    create_admin_user,
+    deactivate_admin_user,
+    list_admin_users,
+    list_assignable_customers,
+    update_admin_user,
+    user_to_dict,
+)
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
@@ -86,6 +95,27 @@ class AdminCustomerCreateRequest(BaseModel):
 class AdminCustomerUpdateRequest(BaseModel):
     id: str | None = Field(default=None, min_length=1, max_length=64)
     name: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class AdminUserCreateRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=200)
+    password: str = Field(min_length=8, max_length=200)
+    customer_ids: list[str] = Field(default_factory=list)
+    is_admin: bool = False
+
+
+class AdminUserUpdateRequest(BaseModel):
+    email: str | None = Field(default=None, min_length=3, max_length=200)
+    password: str | None = Field(default=None, min_length=8, max_length=200)
+    customer_ids: list[str] | None = None
+    is_admin: bool | None = None
+    is_active: bool | None = None
+
+
+def _admin_page_redirect(user: User) -> RedirectResponse | None:
+    if not user.is_admin:
+        return RedirectResponse(url="/chat", status_code=status.HTTP_302_FOUND)
+    return None
 
 
 def _page_context(
@@ -197,6 +227,8 @@ def kb_page(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
+    if user.is_admin:
+        return RedirectResponse(url="/admin/knowledge", status_code=status.HTTP_302_FOUND)
     return templates.TemplateResponse(
         request,
         "kb.html",
@@ -206,17 +238,11 @@ def kb_page(
 
 @router.get("/admin", response_class=HTMLResponse)
 def admin_page(
-    request: Request,
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> HTMLResponse:
-    if not user.is_admin:
-        return RedirectResponse(url="/chat", status_code=status.HTTP_302_FOUND)
-    return templates.TemplateResponse(
-        request,
-        "admin.html",
-        _page_context(request, user, db, active_page="admin"),
-    )
+) -> RedirectResponse:
+    if redirect := _admin_page_redirect(user):
+        return redirect
+    return RedirectResponse(url="/admin/customers", status_code=status.HTTP_302_FOUND)
 
 
 @router.get("/admin/customers", response_class=HTMLResponse)
@@ -224,13 +250,58 @@ def admin_customers_page(
     request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> HTMLResponse:
-    if not user.is_admin:
-        return RedirectResponse(url="/chat", status_code=status.HTTP_302_FOUND)
+) -> Response:
+    if redirect := _admin_page_redirect(user):
+        return redirect
     return templates.TemplateResponse(
         request,
         "customers.html",
         _page_context(request, user, db, active_page="customers"),
+    )
+
+
+@router.get("/admin/knowledge", response_class=HTMLResponse)
+def admin_knowledge_page(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    if redirect := _admin_page_redirect(user):
+        return redirect
+    return templates.TemplateResponse(
+        request,
+        "admin_knowledge.html",
+        _page_context(request, user, db, active_page="admin_knowledge"),
+    )
+
+
+@router.get("/admin/prompts", response_class=HTMLResponse)
+def admin_prompts_page(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    if redirect := _admin_page_redirect(user):
+        return redirect
+    return templates.TemplateResponse(
+        request,
+        "admin_prompts.html",
+        _page_context(request, user, db, active_page="admin_prompts"),
+    )
+
+
+@router.get("/admin/users", response_class=HTMLResponse)
+def admin_users_page(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    if redirect := _admin_page_redirect(user):
+        return redirect
+    return templates.TemplateResponse(
+        request,
+        "admin_users.html",
+        _page_context(request, user, db, active_page="admin_users"),
     )
 
 
@@ -642,3 +713,127 @@ def api_admin_delete_document(
     if not deleted:
         return JSONResponse({"error": "not_found"}, status_code=404)
     return JSONResponse({"deleted": True, "id": document_id})
+
+
+def _admin_tenant_customer(db: Session, customer_id: str) -> Customer:
+    if is_global_customer(customer_id):
+        raise CustomerNotFoundError()
+    customer = get_customer(db, customer_id)
+    if customer is None:
+        raise CustomerNotFoundError()
+    return customer
+
+
+@router.get("/api/admin/customers/{customer_id}/documents")
+def api_admin_list_customer_documents(
+    customer_id: str,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    customer = _admin_tenant_customer(db, customer_id)
+    return {
+        "customer_id": customer.id,
+        "documents": list_documents(db, customer.id),
+    }
+
+
+@router.post("/api/admin/customers/{customer_id}/documents")
+async def api_admin_upload_customer_document(
+    customer_id: str,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+    title: str | None = Form(default=None),
+    text: str | None = Form(default=None),
+    file: UploadFile | None = File(default=None),
+) -> dict:
+    customer = _admin_tenant_customer(db, customer_id)
+    content: bytes | None = None
+    filename: str | None = None
+    if file is not None and file.filename:
+        content = await file.read()
+        filename = file.filename
+
+    try:
+        document = ingest_combined(
+            db,
+            customer_id=customer.id,
+            title=title,
+            prefix_text=text,
+            filename=filename,
+            content=content,
+            mime_type=file.content_type if file else None,
+        )
+    except UploadError:
+        raise
+    return {"document": _document_payload(document)}
+
+
+@router.delete("/api/admin/customers/{customer_id}/documents/{document_id}")
+def api_admin_delete_customer_document(
+    customer_id: str,
+    document_id: str,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> JSONResponse:
+    customer = _admin_tenant_customer(db, customer_id)
+    deleted = delete_document(db, customer.id, document_id)
+    if not deleted:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return JSONResponse({"deleted": True, "id": document_id})
+
+
+@router.get("/api/admin/users")
+def api_admin_list_users(
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    return {
+        "users": list_admin_users(db),
+        "customers": list_assignable_customers(db),
+    }
+
+
+@router.post("/api/admin/users")
+def api_admin_create_user(
+    payload: AdminUserCreateRequest,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    user = create_admin_user(
+        db,
+        payload.email,
+        payload.password,
+        payload.customer_ids,
+        is_admin=payload.is_admin,
+    )
+    return {"user": user_to_dict(db, user)}
+
+
+@router.patch("/api/admin/users/{user_id}")
+def api_admin_update_user(
+    user_id: str,
+    payload: AdminUserUpdateRequest,
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    user = update_admin_user(
+        db,
+        user_id,
+        actor_id=admin.id,
+        email=payload.email,
+        password=payload.password,
+        customer_ids=payload.customer_ids,
+        is_admin=payload.is_admin,
+        is_active=payload.is_active,
+    )
+    return {"user": user_to_dict(db, user)}
+
+
+@router.delete("/api/admin/users/{user_id}")
+def api_admin_delete_user(
+    user_id: str,
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    deactivate_admin_user(db, user_id, actor_id=admin.id)
+    return {"deleted": True, "id": user_id}

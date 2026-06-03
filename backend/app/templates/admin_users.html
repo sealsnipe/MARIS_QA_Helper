@@ -1,0 +1,53 @@
+{% extends "layout.html" %}
+
+{% block title %}Benutzer · MARIS - Q/A Helper{% endblock %}
+{% block page_title %}Benutzer{% endblock %}
+
+{% block content %}
+<section class="panel customer-admin-panel">
+  <p class="muted">Benutzer anlegen, Kunden zuordnen, Admin-Rechte vergeben oder Benutzer deaktivieren.</p>
+
+  <form id="user-create-form" class="ingest-form customer-create-form">
+    <h2>Neuer Benutzer</h2>
+    <div class="customer-form-row user-form-row">
+      <label>
+        E-Mail
+        <input type="email" id="user-create-email" maxlength="200" placeholder="name@example.com" required>
+      </label>
+      <label>
+        Passwort
+        <input type="password" id="user-create-password" minlength="8" placeholder="mind. 8 Zeichen" required>
+      </label>
+      <label class="user-admin-checkbox">
+        <input type="checkbox" id="user-create-admin">
+        Administrator
+      </label>
+    </div>
+    <fieldset class="user-customers-fieldset">
+      <legend>Kunden</legend>
+      <div id="user-create-customers" class="user-customer-checkboxes"></div>
+    </fieldset>
+    <button type="submit" id="user-create-submit">Anlegen</button>
+    <p id="user-create-status" class="status" aria-live="polite"></p>
+  </form>
+
+  <div class="customer-list-wrap">
+    <h2>Benutzer <span id="user-count" class="muted">(0)</span></h2>
+    <table class="customer-table" id="user-table">
+      <thead>
+        <tr>
+          <th>E-Mail</th>
+          <th>Kunden</th>
+          <th>Rolle</th>
+          <th>Status</th>
+          <th>Aktionen</th>
+        </tr>
+      </thead>
+      <tbody id="user-table-body"></tbody>
+    </table>
+    <p id="user-empty" class="muted">Noch keine Benutzer.</p>
+  </div>
+
+  <p id="user-list-status" class="status" aria-live="polite"></p>
+</section>
+{% endblock %}

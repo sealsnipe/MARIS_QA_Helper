@@ -42,10 +42,19 @@
 
         <div class="nav-section">
           <div class="nav-heading">Einstellungen</div>
-          <a href="/kb" class="nav-link {% if active_page == 'kb' %}active{% endif %}">Wissensdatenbanken</a>
           {% if is_admin %}
-          <a href="/admin/customers" class="nav-link {% if active_page == 'customers' %}active{% endif %}">Kunden</a>
-          <a href="/admin" class="nav-link {% if active_page == 'admin' %}active{% endif %}">Administration</a>
+          {% set admin_nav_pages = ['customers', 'admin_knowledge', 'admin_prompts', 'admin_users'] %}
+          <div class="nav-group {% if active_page in admin_nav_pages %}expanded{% endif %}" id="admin-nav-group">
+            <button type="button" class="nav-group-toggle" id="admin-nav-toggle" aria-expanded="{% if active_page in admin_nav_pages %}true{% else %}false{% endif %}">
+              Administration
+            </button>
+            <div class="nav-submenu" id="admin-nav-submenu">
+              <a href="/admin/customers" class="nav-link nav-sublink {% if active_page == 'customers' %}active{% endif %}">Kunden</a>
+              <a href="/admin/knowledge" class="nav-link nav-sublink {% if active_page == 'admin_knowledge' %}active{% endif %}">Wissensdatenbanken</a>
+              <a href="/admin/prompts" class="nav-link nav-sublink {% if active_page == 'admin_prompts' %}active{% endif %}">Systemprompts</a>
+              <a href="/admin/users" class="nav-link nav-sublink {% if active_page == 'admin_users' %}active{% endif %}">User</a>
+            </div>
+          </div>
           {% endif %}
         </div>
       </nav>

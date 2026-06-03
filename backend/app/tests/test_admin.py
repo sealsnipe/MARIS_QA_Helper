@@ -26,11 +26,22 @@ def test_admin_can_read_and_write_prompt(client, db_session):
     assert "Maris" in put_response.json()["content"]
 
 
-def test_admin_page_redirects_for_non_admin(client, db_session):
+def test_admin_root_redirects_to_customers(client, db_session):
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_user(db_session, "admin@example.com", "secret123", ("bg-ludwigshafen",), is_admin=True)
+    login(client, "admin@example.com", "secret123")
+
+    response = client.get("/admin", follow_redirects=False)
+    assert response.status_code == 302
+    assert response.headers["location"] == "/admin/customers"
+
+
+def test_admin_subpages_require_admin(client, db_session):
     create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
     create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen",))
     login(client, "sven@example.com", "secret123")
 
-    response = client.get("/admin", follow_redirects=False)
-    assert response.status_code == 302
-    assert response.headers["location"] == "/chat"
+    for path in ("/admin/knowledge", "/admin/prompts", "/admin/users"):
+        response = client.get(path, follow_redirects=False)
+        assert response.status_code == 302
+        assert response.headers["location"] == "/chat"
