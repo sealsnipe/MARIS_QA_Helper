@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import getpass
 import re
 import secrets
 import sys
@@ -51,6 +50,24 @@ def _validate_openai_key(value: str) -> str:
     if not KEY_PATTERN.fullmatch(cleaned):
         raise SystemExit("OpenAI key must look like sk-... (no spaces).")
     return cleaned
+
+
+def _mask_key_preview(key: str) -> str:
+    if len(key) <= 12:
+        return key[:4] + "…"
+    return f"{key[:7]}…{key[-4:]}"
+
+
+def _prompt_openai_key_interactive() -> str:
+    print("Key input is visible (paste-friendly); stored only in local .env.")
+    while True:
+        entered = input("OpenAI API key (sk-...): ").strip()
+        if not entered:
+            print("Key is required.")
+            continue
+        key = _validate_openai_key(entered)
+        print(f"Accepted ({_mask_key_preview(key)}, {len(key)} chars).")
+        return key
 
 
 def parse_args() -> argparse.Namespace:
@@ -100,9 +117,7 @@ def main() -> None:
     elif args.openai_key:
         openai_key = _validate_openai_key(args.openai_key)
     elif current_key in {"", PLACEHOLDER_KEY} and not args.check_only:
-        entered = getpass.getpass("OpenAI API key (sk-..., hidden): ").strip()
-        if entered:
-            openai_key = _validate_openai_key(entered)
+        openai_key = _prompt_openai_key_interactive()
 
     if args.check_only:
         key_ok = bool(current_key) and current_key != PLACEHOLDER_KEY and KEY_PATTERN.fullmatch(current_key)

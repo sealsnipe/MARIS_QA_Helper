@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import getpass
 import os
 import re
 import secrets
@@ -207,6 +206,27 @@ def _resolve_llm_mode(args: argparse.Namespace, profile: DeployProfile) -> LlmAu
     return choice  # type: ignore[return-value]
 
 
+def _mask_key_preview(key: str) -> str:
+    if len(key) <= 12:
+        return key[:4] + "…"
+    return f"{key[:7]}…{key[-4:]}"
+
+
+def _prompt_openai_key_interactive() -> str:
+    print("  Eingabe sichtbar (Paste sichtbar) — Key landet nur lokal in .env auf dieser Maschine.")
+    while True:
+        entered = input("OpenAI API-Key (sk-...): ").strip()
+        if not entered:
+            print("  Key ist Pflicht.")
+            continue
+        try:
+            key = _validate_openai_key(entered)
+            print(f"  ✓ Key übernommen ({_mask_key_preview(key)}, {len(key)} Zeichen)")
+            return key
+        except ValueError as exc:
+            print(f"  {exc}")
+
+
 def _prompt_embedding_key(
     lines: list[str],
     *,
@@ -229,16 +249,7 @@ def _prompt_embedding_key(
     if not key:
         if not interactive:
             raise SystemExit("--non-interactive braucht --openai-key")
-        while True:
-            entered = getpass.getpass("OpenAI API-Key für Embeddings (sk-..., versteckt): ").strip()
-            if not entered:
-                print("  Key ist Pflicht.")
-                continue
-            try:
-                key = _validate_openai_key(entered)
-                break
-            except ValueError as exc:
-                print(f"  {exc}")
+        key = _prompt_openai_key_interactive()
 
     lines = _upsert(lines, "OPENAI_API_KEY", key)
     return lines, key
