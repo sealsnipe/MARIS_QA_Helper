@@ -154,6 +154,33 @@ def _version_at_least(found: tuple[int, int, int] | None, minimum: tuple[int, in
     return found is not None and found >= minimum
 
 
+def _docker_packages_current() -> bool:
+    if not shutil.which("dpkg-query"):
+        return False
+    packages = ("docker-ce", "docker-compose-plugin")
+    for package in packages:
+        result = _run(["dpkg-query", "-W", "-f=${Status}", package])
+        if result.returncode != 0 or "install ok installed" not in result.stdout:
+            return False
+    return True
+
+
+def _docker_engine_version() -> tuple[int, int, int] | None:
+    server = _run(["docker", "version", "--format", "{{.Server.Version}}"])
+    if server.returncode == 0 and server.stdout.strip():
+        parsed = _parse_version(server.stdout)
+        if parsed:
+            return parsed
+
+    client = _run(["docker", "version", "--format", "{{.Client.Version}}"])
+    parsed = _parse_version(client.stdout + client.stderr)
+    if parsed:
+        return parsed
+
+    cli = _run(["docker", "--version"])
+    return _parse_version(cli.stdout + cli.stderr)
+
+
 def check_docker() -> DockerStatus:
     status = DockerStatus()
     os_release = read_os_release()
@@ -163,11 +190,7 @@ def check_docker() -> DockerStatus:
 
     status.docker_bin = shutil.which("docker") is not None
     if status.docker_bin:
-        engine = _run(["docker", "version", "--format", "{{.Server.Version}}"])
-        if engine.returncode != 0:
-            engine = _run(["docker", "version", "--format", "{{.Client.Version}}"])
-        if engine.returncode == 0:
-            status.docker_version = _parse_version(engine.stdout)
+        status.docker_version = _docker_engine_version()
 
         result = _run(["docker", "compose", "version"])
         if result.returncode == 0:
@@ -325,6 +348,15 @@ def install_docker_engine(*, force: bool = False) -> None:
     status = check_docker()
     if not force and status.docker_bin and status.compose_plugin and status.version_ok:
         print("\n  ○ Docker bereits installiert (Version ok) — übersprungen.")
+        return
+    if (
+        not force
+        and status.docker_bin
+        and status.compose_plugin
+        and _docker_packages_current()
+        and (status.version_ok or status.docker_version is not None)
+    ):
+        print("\n  ○ Docker-Pakete bereits installiert — übersprungen.")
         return
     if not force and status.docker_bin and status.compose_ok and not status.version_ok:
         print("\n  Docker/Compose zu alt — Upgrade via apt …")

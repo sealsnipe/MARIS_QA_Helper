@@ -108,6 +108,8 @@ else
       finish_install_only
       exit 0
     fi
+    log "Abbruch: Docker-Bootstrap-Check fehlgeschlagen (siehe Status oben)."
+    log "Workaround: newgrp docker && ./setup.sh"
     exit 1
   fi
   log "Schritt 2/3 fertig."
