@@ -313,6 +313,7 @@ def _configure_runtime(lines: list[str], *, runtime: Runtime) -> list[str]:
 def _configure_deploy(lines: list[str], *, profile: DeployProfile) -> list[str]:
     secure = "true" if profile == "prod" else "false"
     lines = _upsert(lines, "SESSION_COOKIE_SECURE", secure)
+    lines = _upsert(lines, "DEPLOY_PROFILE", profile)
     if profile == "prod":
         print("\n  SESSION_COOKIE_SECURE → true (HTTPS-Proxy vorausgesetzt)")
     return lines
@@ -340,7 +341,7 @@ def _compose_command(profile: DeployProfile, llm_mode: LlmAuthMode, oauth_path: 
         if not COMPOSE_OAUTH.exists():
             raise SystemExit(f"Fehlt: {COMPOSE_OAUTH}")
         cmd.extend(["-f", str(COMPOSE_OAUTH)])
-    cmd.extend(["up", "--build", "-d", "--progress", "plain"])
+    cmd.extend(["up", "--build", "-d"])
     return cmd
 
 
@@ -411,6 +412,19 @@ def _maybe_start_compose(
     print("  Health: curl http://127.0.0.1:8088/api/health")
 
 
+def _compose_start_hint(profile: DeployProfile, llm_mode: LlmAuthMode, oauth_path: Path) -> str:
+    cmd = ["docker", "compose", "-f", "docker-compose.yml"]
+    if profile == "prod":
+        cmd.extend(["-f", "docker-compose.prod.yml"])
+    elif llm_mode == "chatgpt_oauth":
+        cmd.extend(["-f", "docker-compose.oauth.yml"])
+    cmd.extend(["up", "-d", "--build"])
+    prefix = ""
+    if profile != "prod" and llm_mode == "chatgpt_oauth":
+        prefix = f"OAUTH_AUTH_HOST_PATH={shlex.quote(str(oauth_path.resolve()))} "
+    return prefix + " ".join(shlex.quote(part) for part in cmd)
+
+
 def _print_next_steps(
     *,
     profile: DeployProfile,
@@ -422,18 +436,21 @@ def _print_next_steps(
     print("Nächste Schritte:")
 
     if runtime == "docker":
-        print("  • Prod-Seed:    docker compose -f docker-compose.yml -f docker-compose.prod.yml exec api \\")
-        print("                    python scripts/seed_production.py")
-        print("  • Updates:      ./scripts/update.sh")
+        print("  • Starten:      ./scripts/start.sh")
+        print(f"    (manuell:     {_compose_start_hint(profile, llm_mode, oauth_path)})")
+        print("  • Browser:      http://127.0.0.1:8088")
+        print("  • Health:       curl http://127.0.0.1:8088/api/health")
+        print("  • Logs:         docker compose logs -f api")
+
         if profile == "prod":
-            print("  • Prod-Stack:   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d")
-        elif llm_mode == "chatgpt_oauth":
-            host_path = oauth_path.resolve()
-            print(
-                "  • OAuth-Stack:  "
-                f"OAUTH_AUTH_HOST_PATH={host_path} "
-                "docker compose -f docker-compose.yml -f docker-compose.oauth.yml up -d"
-            )
+            print("  • Prod-Seed:    docker compose -f docker-compose.yml -f docker-compose.prod.yml exec api \\")
+            print("                    python scripts/seed_production.py")
+            print("\n  Produktion: Reverse-Proxy (Caddy/nginx) vor Port 8088, SESSION_COOKIE_SECURE=true.")
+        else:
+            print("  • Demo-Seed:    docker compose exec api python scripts/seed_data.py")
+            print("\n  Entwicklung: HTTP auf :8088 — HTTPS/Prod-Overlay erst bei Server-Deploy.")
+
+        print("  • Updates:      ./scripts/update.sh  (nach git pull)")
     else:
         print("  • Qdrant starten (z. B. docker run -p 6333:6333 qdrant/qdrant)")
         print("  • API starten:  cd backend && PYTHONPATH=. uvicorn app.main:app --reload --port 8088")
@@ -444,9 +461,6 @@ def _print_next_steps(
         print("  • API-Test:     python3 scripts/smoke_openai.py")
     print("  • Tests:        cd backend && PYTHONPATH=. pytest -q")
     print("  • Env prüfen:   python3 scripts/setup_env.py --check-only")
-
-    if profile == "prod":
-        print("\n  Produktion: Reverse-Proxy (Caddy/nginx) vor Port 8088, nur 443/80 öffnen.")
 
 
 def parse_args() -> argparse.Namespace:

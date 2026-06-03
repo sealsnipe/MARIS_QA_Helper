@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Update deployed instance after git pull (keeps ./data volume).
+# Start MARIS Q/A Helper stack (compose files from ./.env).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -8,14 +8,12 @@ cd "$ROOT"
 source "$(dirname "$0")/compose_env.sh"
 compose_env
 
-echo "→ git pull"
-git pull --ff-only
-
-echo "→ rebuild & restart"
+echo "→ docker compose up (${COMPOSE[*]})"
 "${COMPOSE[@]}" up -d --build
 
 echo "→ health"
 sleep 2
 curl -sf "http://127.0.0.1:${APP_PORT:-8088}/api/health" && echo
 
-echo "Done. Logs: ${COMPOSE[*]} logs -f api"
+echo "App: http://127.0.0.1:${APP_PORT:-8088}"
+echo "Logs: ${COMPOSE[*]} logs -f api"
