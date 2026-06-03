@@ -1,6 +1,8 @@
 # 08 — UI/UX-Design
 
-**Stand:** 2026-06-02 · **Status:** verbindlich für MVP
+**Stand:** 2026-06-03 · **Status:** verbindlich (Sidebar + Admin-Seiten)
+
+> UI-Karte: [`system/07_ui_map.md`](../system/07_ui_map.md)
 
 Server-gerenderte Seiten (Jinja2) + minimales Vanilla-JS. Kein Frontend-Framework, kein
 Build-Step. Ruhiges, vertrauenswürdiges Business-Tool. **Neu:** Kundenauswahl im Header und
@@ -15,16 +17,20 @@ Datei-Upload neben der Text-Eingabe.
 4. **Eine Sache pro Seite:** Login / Arbeiten.
 5. **Destruktives bestätigen:** Löschen mit `confirm()`.
 
-## 2. Seitenkarte
+## 2. Seitenkarte (Ist)
 ```text
-/login   (öffentlich)   → Anmeldung
-/        (geschützt)    → Hauptseite:
-                           Header: App | Kunde: <Auswahl> | Abmelden
-                           links:  Wissensdatenbank (Tabs: Text | Datei) + Dokumentliste
-                           rechts: Chat (Fragen + Antworten + Quellen)
+/login                    → Anmeldung
+/chat                     → Chat (Sidebar: Mandant, Historie, „Neuer Chat“)
+/kb                       → Wissensbasis (Text + Upload, nur aktiver Mandant)
+/admin/customers          → Kunden anlegen/bearbeiten/deaktivieren (Admin)
+/admin/knowledge          → KB global oder pro Mandant (Admin)
+/admin/prompts            → Systemprompts (Admin)
+/admin/users              → Benutzer + Mandantenzuordnung (Admin)
+/                         → Redirect /chat
+/kb (Admin)               → Redirect /admin/knowledge
+/admin                    → Redirect /admin/customers
 ```
-Bei **genau einem** Kunden zeigt der Header nur den Namen (kein Dropdown); bei mehreren ein
-Auswahl-Dropdown.
+Layout: **Sidebar links** (Navigation + Chat-Historie), **Hauptbereich rechts**. Kundenauswahl in der Sidebar.
 
 ## 3. Wireframes
 
@@ -77,6 +83,7 @@ Quelle/Typ als kleines Badge: `man` (Text), `pdf`, `txt`, `md`, `docx` (später 
 | **KB-Tabs** | „Text" (Titel+Textarea+Einpflegen) / „Datei" (Dropzone + Auswahl-Button). |
 | **Dropzone** | Drag&Drop + Klick; zeigt erlaubte Typen + Limit; Upload → `POST /api/documents`. |
 | **Dokumentliste** | Titel, Typ-Badge, Chunk-Anzahl, Löschen; nur aktiver Kunde. |
+| **Admin-Dokumentliste** | Wie Nutzer-KB, plus **Stift** (Bearbeiten) und **Mülleimer** nebeneinander; inline Edit-Panel (Titel + Textarea, Speichern/Abbrechen). |
 | **Chat-Verlauf** | Bubbles; Assistent-Bubble enthält Quellenblock. |
 | **Frage-Eingabe** | Enter sendet, Shift+Enter = Umbruch. |
 
@@ -100,6 +107,7 @@ Quelle/Typ als kleines Badge: `man` (Text), `pdf`, `txt`, `md`, `docx` (später 
   bei Typ-/Größen-/Extraktionsfehler klare Meldung, Liste ggf. mit `failed`-Status.
 - **Fragen:** Frage → Nutzer-Bubble + „…" → Antwort ersetzt Platzhalter, Quellenblock rendern.
 - **Löschen / Abmelden:** wie gehabt.
+- **Admin KB bearbeiten:** Stift → `GET …/documents/{id}` lädt Volltext → Editor → Speichern (`PUT`) → Re-Index, Liste refresh; Abbrechen schließt Panel ohne PUT. Bei Datei-Ursprung Hinweis, dass Original archiviert bleibt.
 
 ## 7. Visueller Stil
 Neutral-dunkles Theme, eine `app.css`, CSS-Variablen:
@@ -125,6 +133,7 @@ Neutral-dunkles Theme, eine `app.css`, CSS-Variablen:
 - `fetch`-Wrapper für `/api/...` (inkl. Multipart-Upload via `FormData`).
 - Tabs Text/Datei; Einpflegen; Upload (Dropzone, Fortschritt, Fehlertypen); Chat (senden, Bubbles,
   Quellen, Zustände); Kundenwechsel (POST + reload); Löschen (`confirm()`+DELETE).
+- **Admin KB:** `openAdminDocumentEditor` — inline GET/PUT pro Dokument (global oder Mandanten-Scope).
 - Keine Client-Persistenz; Chatverlauf rein im DOM (kein Reload-Restore — akzeptiert).
 
 ## 10. Nicht im MVP

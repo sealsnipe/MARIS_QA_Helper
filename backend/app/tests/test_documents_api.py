@@ -29,7 +29,6 @@ def test_documents_text_endpoint_scoped_to_active_customer(client, db_session):
 
 
 def test_production_customers_visible_for_admin(client, db_session):
-    create_customer(db_session, "global", "Global")
     create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
     create_customer(db_session, "bg-frankfurt", "BG Frankfurt")
     create_customer(db_session, "detmold-lippe", "Detmold Lippe")

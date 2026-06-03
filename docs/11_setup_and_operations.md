@@ -1,6 +1,6 @@
 # 11 — Setup & Betrieb
 
-**Stand:** 2026-06-02 · **Status:** verbindlich für MVP
+**Stand:** 2026-06-03 · **Status:** verbindlich für MVP + Dev lokal
 
 Entwicklung **und** Deployment auf **Ubuntu** (Dev-Prod-Parität). Der Coding-Agent arbeitet in
 Ubuntu (WSL2); das Projekt liegt im Linux-Dateisystem (`~/projects/SUP_QA_Helper`), nicht unter
@@ -10,10 +10,11 @@ Ubuntu (WSL2); das Projekt liegt im Linux-Dateisystem (`~/projects/SUP_QA_Helper
 
 ## 1. Entwicklungsumgebung (Ubuntu)
 - Projekt im Linux-FS: `~/projects/SUP_QA_Helper` (native Performance, korrekte Zeilenenden/Case).
-- Docker Engine + Compose-Plugin (oder Docker Desktop mit WSL2-Backend).
-- `.gitattributes` erzwingt LF (`* text=auto eol=lf`); Imports/Dateinamen **case-genau**
-  (Linux ist case-sensitiv).
-- Optional: VS Code Remote-WSL für Editor-Komfort.
+- **Schnell ohne Docker:** `./scripts/dev_local.sh start` → API **8090**, Qdrant **6334**, Daten in `./data-dev/` (siehe `.env.dev.example`).
+- **Docker:** Engine + Compose — Port **8088** (Standard-Stack).
+- `.gitattributes` erzwingt LF; Imports/Dateinamen **case-genau**.
+
+Runbook-Querschnitt: [`system/11_operations_runbook.md`](../system/11_operations_runbook.md)
 
 ## 2. Voraussetzungen
 - Docker + Docker Compose (Plugin v2), gültiger OpenAI API-Key.

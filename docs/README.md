@@ -2,7 +2,7 @@
 
 **Projekt:** MARIS Q/A Helper (ehem. SUP_QA_Helper)
 **Status:** MVP implementiert — Betrieb & Abnahme
-**Stand:** 2026-06-02
+**Stand:** 2026-06-03
 **Verantwortlich:** Product Owner + Projektleitung + Engineering (eine Rolle, Claude)
 
 ---
@@ -22,11 +22,21 @@ dieses Prototyps**.
 
 ## Wie diese Doku zu lesen ist
 
-Empfohlene Reihenfolge: **01 → 02 → 03**, danach themenspezifisch.
+**Code-Spiegel (file-per-file):** Regeln und Format → **`DOCUMENTATION_RULES.md`**.  
+Implementierte Spiegel-Dateien: **`docs/docs/INDEX.md`**.
+
+**Querschnitt (Zusammenspiel):** **`docs/system/00_README.md`** — Flows, Mandant, Betrieb.  
+**Plan vs Code:** **`15_implementation_status.md`**.
+
+Empfohlene Reihenfolge Planungsdocs: **01 → 02 → 03**, danach themenspezifisch.
 
 | # | Dokument | Zweck | Zielgruppe |
 |---|---|---|---|
 | — | `README.md` (dieses) | Einstieg, Index, Konventionen | alle |
+| — | **`DOCUMENTATION_RULES.md`** | **Verbindlich:** Spiegel + Querschnitt | Engineering, Agents |
+| — | **`docs/system/00_README.md`** | **End-to-End:** Flows, Mandant, Runbook | Engineering |
+| — | `docs/docs/INDEX.md` | Index der Code-Spiegel-Doku | Engineering |
+| 15 | `15_implementation_status.md` | Plan vs Ist-Stand Code | PO, Engineering |
 | 01 | `01_vision_and_scope.md` | Warum, Ziel, Scope in/out, Erfolgskriterien | PO, Stakeholder |
 | 02 | `02_product_requirements.md` | Personas, User Stories, FR/NFR, Akzeptanz | PO, Engineering, QA |
 | 03 | `03_architecture.md` | Systemaufbau, Stack, Datenflüsse, Entscheidungen | Engineering |

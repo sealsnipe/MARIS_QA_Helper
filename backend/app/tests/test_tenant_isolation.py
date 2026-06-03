@@ -174,6 +174,11 @@ def test_forbidden_customer_returns_403_on_scoped_operations(client, db_session)
 
     assert client.get("/api/customers").json()["active"] == "kkrr"
 
+    set_llm(
+        _FinalAnswerLLM(
+            [LLMResponse(content="Hallo", tool_calls=[], assistant_message={"role": "assistant", "content": "Hallo"})]
+        )
+    )
     chat = client.post("/api/chat", json={"message": "Hallo"})
     assert chat.status_code == 200
 

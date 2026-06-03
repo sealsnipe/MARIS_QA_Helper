@@ -42,7 +42,15 @@ from app.customers import (
     user_has_customer,
 )
 from app.db import get_db
-from app.ingestion import IngestionError, delete_document, ingest_text, list_documents, list_documents_for_customers
+from app.ingestion import (
+    IngestionError,
+    delete_document,
+    get_document_text,
+    ingest_text,
+    list_documents,
+    list_documents_for_customers,
+    update_document_content,
+)
 from app.models import Customer, User
 from app.tenant import (
     CustomerNotFoundError,
@@ -112,6 +120,11 @@ class AdminUserUpdateRequest(BaseModel):
     is_active: bool | None = None
 
 
+class DocumentUpdateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    text: str = Field(min_length=1)
+
+
 def _admin_page_redirect(user: User) -> RedirectResponse | None:
     if not user.is_admin:
         return RedirectResponse(url="/chat", status_code=status.HTTP_302_FOUND)
@@ -154,6 +167,20 @@ def _document_payload(document) -> dict:
         "error_message": getattr(document, "error_message", None),
         "created_at": document.created_at,
         "updated_at": document.updated_at,
+    }
+
+
+def _admin_document_detail(db: Session, customer_id: str, document_id: str) -> dict | None:
+    loaded = get_document_text(db, customer_id, document_id)
+    if loaded is None:
+        return None
+    document, text = loaded
+    editable = bool(text.strip()) or document.status != "failed"
+    return {
+        "document": _document_payload(document),
+        "text": text,
+        "editable": editable,
+        "from_file": bool(document.storage_path),
     }
 
 
@@ -703,6 +730,40 @@ async def api_admin_upload_document(
     return {"document": _document_payload(document)}
 
 
+@router.get("/api/admin/documents/{document_id}")
+def api_admin_get_document(
+    document_id: str,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    payload = _admin_document_detail(db, GLOBAL_CUSTOMER_ID, document_id)
+    if payload is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return payload
+
+
+@router.put("/api/admin/documents/{document_id}")
+def api_admin_update_document(
+    document_id: str,
+    body: DocumentUpdateRequest,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    try:
+        result = update_document_content(
+            db,
+            GLOBAL_CUSTOMER_ID,
+            document_id,
+            body.title,
+            body.text,
+        )
+    except IngestionError as exc:
+        if exc.code == "not_found":
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        raise
+    return {"document": _document_payload(result.document)}
+
+
 @router.delete("/api/admin/documents/{document_id}")
 def api_admin_delete_document(
     document_id: str,
@@ -766,6 +827,44 @@ async def api_admin_upload_customer_document(
     except UploadError:
         raise
     return {"document": _document_payload(document)}
+
+
+@router.get("/api/admin/customers/{customer_id}/documents/{document_id}")
+def api_admin_get_customer_document(
+    customer_id: str,
+    document_id: str,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    customer = _admin_tenant_customer(db, customer_id)
+    payload = _admin_document_detail(db, customer.id, document_id)
+    if payload is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return payload
+
+
+@router.put("/api/admin/customers/{customer_id}/documents/{document_id}")
+def api_admin_update_customer_document(
+    customer_id: str,
+    document_id: str,
+    body: DocumentUpdateRequest,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    customer = _admin_tenant_customer(db, customer_id)
+    try:
+        result = update_document_content(
+            db,
+            customer.id,
+            document_id,
+            body.title,
+            body.text,
+        )
+    except IngestionError as exc:
+        if exc.code == "not_found":
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        raise
+    return {"document": _document_payload(result.document)}
 
 
 @router.delete("/api/admin/customers/{customer_id}/documents/{document_id}")

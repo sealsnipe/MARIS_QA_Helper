@@ -1,6 +1,8 @@
 # 03 — Architektur
 
-**Stand:** 2026-06-02 · **Status:** verbindlich für MVP
+**Stand:** 2026-06-03 · **Status:** verbindlich für MVP
+
+> Querschnitt: [`system/09_module_dependency_map.md`](../system/09_module_dependency_map.md)
 
 ---
 
@@ -60,7 +62,10 @@ Metadaten/Nutzer/Kunden, Qdrant für Vektoren — **eine Collection pro Kunde**)
 | Embeddings | `app/embeddings.py` | OpenAI-Embeddings, Batching, mockbar |
 | LLM | `app/llm.py` | OpenAI-Chat-Client mit Tool-Calling |
 | Agent | `app/agent.py` | Tool-Loop **an aktiven Kunden gebunden**, Citation-Aggregation |
-| Prompts | `app/prompts.py` | System-Prompt, Tool-Result-Formatierung |
+| **Chats** | `app/chats.py` | Sessions/Messages pro User+Mandant |
+| **Users Admin** | `app/users_admin.py` | Benutzer-CRUD, Mandantenzuordnung |
+| **System Prompts** | `app/system_prompts.py` | Global + pro Mandant, effektiver Prompt |
+| Prompts | `app/prompts.py` | System-Prompt-Konstanten, Tool-Schema |
 | Vektor-Store | `app/qdrant_store.py` | `collection_name(cid)`, `ensure_collection`, `upsert/search/delete` (parametrisiert) |
 | Persistenz | `app/db.py`, `app/models.py` | SQLAlchemy, `create_all`, ORM-Modelle |
 

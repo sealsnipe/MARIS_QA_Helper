@@ -32,7 +32,6 @@ def test_collection_name_rejects_invalid_slug():
 
 
 def test_list_customers_only_returns_assigned(client, db_session):
-    create_customer(db_session, "global", "Global")
     create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
     create_customer(db_session, "kkrr", "Katholische Kliniken Rhein Ruhr")
     create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen", "kkrr"))

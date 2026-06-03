@@ -10,7 +10,8 @@ from app.agent import AgentError
 from app.chats import ChatForbiddenError, ChatNotFoundError
 from app.auth import ForbiddenError, NotAuthenticatedError
 from app.config import get_settings
-from app.db import SessionLocal, init_db
+from app.db import init_db
+from app import db as db_module
 from app.ingestion import IngestionError
 from app.routes import router
 from app.tenant import CustomerNotFoundError, ForbiddenCustomerError
@@ -27,7 +28,7 @@ static_dir.mkdir(exist_ok=True)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
-    with SessionLocal() as db:
+    with db_module.SessionLocal() as db:
         ensure_global_customer(db)
         ensure_default_global_prompt(db)
     yield
@@ -101,6 +102,7 @@ async def ingestion_error_handler(_request: Request, exc: IngestionError):
     status_by_code = {
         "empty_text": 400,
         "invalid_title": 400,
+        "not_found": 404,
         "embedding_failed": 502,
         "vector_store_failed": 502,
     }

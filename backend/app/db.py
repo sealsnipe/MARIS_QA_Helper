@@ -48,6 +48,11 @@ def _migrate_schema(engine) -> None:
                 conn.execute(
                     text("ALTER TABLE customers ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
                 )
+    if "documents" in table_names:
+        columns = {col["name"] for col in inspector.get_columns("documents")}
+        if "source_text" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE documents ADD COLUMN source_text TEXT"))
 
 
 def init_db() -> None:

@@ -3,7 +3,6 @@ from app.tests.conftest import create_customer, create_user, login
 
 
 def test_global_customer_in_nav_list(client, db_session):
-    create_customer(db_session, GLOBAL_CUSTOMER_ID, "Global")
     create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
     create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen",))
     login(client, "sven@example.com", "secret123")
@@ -16,7 +15,6 @@ def test_global_customer_in_nav_list(client, db_session):
 
 
 def test_global_customer_switch(client, db_session):
-    create_customer(db_session, GLOBAL_CUSTOMER_ID, "Global")
     create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
     create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen",))
     login(client, "sven@example.com", "secret123")
@@ -27,7 +25,6 @@ def test_global_customer_switch(client, db_session):
 
 
 def test_global_kb_is_read_only(client, db_session):
-    create_customer(db_session, GLOBAL_CUSTOMER_ID, "Global")
     create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
     create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen",))
     login(client, "sven@example.com", "secret123")

@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.chunking import chunk_text, validate_ingest_text
@@ -42,6 +42,139 @@ def _document_to_dict(document: Document) -> dict[str, Any]:
         "created_at": document.created_at,
         "updated_at": document.updated_at,
     }
+
+
+def _build_chunk_rows_and_points(
+    *,
+    customer_id: str,
+    document_id: str,
+    title: str,
+    pieces: list[str],
+    vectors: list[list[float]],
+    source_type: str,
+    source_url: str | None,
+    created_at: str,
+) -> tuple[list[tuple[str, list[float], dict[str, Any]]], list[Chunk]]:
+    points: list[tuple[str, list[float], dict[str, Any]]] = []
+    chunk_rows: list[Chunk] = []
+    for index, (piece, vector) in enumerate(zip(pieces, vectors, strict=True)):
+        chunk_id = str(uuid.uuid4())
+        payload = {
+            "customer_id": customer_id,
+            "document_id": document_id,
+            "chunk_id": chunk_id,
+            "chunk_index": index,
+            "title": title,
+            "source_type": source_type,
+            "source_url": source_url,
+            "text": piece,
+        }
+        points.append((chunk_id, vector, payload))
+        chunk_rows.append(
+            Chunk(
+                id=chunk_id,
+                document_id=document_id,
+                customer_id=customer_id,
+                chunk_index=index,
+                text=piece,
+                token_estimate=_estimate_tokens(piece),
+                qdrant_point_id=chunk_id,
+                created_at=created_at,
+            )
+        )
+    return points, chunk_rows
+
+
+def _upsert_vectors(
+    vector_store: VectorStore,
+    customer_id: str,
+    document_id: str,
+    points: list[tuple[str, list[float], dict[str, Any]]],
+) -> None:
+    try:
+        vector_store.ensure_collection(customer_id)
+        vector_store.upsert(customer_id, points)
+    except Exception as exc:
+        try:
+            vector_store.delete_document(customer_id, document_id)
+        except Exception:
+            pass
+        raise IngestionError("vector_store_failed", detail=str(exc)) from exc
+
+
+def get_document(db: Session, customer_id: str, document_id: str) -> Document | None:
+    document = db.get(Document, document_id)
+    if document is None or document.deleted_at is not None:
+        return None
+    if document.customer_id != customer_id:
+        return None
+    return document
+
+
+def _reconstruct_text_from_chunks(document: Document) -> str:
+    chunks = sorted(document.chunks, key=lambda row: row.chunk_index)
+    if not chunks:
+        return ""
+    return "\n\n".join(chunk.text for chunk in chunks if chunk.text.strip())
+
+
+def get_document_text(db: Session, customer_id: str, document_id: str) -> tuple[Document, str] | None:
+    document = get_document(db, customer_id, document_id)
+    if document is None:
+        return None
+    if document.source_text and document.source_text.strip():
+        return document, document.source_text
+    return document, _reconstruct_text_from_chunks(document)
+
+
+def _embed_pieces(embeddings: EmbeddingsBackend, pieces: list[str]) -> list[list[float]]:
+    try:
+        vectors = embeddings.embed_documents(pieces)
+    except Exception as exc:
+        raise IngestionError("embedding_failed", detail=str(exc)) from exc
+    if len(vectors) != len(pieces):
+        raise IngestionError("embedding_failed")
+    return vectors
+
+
+def _index_document_chunks(
+    db: Session,
+    document: Document,
+    *,
+    title: str,
+    normalized_text: str,
+    pieces: list[str],
+    embeddings: EmbeddingsBackend,
+    vector_store: VectorStore,
+    now: str,
+    source_type: str | None = None,
+    vectors: list[list[float]] | None = None,
+) -> Document:
+    if vectors is None:
+        vectors = _embed_pieces(embeddings, pieces)
+
+    effective_source_type = source_type if source_type is not None else document.source_type
+    points, chunk_rows = _build_chunk_rows_and_points(
+        customer_id=document.customer_id,
+        document_id=document.id,
+        title=title,
+        pieces=pieces,
+        vectors=vectors,
+        source_type=effective_source_type,
+        source_url=document.source_url,
+        created_at=now,
+    )
+    _upsert_vectors(vector_store, document.customer_id, document.id, points)
+
+    document.title = title
+    document.source_text = normalized_text
+    document.source_type = effective_source_type
+    document.chunk_count = len(chunk_rows)
+    document.status = "indexed"
+    document.error_message = None
+    document.updated_at = now
+    db.add_all(chunk_rows)
+    return document
 
 
 def ingest_text(
@@ -88,62 +221,84 @@ def ingest_text(
         original_filename=original_filename,
         mime_type=mime_type,
         storage_path=storage_path,
+        source_text=normalized,
         chunk_count=0,
         status="indexed",
         created_at=now,
         updated_at=now,
     )
-
-    try:
-        vectors = embeddings.embed_documents(pieces)
-    except Exception as exc:
-        raise IngestionError("embedding_failed", detail=str(exc)) from exc
-
-    if len(vectors) != len(pieces):
-        raise IngestionError("embedding_failed")
-
-    points: list[tuple[str, list[float], dict[str, Any]]] = []
-    chunk_rows: list[Chunk] = []
-
-    for index, (piece, vector) in enumerate(zip(pieces, vectors, strict=True)):
-        chunk_id = str(uuid.uuid4())
-        payload = {
-            "customer_id": customer_id,
-            "document_id": document_id,
-            "chunk_id": chunk_id,
-            "chunk_index": index,
-            "title": cleaned_title,
-            "source_type": source_type,
-            "source_url": source_url,
-            "text": piece,
-        }
-        points.append((chunk_id, vector, payload))
-        chunk_rows.append(
-            Chunk(
-                id=chunk_id,
-                document_id=document_id,
-                customer_id=customer_id,
-                chunk_index=index,
-                text=piece,
-                token_estimate=_estimate_tokens(piece),
-                qdrant_point_id=chunk_id,
-                created_at=now,
-            )
-        )
-
-    try:
-        vector_store.ensure_collection(customer_id)
-        vector_store.upsert(customer_id, points)
-    except Exception as exc:
-        try:
-            vector_store.delete_document(customer_id, document_id)
-        except Exception:
-            pass
-        raise IngestionError("vector_store_failed", detail=str(exc)) from exc
-
-    document.chunk_count = len(chunk_rows)
     db.add(document)
-    db.add_all(chunk_rows)
+    db.flush()
+
+    try:
+        _index_document_chunks(
+            db,
+            document,
+            title=cleaned_title,
+            normalized_text=normalized,
+            pieces=pieces,
+            embeddings=embeddings,
+            vector_store=vector_store,
+            now=now,
+        )
+    except IngestionError:
+        db.rollback()
+        raise
+    db.commit()
+    db.refresh(document)
+    return IngestResult(document=document)
+
+
+def update_document_content(
+    db: Session,
+    customer_id: str,
+    document_id: str,
+    title: str,
+    text: str,
+    *,
+    embeddings: EmbeddingsBackend | None = None,
+    vector_store: VectorStore | None = None,
+) -> IngestResult:
+    document = get_document(db, customer_id, document_id)
+    if document is None:
+        raise IngestionError("not_found")
+
+    cleaned_title = title.strip()
+    if not cleaned_title or len(cleaned_title) > 200:
+        raise IngestionError("invalid_title")
+
+    try:
+        normalized = validate_ingest_text(text)
+    except ValueError as exc:
+        raise IngestionError(str(exc)) from exc
+
+    pieces = chunk_text(normalized)
+    if not pieces:
+        raise IngestionError("empty_text")
+
+    embeddings = embeddings or get_embeddings_backend()
+    vector_store = vector_store or get_vector_store()
+    now = utc_now_iso()
+
+    had_file_origin = document.storage_path is not None and document.source_type != "manual"
+    new_source_type = "manual" if had_file_origin else document.source_type
+
+    vectors = _embed_pieces(embeddings, pieces)
+    vector_store.delete_document(customer_id, document_id)
+    db.execute(delete(Chunk).where(Chunk.document_id == document_id))
+
+    _index_document_chunks(
+        db,
+        document,
+        title=cleaned_title,
+        normalized_text=normalized,
+        pieces=pieces,
+        embeddings=embeddings,
+        vector_store=vector_store,
+        now=now,
+        source_type=new_source_type,
+        vectors=vectors,
+    )
     db.commit()
     db.refresh(document)
     return IngestResult(document=document)

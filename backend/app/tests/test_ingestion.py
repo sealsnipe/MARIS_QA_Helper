@@ -1,7 +1,14 @@
 import pytest
 
 from app.customers import collection_name
-from app.ingestion import IngestionError, delete_document, ingest_text, list_documents
+from app.ingestion import (
+    IngestionError,
+    delete_document,
+    get_document_text,
+    ingest_text,
+    list_documents,
+    update_document_content,
+)
 from app.tests.conftest import create_customer
 
 
@@ -85,3 +92,79 @@ def test_delete_document_scoped_to_customer(db_session, fake_vector_store, fake_
     assert delete_document(db_session, "kkrr", acme_doc.id, vector_store=fake_vector_store) is False
     assert delete_document(db_session, "bg-ludwigshafen", acme_doc.id, vector_store=fake_vector_store) is True
     assert list_documents(db_session, "bg-ludwigshafen") == []
+
+
+def test_get_document_text_uses_source_text(db_session, fake_vector_store, fake_embeddings):
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    original = "Dies ist ein ausreichend langer Support-Text für source_text und Bearbeiten im Test."
+    result = ingest_text(
+        db_session,
+        customer_id="bg-ludwigshafen",
+        title="Quelle",
+        text=original,
+        embeddings=fake_embeddings,
+        vector_store=fake_vector_store,
+    )
+    loaded = get_document_text(db_session, "bg-ludwigshafen", result.document.id)
+    assert loaded is not None
+    document, text = loaded
+    assert document.source_text == original
+    assert text == original
+
+
+def test_update_document_content_reindexes(db_session, fake_vector_store, fake_embeddings):
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    created = ingest_text(
+        db_session,
+        customer_id="bg-ludwigshafen",
+        title="Alt",
+        text="Alter Inhalt mit genügend Zeichen für die Wissensdatenbank und den Update-Test.",
+        embeddings=fake_embeddings,
+        vector_store=fake_vector_store,
+    ).document
+    doc_id = created.id
+    created_at = created.created_at
+
+    updated_text = "Neuer Mandanten-Überblick mit genügend Zeichen für die Re-Indexierung nach dem Speichern."
+    result = update_document_content(
+        db_session,
+        "bg-ludwigshafen",
+        doc_id,
+        "Neu",
+        updated_text,
+        embeddings=fake_embeddings,
+        vector_store=fake_vector_store,
+    )
+
+    assert result.document.id == doc_id
+    assert result.document.created_at == created_at
+    assert result.document.title == "Neu"
+    assert result.document.source_text == updated_text
+    assert result.document.status == "indexed"
+    bucket = fake_vector_store.collections[collection_name("bg-ludwigshafen")]
+    assert len(bucket) == result.document.chunk_count
+
+
+def test_update_document_wrong_customer_raises_not_found(db_session, fake_vector_store, fake_embeddings):
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_customer(db_session, "kkrr", "KKRR")
+    doc = ingest_text(
+        db_session,
+        customer_id="bg-ludwigshafen",
+        title="X",
+        text="Isolationstest für Update mit genügend Zeichen in diesem Dokument.",
+        embeddings=fake_embeddings,
+        vector_store=fake_vector_store,
+    ).document
+
+    with pytest.raises(IngestionError) as exc:
+        update_document_content(
+            db_session,
+            "kkrr",
+            doc.id,
+            "Y",
+            "Falscher Mandant aber genügend Zeichen für Validierung im Test.",
+            embeddings=fake_embeddings,
+            vector_store=fake_vector_store,
+        )
+    assert exc.value.code == "not_found"

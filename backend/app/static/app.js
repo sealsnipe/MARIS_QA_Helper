@@ -227,7 +227,7 @@
   }
 
   function renderDocuments(documents, listEl, countEl, emptyEl, deletePath, options = {}) {
-    const { readOnly = false, showCustomer = false } = options;
+    const { readOnly = false, showCustomer = false, adminEdit = null } = options;
     if (!listEl) return;
     listEl.innerHTML = "";
     if (countEl) countEl.textContent = `(${documents.length})`;
@@ -236,6 +236,7 @@
     for (const doc of documents) {
       const item = document.createElement("li");
       item.className = "doc-item";
+      item.dataset.docId = doc.id;
 
       const meta = document.createElement("div");
       meta.className = "doc-meta";
@@ -254,15 +255,37 @@
 
       item.appendChild(meta);
       if (!readOnly) {
+        const actions = document.createElement("div");
+        actions.className = "row-actions doc-actions";
+
+        if (adminEdit) {
+          const editBtn = document.createElement("button");
+          editBtn.type = "button";
+          editBtn.className = "icon-btn secondary doc-edit-btn";
+          editBtn.setAttribute("aria-label", "Bearbeiten");
+          editBtn.innerHTML = ICON_EDIT;
+          editBtn.addEventListener("click", () => {
+            openAdminDocumentEditor(doc.id, adminEdit.basePath, listEl, adminEdit.onRefresh);
+          });
+          actions.appendChild(editBtn);
+        }
+
         const delBtn = document.createElement("button");
         delBtn.type = "button";
-        delBtn.className = "danger";
-        delBtn.textContent = "Löschen";
+        delBtn.className = adminEdit ? "icon-btn danger" : "danger";
+        if (adminEdit) {
+          delBtn.setAttribute("aria-label", "Löschen");
+          delBtn.innerHTML = ICON_TRASH;
+        } else {
+          delBtn.textContent = "Löschen";
+        }
         delBtn.addEventListener("click", async () => {
           if (!confirm(`Dokument „${doc.title}“ wirklich löschen?`)) return;
           await api(`${deletePath}/${doc.id}`, { method: "DELETE" });
           if (deletePath === "/api/documents") {
             await refreshKbDocuments();
+          } else if (adminEdit?.onRefresh) {
+            await adminEdit.onRefresh();
           } else if (deletePath.startsWith("/api/admin/customers/")) {
             const match = deletePath.match(/\/api\/admin\/customers\/([^/]+)\/documents/);
             await refreshAdminDocuments(match ? match[1] : "global");
@@ -270,9 +293,82 @@
             await refreshAdminDocuments("global");
           }
         });
-        item.appendChild(delBtn);
+        actions.appendChild(delBtn);
+        item.appendChild(actions);
       }
       listEl.appendChild(item);
+    }
+  }
+
+  function closeAllDocEditPanels(listEl) {
+    if (!listEl) return;
+    listEl.querySelectorAll(".doc-edit-row").forEach((el) => el.remove());
+  }
+
+  async function openAdminDocumentEditor(docId, basePath, listEl, onRefresh) {
+    closeAllDocEditPanels(listEl);
+    const row = listEl?.querySelector(`.doc-item[data-doc-id="${docId}"]`);
+    if (!row || !listEl) return;
+
+    const editRow = document.createElement("li");
+    editRow.className = "doc-edit-row";
+    editRow.innerHTML = `
+      <div class="doc-edit-panel ingest-form">
+        <p class="status" data-role="load">Lade Inhalt…</p>
+      </div>
+    `;
+    row.insertAdjacentElement("afterend", editRow);
+    const panel = editRow.querySelector(".doc-edit-panel");
+    const loadStatus = panel?.querySelector('[data-role="load"]');
+
+    try {
+      const data = await api(`${basePath}/${docId}`);
+      if (!panel) return;
+      const fromFileHint = data.from_file
+        ? `<p class="muted doc-edit-hint">Text stammt aus einer Datei. Speichern ersetzt den indexierten Inhalt; die Originaldatei bleibt archiviert.</p>`
+        : "";
+      panel.innerHTML = `
+        <label>Titel<input type="text" class="doc-edit-title" maxlength="200" value="${escapeHtml(data.document.title)}"></label>
+        <label>Inhalt<textarea class="doc-edit-text" rows="12" spellcheck="true"></textarea></label>
+        ${fromFileHint}
+        <div class="doc-edit-actions">
+          <button type="button" class="secondary small doc-edit-save">Speichern</button>
+          <button type="button" class="secondary small doc-edit-cancel">Abbrechen</button>
+        </div>
+        <p class="status doc-edit-status" aria-live="polite"></p>
+      `;
+      const textArea = panel.querySelector(".doc-edit-text");
+      if (textArea) textArea.value = data.text || "";
+
+      panel.querySelector(".doc-edit-cancel")?.addEventListener("click", () => editRow.remove());
+      panel.querySelector(".doc-edit-save")?.addEventListener("click", async () => {
+        const title = panel.querySelector(".doc-edit-title")?.value.trim() || "";
+        const text = panel.querySelector(".doc-edit-text")?.value || "";
+        const statusEl = panel.querySelector(".doc-edit-status");
+        if (!title) {
+          showStatus(statusEl, "Titel ist Pflicht.", "error");
+          return;
+        }
+        showStatus(statusEl, "Speichern…");
+        try {
+          await api(`${basePath}/${docId}`, {
+            method: "PUT",
+            body: JSON.stringify({ title, text }),
+          });
+          editRow.remove();
+          await onRefresh();
+        } catch (error) {
+          const msg =
+            error.code === "not_found"
+              ? "Dokument nicht gefunden oder falscher Mandant."
+              : error.code === "empty_text"
+                ? "Text ist zu kurz (mind. 20 Zeichen)."
+                : "Speichern fehlgeschlagen.";
+          showStatus(statusEl, msg, "error");
+        }
+      });
+    } catch (_error) {
+      if (loadStatus) showStatus(loadStatus, "Inhalt konnte nicht geladen werden.", "error");
     }
   }
 
@@ -310,12 +406,20 @@
         ? "/api/admin/documents"
         : `/api/admin/customers/${encodeURIComponent(scope)}/documents`;
     const data = await api(base);
+    const listEl = document.getElementById("admin-doc-list");
+    closeAllDocEditPanels(listEl);
     renderDocuments(
       data.documents || [],
-      document.getElementById("admin-doc-list"),
+      listEl,
       document.getElementById("admin-doc-count"),
       document.getElementById("admin-doc-empty"),
       base,
+      {
+        adminEdit: {
+          basePath: base,
+          onRefresh: () => refreshAdminDocuments(scope),
+        },
+      },
     );
   }
 
@@ -612,6 +716,7 @@
     }
 
     scopeSelect?.addEventListener("change", () => {
+      closeAllDocEditPanels(document.getElementById("admin-doc-list"));
       updateScopeUi();
       refreshScopeDocuments().catch(() =>
         showStatus(statusEl, "Dokumente konnten nicht geladen werden.", "error"),
@@ -685,12 +790,23 @@
     const selected = new Set(selectedIds || []);
     container.innerHTML = "";
     (customers || []).forEach((customer) => {
-      const id = `${namePrefix}-${customer.id}`;
-      const label = document.createElement("label");
-      label.innerHTML = `<input type="checkbox" name="${namePrefix}" value="${escapeHtml(customer.id)}" id="${id}" ${selected.has(customer.id) ? "checked" : ""}> ${escapeHtml(customer.name)}`;
-      container.appendChild(label);
+      const row = document.createElement("label");
+      row.className = "user-customer-row";
+      row.innerHTML = `
+        <input type="checkbox" name="${escapeHtml(namePrefix)}" value="${escapeHtml(customer.id)}" ${selected.has(customer.id) ? "checked" : ""}>
+        <span class="user-customer-row-body">
+          <code class="user-customer-slug">${escapeHtml(customer.id)}</code>
+          <span class="user-customer-name">${escapeHtml(customer.name)}</span>
+        </span>
+      `;
+      container.appendChild(row);
     });
   }
+
+  const ICON_EDIT =
+    '<svg class="icon-btn-svg" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
+  const ICON_TRASH =
+    '<svg class="icon-btn-svg" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
 
   function readCustomerCheckboxValues(container, namePrefix) {
     if (!container) return [];
@@ -711,11 +827,17 @@
     const createCustomers = document.getElementById("user-create-customers");
     const createStatus = document.getElementById("user-create-status");
     let assignableCustomers = [];
+    let customerNameById = {};
 
     function customerBadges(ids) {
-      const labels = (ids || []).map((id) => customerLabels[id] || id);
-      if (!labels.length) return '<span class="muted">—</span>';
-      return `<span class="user-badge-list">${labels.map((l) => `<span class="badge">${escapeHtml(l)}</span>`).join("")}</span>`;
+      const slugs = ids || [];
+      if (!slugs.length) return '<span class="muted">—</span>';
+      return `<span class="user-badge-list">${slugs
+        .map((slug) => {
+          const title = customerNameById[slug] || slug;
+          return `<span class="badge user-slug-badge" title="${escapeHtml(title)}">${escapeHtml(slug)}</span>`;
+        })
+        .join("")}</span>`;
     }
 
     function renderUsers(users) {
@@ -733,10 +855,10 @@
           <td class="user-customers-cell">${customerBadges(user.customer_ids)}</td>
           <td>${user.is_admin ? "Admin" : "Benutzer"}</td>
           <td>${user.is_active ? "Aktiv" : "Inaktiv"}</td>
-          <td>
-            <div class="customer-actions">
-              <button type="button" class="secondary small user-edit-btn">Bearbeiten</button>
-              <button type="button" class="danger small user-delete-btn">Entfernen</button>
+          <td class="user-actions-cell">
+            <div class="row-actions">
+              <button type="button" class="icon-btn secondary user-edit-btn" aria-label="Bearbeiten">${ICON_EDIT}</button>
+              <button type="button" class="icon-btn danger user-delete-btn" aria-label="Entfernen">${ICON_TRASH}</button>
             </div>
           </td>
         `;
@@ -778,6 +900,7 @@
     async function loadUsers() {
       const data = await api("/api/admin/users");
       assignableCustomers = data.customers || [];
+      customerNameById = Object.fromEntries(assignableCustomers.map((c) => [c.id, c.name]));
       renderCustomerCheckboxes(createCustomers, assignableCustomers, [], "create");
       renderUsers(data.users || []);
     }
@@ -785,23 +908,27 @@
     tbody?.addEventListener("click", async (event) => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
-      const row = target.closest("tr");
-      if (!row) return;
-      const userId = row.dataset.userId;
-      const editRow = tbody.querySelector(`tr.user-edit-row[data-user-id="${userId}"]`);
 
-      if (target.classList.contains("user-edit-btn")) {
+      if (target.closest(".user-edit-btn")) {
+        const row = target.closest("tr:not(.user-edit-row)");
+        if (!row) return;
+        const userId = row.dataset.userId;
+        const editRow = tbody.querySelector(`tr.user-edit-row[data-user-id="${userId}"]`);
         tbody.querySelectorAll(".user-edit-row").forEach((el) => el.classList.add("hidden"));
         editRow?.classList.remove("hidden");
         return;
       }
 
-      if (target.classList.contains("user-cancel-btn")) {
+      if (target.closest(".user-cancel-btn")) {
+        const editRow = target.closest("tr.user-edit-row");
         editRow?.classList.add("hidden");
         return;
       }
 
-      if (target.classList.contains("user-save-btn")) {
+      if (target.closest(".user-save-btn")) {
+        const editRow = target.closest("tr.user-edit-row");
+        if (!editRow) return;
+        const userId = editRow.dataset.userId;
         const email = editRow?.querySelector(".user-edit-email")?.value.trim() || "";
         const password = editRow?.querySelector(".user-edit-password")?.value || "";
         const isAdmin = Boolean(editRow?.querySelector(".user-edit-admin")?.checked);
@@ -836,7 +963,10 @@
         return;
       }
 
-      if (target.classList.contains("user-delete-btn")) {
+      if (target.closest(".user-delete-btn")) {
+        const row = target.closest("tr:not(.user-edit-row)");
+        if (!row) return;
+        const userId = row.dataset.userId;
         const email = row.querySelector(".user-email-display")?.textContent || userId;
         if (!window.confirm(`Benutzer „${email}“ wirklich deaktivieren?`)) return;
         showStatus(listStatus, "Entfernen…");

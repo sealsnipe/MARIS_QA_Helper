@@ -1,6 +1,8 @@
 # 14 — Kunden-Administration: Ausarbeitung für Projektmanagement
 
-**Stand:** 2026-06-02 · **Status:** Entscheidungsvorlage (nicht MVP-bindend bis PM-Freigabe)  
+**Stand:** 2026-06-03 · **Status:** umgesetzt (Admin-UI + Slug-Rename)
+
+> Flows: [`system/06_admin_flows.md`](../system/06_admin_flows.md) · Ist-Stand: [`15_implementation_status.md`](./15_implementation_status.md)  
 **Adressat:** Projektmanager / Product Owner  
 **Autor:** Engineering (Coding-Agent)  
 **Bezug:** `02` (Persona P3 „Achim“), `04` §1.2/§1.3, `07` §5, `12` Phase 4
@@ -43,18 +45,19 @@ Weitere Festlegungen:
 
 ---
 
-## 2. Ist-Zustand (MVP, Stand M2)
+## 2. Ist-Zustand (2026-06-03)
 
-| Thema | Heute im MVP |
+| Thema | Heute |
 |---|---|
-| Kunden anlegen | **Nur** per Script `scripts/seed_customers.py` (idempotent) |
-| Nutzer anlegen | **Nur** per Script `scripts/seed_users.py` (+ `user_customers`) |
-| UI für Administration | **Nein** — bewusst out of scope (`07`, `12` Phase 4) |
-| Demo-Kunden | `acme`, `globex` (Isolationstests, Abnahme) |
-| API für Endnutzer | `GET /api/customers` (nur **lesen**, nur erlaubte Kunden) |
-| Self-Service | Kein Sign-up, kein „Kunde anlegen“ durch Support-Nutzer |
+| Kunden anlegen/bearbeiten/deaktivieren | ✅ UI `/admin/customers` + API |
+| **Slug (Kürzel) umbenennen** | ✅ `PATCH /api/admin/customers/{id}` mit neuem `id` — migriert SQLite, Qdrant, Uploads |
+| Nutzer verwalten | ✅ UI `/admin/users` + API |
+| KB/Prompts administrieren | ✅ `/admin/knowledge`, `/admin/prompts` |
+| **KB-Dokumente bearbeiten (Admin)** | ✅ Stift-Icon → inline Editor → `GET/PUT` Admin-Dokument, Re-Index (`source_text`) |
+| Demo-Kunden `acme`/`globex` | Tests/Fixtures; Produktiv-Seed separat |
+| Endnutzer-API | `GET /api/customers`, Session-Scoped KB/Chat |
 
-Persona **P3 „Achim“ (Betreiber/Admin)** ist in `02` definiert; der MVP erfüllt deren Erfolg über **Script + Docker**, nicht über eine Admin-Oberfläche.
+Persona **P3 „Achim“** ist über **Admin-Oberfläche** abgedeckt (nicht nur Script).
 
 ---
 
