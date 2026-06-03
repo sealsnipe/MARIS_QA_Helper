@@ -1072,6 +1072,7 @@
     }
 
     function handlePaste(ev) {
+      if (ev.defaultPrevented) return; // another listener (zone/form/doc) already handled this paste
       let added = false;
       if (typeof fileFromClipboard === "function") {
         const f = fileFromClipboard(ev.clipboardData);
