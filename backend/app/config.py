@@ -7,6 +7,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LLMAuthMode = Literal["api_key", "chatgpt_oauth"]
 
+IMAGE_UPLOAD_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif"})
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -49,7 +51,8 @@ class Settings(BaseSettings):
 
     @property
     def allowed_extensions(self) -> set[str]:
-        return {ext.strip().lower() for ext in self.ALLOWED_EXTENSIONS.split(",") if ext.strip()}
+        configured = {ext.strip().lower() for ext in self.ALLOWED_EXTENSIONS.split(",") if ext.strip()}
+        return configured | set(IMAGE_UPLOAD_EXTENSIONS)
 
     @property
     def max_upload_bytes(self) -> int:
