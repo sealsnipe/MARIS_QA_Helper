@@ -614,6 +614,155 @@
     refreshAdminDocuments().catch(() => showStatus(document.getElementById("admin-ingest-status"), "Dokumente konnten nicht geladen werden.", "error"));
   }
 
+  function initCustomersPage() {
+    const tbody = document.getElementById("customer-table-body");
+    const emptyEl = document.getElementById("customer-empty");
+    const countEl = document.getElementById("customer-count");
+    const listStatus = document.getElementById("customer-list-status");
+    const createForm = document.getElementById("customer-create-form");
+    const createId = document.getElementById("customer-create-id");
+    const createName = document.getElementById("customer-create-name");
+    const createStatus = document.getElementById("customer-create-status");
+
+    function renderCustomers(customers) {
+      if (!tbody) return;
+      tbody.innerHTML = "";
+      const rows = customers || [];
+      if (countEl) countEl.textContent = `(${rows.length})`;
+      if (emptyEl) emptyEl.classList.toggle("hidden", rows.length > 0);
+
+      rows.forEach((customer) => {
+        const row = document.createElement("tr");
+        row.dataset.customerId = customer.id;
+        row.innerHTML = `
+          <td><code>${escapeHtml(customer.id)}</code></td>
+          <td>
+            <span class="customer-name-display">${escapeHtml(customer.name)}</span>
+            <input type="text" class="customer-name-input hidden" value="${escapeHtml(customer.name)}" maxlength="200">
+          </td>
+          <td>
+            <div class="customer-actions">
+              <button type="button" class="secondary small customer-edit-btn">Bearbeiten</button>
+              <button type="button" class="secondary small customer-save-btn hidden">Speichern</button>
+              <button type="button" class="secondary small customer-cancel-btn hidden">Abbrechen</button>
+              <button type="button" class="danger small customer-delete-btn">Entfernen</button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
+    async function loadCustomers() {
+      const data = await api("/api/admin/customers");
+      renderCustomers(data.customers);
+    }
+
+    tbody?.addEventListener("click", async (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const row = target.closest("tr");
+      if (!row) return;
+      const customerId = row.dataset.customerId;
+      const nameDisplay = row.querySelector(".customer-name-display");
+      const nameInput = row.querySelector(".customer-name-input");
+      const editBtn = row.querySelector(".customer-edit-btn");
+      const saveBtn = row.querySelector(".customer-save-btn");
+      const cancelBtn = row.querySelector(".customer-cancel-btn");
+
+      if (target.classList.contains("customer-edit-btn")) {
+        nameDisplay?.classList.add("hidden");
+        nameInput?.classList.remove("hidden");
+        editBtn?.classList.add("hidden");
+        saveBtn?.classList.remove("hidden");
+        cancelBtn?.classList.remove("hidden");
+        if (nameInput instanceof HTMLInputElement) nameInput.focus();
+        return;
+      }
+
+      if (target.classList.contains("customer-cancel-btn")) {
+        if (nameInput instanceof HTMLInputElement && nameDisplay) {
+          nameInput.value = nameDisplay.textContent || "";
+        }
+        nameDisplay?.classList.remove("hidden");
+        nameInput?.classList.add("hidden");
+        editBtn?.classList.remove("hidden");
+        saveBtn?.classList.add("hidden");
+        cancelBtn?.classList.add("hidden");
+        return;
+      }
+
+      if (target.classList.contains("customer-save-btn")) {
+        const nextName = nameInput instanceof HTMLInputElement ? nameInput.value.trim() : "";
+        if (!nextName) {
+          showStatus(listStatus, "Name darf nicht leer sein.", "error");
+          return;
+        }
+        showStatus(listStatus, "Speichern…");
+        try {
+          const data = await api(`/api/admin/customers/${encodeURIComponent(customerId)}`, {
+            method: "PATCH",
+            body: JSON.stringify({ name: nextName }),
+          });
+          if (nameDisplay) nameDisplay.textContent = data.customer.name;
+          nameDisplay?.classList.remove("hidden");
+          nameInput?.classList.add("hidden");
+          editBtn?.classList.remove("hidden");
+          saveBtn?.classList.add("hidden");
+          cancelBtn?.classList.add("hidden");
+          showStatus(listStatus, "Kunde gespeichert.", "ok");
+        } catch (_error) {
+          showStatus(listStatus, "Speichern fehlgeschlagen.", "error");
+        }
+        return;
+      }
+
+      if (target.classList.contains("customer-delete-btn")) {
+        const label = nameDisplay?.textContent || customerId;
+        if (!window.confirm(`Kunde „${label}“ wirklich entfernen?`)) return;
+        showStatus(listStatus, "Entfernen…");
+        try {
+          await api(`/api/admin/customers/${encodeURIComponent(customerId)}`, { method: "DELETE" });
+          await loadCustomers();
+          showStatus(listStatus, "Kunde entfernt.", "ok");
+        } catch (_error) {
+          showStatus(listStatus, "Entfernen fehlgeschlagen.", "error");
+        }
+      }
+    });
+
+    createForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const customerId = (createId?.value || "").trim().toLowerCase();
+      const name = (createName?.value || "").trim();
+      if (!customerId || !name) {
+        showStatus(createStatus, "ID und Name sind Pflicht.", "error");
+        return;
+      }
+      showStatus(createStatus, "Anlegen…");
+      try {
+        await api("/api/admin/customers", {
+          method: "POST",
+          body: JSON.stringify({ customer_id: customerId, name }),
+        });
+        if (createId) createId.value = "";
+        if (createName) createName.value = "";
+        showStatus(createStatus, "Kunde angelegt.", "ok");
+        await loadCustomers();
+      } catch (error) {
+        const message =
+          error.code === "customer_exists"
+            ? "Kunden-ID existiert bereits."
+            : error.code === "invalid_customer_id"
+              ? "Ungültige Kunden-ID (nur a-z, 0-9, -, _)."
+              : "Anlegen fehlgeschlagen.";
+        showStatus(createStatus, message, "error");
+      }
+    });
+
+    loadCustomers().catch(() => showStatus(listStatus, "Kunden konnten nicht geladen werden.", "error"));
+  }
+
   syncActiveCustomerFromSelect();
   setCustomerUiEnabled(Boolean(activeCustomerId));
   initChatSidebar();
@@ -624,5 +773,8 @@
   if (page === "admin") {
     adminWorkspace?.classList.remove("disabled");
     initAdminPage();
+  }
+  if (page === "customers") {
+    initCustomersPage();
   }
 })();

@@ -1,0 +1,43 @@
+{% extends "layout.html" %}
+
+{% block title %}Kunden · MARIS - Q/A Helper{% endblock %}
+{% block page_title %}Kundenverwaltung{% endblock %}
+
+{% block content %}
+<section class="panel customer-admin-panel">
+  <p class="muted">Mandanten anlegen, umbenennen oder deaktivieren. Die Kunden-ID (Slug) ist nach dem Anlegen unveränderlich.</p>
+
+  <form id="customer-create-form" class="ingest-form customer-create-form">
+    <h2>Neuer Kunde</h2>
+    <div class="customer-form-row">
+      <label>
+        Kunden-ID (Slug)
+        <input type="text" id="customer-create-id" maxlength="64" placeholder="z. B. bg-ludwigshafen" required>
+      </label>
+      <label>
+        Anzeigename
+        <input type="text" id="customer-create-name" maxlength="200" placeholder="z. B. BG Ludwigshafen" required>
+      </label>
+      <button type="submit" id="customer-create-submit">Anlegen</button>
+    </div>
+    <p id="customer-create-status" class="status" aria-live="polite"></p>
+  </form>
+
+  <div class="customer-list-wrap">
+    <h2>Vorhandene Kunden <span id="customer-count" class="muted">(0)</span></h2>
+    <table class="customer-table" id="customer-table">
+      <thead>
+        <tr>
+          <th>Kunden-ID</th>
+          <th>Name</th>
+          <th>Aktionen</th>
+        </tr>
+      </thead>
+      <tbody id="customer-table-body"></tbody>
+    </table>
+    <p id="customer-empty" class="muted">Noch keine Kunden angelegt.</p>
+  </div>
+
+  <p id="customer-list-status" class="status" aria-live="polite"></p>
+</section>
+{% endblock %}

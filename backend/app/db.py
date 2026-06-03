@@ -33,12 +33,20 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 def _migrate_schema(engine) -> None:
     inspector = inspect(engine)
-    if "users" in inspector.get_table_names():
+    table_names = inspector.get_table_names()
+    if "users" in table_names:
         columns = {col["name"] for col in inspector.get_columns("users")}
         if "is_admin" not in columns:
             with engine.begin() as conn:
                 conn.execute(
                     text("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+                )
+    if "customers" in table_names:
+        columns = {col["name"] for col in inspector.get_columns("customers")}
+        if "active" not in columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE customers ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
                 )
 
 

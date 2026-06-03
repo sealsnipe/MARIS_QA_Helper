@@ -44,6 +44,7 @@
           <div class="nav-heading">Einstellungen</div>
           <a href="/kb" class="nav-link {% if active_page == 'kb' %}active{% endif %}">Wissensdatenbanken</a>
           {% if is_admin %}
+          <a href="/admin/customers" class="nav-link {% if active_page == 'customers' %}active{% endif %}">Kunden</a>
           <a href="/admin" class="nav-link {% if active_page == 'admin' %}active{% endif %}">Administration</a>
           {% endif %}
         </div>

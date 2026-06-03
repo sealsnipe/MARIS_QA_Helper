@@ -28,12 +28,16 @@ from app.auth import (
 )
 from app.customers import (
     GLOBAL_CUSTOMER_ID,
+    create_tenant_customer,
+    customer_to_dict,
+    deactivate_tenant_customer,
     get_customer,
     is_global_customer,
     list_assigned_customer_ids,
     list_customers_for_nav,
     list_customers_for_user,
-    list_production_customers,
+    list_tenant_customers,
+    update_tenant_customer,
     user_has_customer,
 )
 from app.db import get_db
@@ -73,6 +77,15 @@ class SystemPromptRequest(BaseModel):
     content: str = Field(min_length=1)
 
 
+class AdminCustomerCreateRequest(BaseModel):
+    customer_id: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=200)
+
+
+class AdminCustomerUpdateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+
+
 def _page_context(
     request: Request,
     user: User,
@@ -83,7 +96,7 @@ def _page_context(
     customers = list_customers_for_nav(db, user.id)
     active_customer_id = request.session.get("customer_id")
     active_customer = get_customer(db, active_customer_id) if active_customer_id else None
-    admin_customers = list_production_customers(db)
+    admin_customers = list_tenant_customers(db)
     return {
         "user": user,
         "customers": customers,
@@ -201,6 +214,21 @@ def admin_page(
         request,
         "admin.html",
         _page_context(request, user, db, active_page="admin"),
+    )
+
+
+@router.get("/admin/customers", response_class=HTMLResponse)
+def admin_customers_page(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    if not user.is_admin:
+        return RedirectResponse(url="/chat", status_code=status.HTTP_302_FOUND)
+    return templates.TemplateResponse(
+        request,
+        "customers.html",
+        _page_context(request, user, db, active_page="customers"),
     )
 
 
@@ -480,6 +508,46 @@ def api_get_system_prompt(
     scope = None if not customer_id or customer_id == "global" else customer_id
     content = get_system_prompt(db, scope) or ""
     return {"customer_id": scope, "content": content}
+
+
+@router.get("/api/admin/customers")
+def api_admin_list_customers(
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    customers = list_tenant_customers(db)
+    return {"customers": [customer_to_dict(customer) for customer in customers]}
+
+
+@router.post("/api/admin/customers")
+def api_admin_create_customer(
+    payload: AdminCustomerCreateRequest,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    customer = create_tenant_customer(db, payload.customer_id, payload.name)
+    return {"customer": customer_to_dict(customer)}
+
+
+@router.patch("/api/admin/customers/{customer_id}")
+def api_admin_update_customer(
+    customer_id: str,
+    payload: AdminCustomerUpdateRequest,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    customer = update_tenant_customer(db, customer_id, payload.name)
+    return {"customer": customer_to_dict(customer)}
+
+
+@router.delete("/api/admin/customers/{customer_id}")
+def api_admin_delete_customer(
+    customer_id: str,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    deactivate_tenant_customer(db, customer_id)
+    return {"deleted": True, "id": customer_id}
 
 
 @router.put("/api/admin/system-prompt")

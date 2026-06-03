@@ -27,6 +27,7 @@ def seed_customers(customers: tuple[tuple[str, str], ...] = ALL_CUSTOMERS) -> No
                     Customer(
                         id=customer_id,
                         name=name,
+                        active=1,
                         created_at=utc_now_iso(),
                     )
                 )
