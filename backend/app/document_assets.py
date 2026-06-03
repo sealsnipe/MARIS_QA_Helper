@@ -134,7 +134,10 @@ def image_payloads(document: Document, *, base_url: str) -> list[dict[str, Any]]
                 "filename": item.get("filename"),
                 "page": item.get("page"),
                 "mime_type": item.get("mime_type"),
-                "transcribed": bool(item.get("transcribed")),
+                "transcribed": bool(
+                    item.get("transcribed")
+                    or (meta and meta.get("vision_used") and meta.get("images_processed", 0) > 0)
+                ),
                 "url": f"{base_url.rstrip('/')}/images/{image_id}",
             }
         )
