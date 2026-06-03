@@ -1012,6 +1012,211 @@
     }
   }
 
+  function initImageToTextTool() {
+    const zone = document.getElementById("image-paste-zone");
+    const fileInput = document.getElementById("image-file-input");
+    const listEl = document.getElementById("image-preview-list");
+    const transcribeBtn = document.getElementById("transcribe-btn");
+    const clearBtn = document.getElementById("clear-images-btn");
+    const statusEl = document.getElementById("tool-status");
+    const outputEl = document.getElementById("transcribe-output");
+    const outputContent = document.getElementById("output-content");
+    const copyAllBtn = document.getElementById("copy-all-btn");
+
+    let images = []; // {id, file: File, url: string}
+
+    function renderList() {
+      if (!listEl) return;
+      listEl.innerHTML = "";
+      if (images.length === 0) {
+        transcribeBtn.disabled = true;
+        return;
+      }
+      transcribeBtn.disabled = false;
+
+      images.forEach((img) => {
+        const card = document.createElement("div");
+        card.className = "image-preview-card";
+        card.innerHTML = `
+          <img src="${img.url}" alt="">
+          <div class="card-label">${escapeHtml(img.file.name)}</div>
+          <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;margin-top:4px;">
+            <input type="checkbox" class="select-img" data-id="${img.id}" checked> OCR
+          </label>
+          <button type="button" class="remove-btn" data-id="${img.id}">×</button>
+        `;
+        listEl.appendChild(card);
+      });
+    }
+
+    listEl?.addEventListener("click", (e) => {
+      const removeBtn = e.target.closest(".remove-btn");
+      if (removeBtn) {
+        const id = removeBtn.dataset.id;
+        const entry = images.find((i) => i.id === id);
+        if (entry) URL.revokeObjectURL(entry.url);
+        images = images.filter((i) => i.id !== id);
+        renderList();
+        if (outputEl) outputEl.classList.add("hidden");
+      }
+    });
+
+    function addImage(file) {
+      if (!file || !file.type.startsWith("image/")) return;
+      const id = "img_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+      const url = URL.createObjectURL(file);
+      images.push({ id, file, url });
+      renderList();
+      if (outputEl) outputEl.classList.add("hidden");
+      showStatus(statusEl, "");
+    }
+
+    if (zone && fileInput) {
+      zone.addEventListener("click", () => fileInput.click());
+      zone.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          fileInput.click();
+        }
+      });
+
+      fileInput.addEventListener("change", () => {
+        Array.from(fileInput.files || []).forEach(addImage);
+        fileInput.value = "";
+      });
+
+      // paste support (reuses global fileFromClipboard helper when present)
+      zone.addEventListener("paste", (ev) => {
+        let added = false;
+        if (typeof fileFromClipboard === "function") {
+          const f = fileFromClipboard(ev.clipboardData);
+          if (f) {
+            ev.preventDefault();
+            addImage(f);
+            added = true;
+          }
+        }
+        if (!added && ev.clipboardData && ev.clipboardData.files && ev.clipboardData.files.length) {
+          ev.preventDefault();
+          Array.from(ev.clipboardData.files).forEach(addImage);
+        }
+      });
+
+      // drag & drop bonus
+      zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("dragover"); });
+      zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
+      zone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        zone.classList.remove("dragover");
+        Array.from(e.dataTransfer.files || []).forEach(addImage);
+      });
+    }
+
+    clearBtn?.addEventListener("click", () => {
+      images.forEach((i) => URL.revokeObjectURL(i.url));
+      images = [];
+      renderList();
+      if (outputEl) outputEl.classList.add("hidden");
+      if (outputContent) outputContent.innerHTML = "";
+      showStatus(statusEl, "");
+    });
+
+    transcribeBtn?.addEventListener("click", async () => {
+      const selected = [];
+      if (!listEl) return;
+      listEl.querySelectorAll(".select-img:checked").forEach((cb) => {
+        const id = cb.dataset.id;
+        const entry = images.find((i) => i.id === id);
+        if (entry) selected.push(entry);
+      });
+      if (selected.length === 0) {
+        showStatus(statusEl, "Bitte mindestens ein Bild auswählen.", "error");
+        return;
+      }
+
+      showStatus(statusEl, `Vision-OCR läuft (${selected.length} Bild(er))…`);
+      transcribeBtn.disabled = true;
+
+      const formData = new FormData();
+      selected.forEach((entry) => {
+        formData.append("files", entry.file, entry.file.name || "image.png");
+      });
+
+      try {
+        const res = await api("/api/tools/transcribe", { method: "POST", body: formData });
+        const results = res.results || [];
+
+        outputContent.innerHTML = "";
+        let allTextParts = [];
+
+        results.forEach((r, idx) => {
+          const item = document.createElement("div");
+          item.className = "output-item";
+
+          const head = document.createElement("div");
+          head.style.fontWeight = "600";
+          head.style.marginBottom = "0.25rem";
+          head.textContent = r.filename || `Bild ${idx + 1}`;
+          item.appendChild(head);
+
+          if (r.error) {
+            const err = document.createElement("div");
+            err.className = "status error";
+            err.textContent = r.error + (r.detail ? ` (${r.detail})` : "");
+            item.appendChild(err);
+          } else {
+            const ta = document.createElement("textarea");
+            ta.value = r.text || "";
+            ta.rows = Math.min(12, Math.max(3, (r.text || "").split("\n").length));
+            ta.style.width = "100%";
+            ta.readOnly = true;
+            item.appendChild(ta);
+
+            const copyOne = document.createElement("button");
+            copyOne.type = "button";
+            copyOne.className = "secondary small";
+            copyOne.style.marginTop = "0.25rem";
+            copyOne.textContent = "Diesen Text kopieren";
+            copyOne.addEventListener("click", () => {
+              navigator.clipboard.writeText(ta.value || "").then(() => {
+                const old = copyOne.textContent;
+                copyOne.textContent = "Kopiert!";
+                setTimeout(() => (copyOne.textContent = old), 1200);
+              }).catch(() => {});
+            });
+            item.appendChild(copyOne);
+
+            allTextParts.push(r.text || "");
+          }
+          outputContent.appendChild(item);
+        });
+
+        if (copyAllBtn) {
+          copyAllBtn.onclick = () => {
+            const joined = allTextParts.join("\n\n---\n\n");
+            navigator.clipboard.writeText(joined).then(() => {
+              const old = copyAllBtn.textContent;
+              copyAllBtn.textContent = "Kopiert!";
+              setTimeout(() => (copyAllBtn.textContent = old), 1200);
+            }).catch(() => {});
+          };
+        }
+
+        if (outputEl) outputEl.classList.remove("hidden");
+        showStatus(statusEl, "Fertig — Text kann kopiert werden.", "ok");
+      } catch (err) {
+        const msg = (err && err.code) ? `Fehler: ${err.code}` : "Transkription fehlgeschlagen.";
+        showStatus(statusEl, msg, "error");
+      } finally {
+        transcribeBtn.disabled = images.length === 0;
+      }
+    });
+
+    // initial render
+    renderList();
+    if (outputEl) outputEl.classList.add("hidden");
+  }
+
   function initAdminKnowledgePage() {
     const scopeSelect = document.getElementById("knowledge-scope");
     const scopeLabel = document.getElementById("knowledge-scope-label");
@@ -1539,6 +1744,7 @@
 
   if (page === "chat") initChatPage();
   if (page === "kb") initKbPage();
+  if (page === "tools_bild_zu_text") initImageToTextTool();
   if (page === "admin_knowledge") initAdminKnowledgePage();
   if (page === "admin_prompts") initAdminPromptsPage();
   if (page === "admin_users") initUsersPage();

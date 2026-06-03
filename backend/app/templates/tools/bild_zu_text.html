@@ -1,0 +1,41 @@
+{% extends "layout.html" %}
+
+{% block title %}Bild zu Text · MARIS - Q/A Helper{% endblock %}
+{% block page_title %}Tools · Bild zu Text{% endblock %}
+
+{% block content %}
+<section class="panel kb-panel full-page">
+  <h2>Bild zu Text <span class="muted">— Vision-OCR Agent</span></h2>
+  <p class="muted">Fügen Sie Bilder per <strong>Strg+V</strong> ein (oder klicken/Drop), wählen Sie aus und transkribieren Sie den sichtbaren Text. Der Text steht danach zum Kopieren bereit.</p>
+
+  <div class="ingest-field" style="margin-bottom: 0.5rem;">
+    <span class="ingest-field-label">Bild(er) einfügen</span>
+    <div id="image-paste-zone" class="dropzone" tabindex="0" role="button" aria-label="Bilder per Strg+V oder Klick einfügen">
+      <p><strong>Strg+V</strong> hier einfügen oder klicken zum Datei(en) wählen</p>
+      <p class="muted">PNG, JPG, WEBP, GIF · mehrere möglich</p>
+      <input type="file" id="image-file-input" accept="image/*" multiple hidden>
+    </div>
+  </div>
+
+  <div id="image-preview-list" class="image-preview-grid"></div>
+
+  <div class="tool-actions" style="margin: 0.5rem 0 1rem;">
+    <button type="button" id="transcribe-btn" disabled>Transkribieren</button>
+    <button type="button" id="clear-images-btn" class="secondary">Alle entfernen</button>
+  </div>
+
+  <div id="transcribe-output" class="tool-output hidden">
+    <h3>Transkribierter Text</h3>
+    <div id="output-content" style="margin-bottom: 0.5rem;"></div>
+    <button type="button" id="copy-all-btn" class="secondary small">Gesamten Text kopieren</button>
+  </div>
+
+  <p id="tool-status" class="status" aria-live="polite"></p>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // page-specific init is handled in app.js via APP_BOOT.page
+</script>
+{% endblock %}

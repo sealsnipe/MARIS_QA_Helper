@@ -1113,6 +1113,86 @@ select:focus-visible,
   font-size: 0.9rem;
 }
 
+/* Tools: Bild zu Text */
+.image-preview-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.image-preview-card {
+  position: relative;
+  width: 140px;
+  border: 1px solid var(--border, #2a3140);
+  border-radius: 8px;
+  padding: 0.25rem;
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 0.8rem;
+}
+
+.image-preview-card img {
+  width: 100%;
+  height: 90px;
+  object-fit: contain;
+  display: block;
+  border-radius: 4px;
+  background: #111;
+}
+
+.image-preview-card .card-label {
+  margin-top: 0.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.image-preview-card .remove-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: var(--danger, #c94c4c);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  width: 18px;
+  height: 18px;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.tool-output {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.tool-output .output-item {
+  margin-bottom: 0.75rem;
+  padding-left: 0.5rem;
+  border-left: 3px solid var(--accent, #5b8def);
+}
+
+.tool-output .output-item:last-child {
+  margin-bottom: 0;
+}
+
+.tool-output textarea {
+  width: 100%;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  background: #111;
+  color: #ddd;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.35rem;
+  resize: vertical;
+}
+
 .doc-edit-images {
   margin: 0.75rem 0 1rem;
 }

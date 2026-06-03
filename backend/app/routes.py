@@ -44,6 +44,10 @@ from app.customers import (
 )
 from app.db import get_db
 from app.document_assets import image_payloads, resolve_document_image_path
+from app.llm import LLMError, transcribe_image
+from app.loaders.image_inspect import MIN_IMAGE_BYTES
+from app.loaders.vision_ocr import OCR_PROMPT
+from app.config import get_settings
 from app.ingestion import (
     IngestionError,
     delete_document,
@@ -296,6 +300,19 @@ def kb_page(
     )
 
 
+@router.get("/tools/bild-zu-text", response_class=HTMLResponse)
+def tools_bild_zu_text_page(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "tools/bild_zu_text.html",
+        _page_context(request, user, db, active_page="tools_bild_zu_text"),
+    )
+
+
 @router.get("/admin", response_class=HTMLResponse)
 def admin_page(
     user: User = Depends(get_current_user),
@@ -522,6 +539,43 @@ async def api_upload_document(
     except UploadError:
         raise
     return {"document": _document_payload(document)}
+
+
+@router.post("/api/tools/transcribe")
+async def api_tools_transcribe(
+    user: User = Depends(get_current_user),
+    files: list[UploadFile] = File(...),
+) -> dict:
+    """Standalone image transcription tool. Accepts one or more image files, returns OCR text for each using the configured Vision model."""
+    settings = get_settings()
+    if not settings.vision_enabled:
+        return JSONResponse({"error": "vision_disabled"}, status_code=403)
+
+    results: list[dict] = []
+    for f in (files or [])[: settings.vision_max_images]:
+        if not f or not f.filename:
+            continue
+        content = await f.read()
+        mime = (f.content_type or "").lower()
+        if not mime.startswith("image/"):
+            results.append({"filename": f.filename, "error": "unsupported_file_type"})
+            continue
+        if len(content) < MIN_IMAGE_BYTES:
+            results.append({"filename": f.filename, "error": "image_too_small"})
+            continue
+        try:
+            text = transcribe_image(content, mime or "image/png", prompt=OCR_PROMPT).strip()
+            results.append({
+                "filename": f.filename,
+                "mime_type": mime,
+                "text": text,
+            })
+        except LLMError as exc:
+            results.append({"filename": f.filename, "error": "transcription_failed", "detail": str(exc)})
+        except Exception as exc:
+            results.append({"filename": f.filename, "error": "transcription_failed", "detail": str(exc)})
+
+    return {"results": results}
 
 
 @router.post("/api/chat")
