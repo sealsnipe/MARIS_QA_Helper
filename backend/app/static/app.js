@@ -380,8 +380,19 @@
           showStatus(statusEl, msg, "error");
         }
       });
-    } catch (_error) {
-      if (loadStatus) showStatus(loadStatus, "Inhalt konnte nicht geladen werden.", "error");
+    } catch (error) {
+      console.error("Failed to load admin document editor content", error);
+      let msg = "Inhalt konnte nicht geladen werden.";
+      if (error && error.code) {
+        if (error.code === "not_found") {
+          msg = "Dokument nicht gefunden oder falscher Mandant.";
+        } else if (error.code === "forbidden" || error.code === "not_authenticated") {
+          msg = "Keine Berechtigung oder Sitzung abgelaufen. Bitte neu anmelden / Seite neu laden.";
+        } else {
+          msg = `Inhalt konnte nicht geladen werden (${error.code}).`;
+        }
+      }
+      if (loadStatus) showStatus(loadStatus, msg, "error");
     }
   }
 
@@ -763,7 +774,7 @@
         const choice = await askImageVisionChoice(fileInspection);
         if (choice.action === "cancel") return;
         if (choice.action === "text" && fileInspection.image_only) {
-          showStatus(statusEl, "PDF enthält nur Bilder — bitte Vision-OCR wählen oder Text im Formular ergänzen.", "error");
+          showStatus(statusEl, "Enthält nur Bilder — bitte Vision-OCR wählen oder Text im Formular ergänzen.", "error");
           return;
         }
         processImages = choice.action === "transcribe";
@@ -803,11 +814,11 @@
       } catch (error) {
         const messages = {
           empty_text: "Inhalt zu kurz (min. 20 Zeichen gesamt).",
-          unsupported_file_type: "Nur .txt, .md, .pdf, .docx erlaubt.",
+          unsupported_file_type: "Nur .txt, .md, .pdf, .docx und Bildformate (.png, .jpg, …) erlaubt.",
           file_too_large: "Datei überschreitet 30 MB.",
           extraction_failed: "Text konnte nicht extrahiert werden.",
           inspection_failed: "Datei konnte nicht auf Bilder geprüft werden.",
-          images_only_requires_vision: "PDF enthält nur Bilder — Vision-OCR wählen oder Begleittext ergänzen.",
+          images_only_requires_vision: "Enthält nur Bilder — Vision-OCR wählen oder Begleittext ergänzen.",
           vision_failed: "Vision-OCR fehlgeschlagen — bitte erneut versuchen oder API/Token prüfen.",
           forbidden: "Keine Berechtigung.",
         };
