@@ -1,5 +1,8 @@
 .env
+.env.dev
 data/
+data-dev/
+.tools/
 __pycache__/
 .venv/
 *.pyc

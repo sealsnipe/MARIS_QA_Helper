@@ -1,0 +1,19 @@
+# Local dev copy on alternate ports (Windows browser: http://localhost:8090).
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev-local.yml up -d --build
+services:
+  api:
+    ports:
+      - "8090:8088"
+    env_file:
+      - .env.dev
+    volumes:
+      - ./data-dev:/app/data
+
+  qdrant:
+    ports:
+      - "6334:6333"
+    volumes:
+      - qdrant_dev_storage:/qdrant/storage
+
+volumes:
+  qdrant_dev_storage:
