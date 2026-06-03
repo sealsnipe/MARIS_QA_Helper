@@ -1071,6 +1071,22 @@
       showStatus(statusEl, "");
     }
 
+    function handlePaste(ev) {
+      let added = false;
+      if (typeof fileFromClipboard === "function") {
+        const f = fileFromClipboard(ev.clipboardData);
+        if (f) {
+          ev.preventDefault();
+          addImage(f);
+          added = true;
+        }
+      }
+      if (!added && ev.clipboardData && ev.clipboardData.files && ev.clipboardData.files.length) {
+        ev.preventDefault();
+        Array.from(ev.clipboardData.files).forEach(addImage);
+      }
+    }
+
     if (zone && fileInput) {
       zone.addEventListener("click", () => {
         fileInput.click();
@@ -1088,22 +1104,6 @@
         fileInput.value = "";
       });
 
-      function handlePaste(ev) {
-        let added = false;
-        if (typeof fileFromClipboard === "function") {
-          const f = fileFromClipboard(ev.clipboardData);
-          if (f) {
-            ev.preventDefault();
-            addImage(f);
-            added = true;
-          }
-        }
-        if (!added && ev.clipboardData && ev.clipboardData.files && ev.clipboardData.files.length) {
-          ev.preventDefault();
-          Array.from(ev.clipboardData.files).forEach(addImage);
-        }
-      }
-
       // paste support on the zone itself (mirrors setupDropzone in KB)
       zone.addEventListener("paste", handlePaste);
 
@@ -1111,6 +1111,12 @@
       // this makes Ctrl+V work even if focus is on other elements inside the form area
       const toolForm = document.getElementById("image-tool-form");
       toolForm?.addEventListener("paste", handlePaste);
+
+      // Document-level listener for this dedicated tool page.
+      // Makes "Strg+V" work from anywhere on the page (no need to focus the dropzone first),
+      // using the exact same fileFromClipboard helper as the KB implementation.
+      // Non-image pastes do nothing (no preventDefault).
+      document.addEventListener("paste", handlePaste);
 
       // drag & drop bonus
       zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("dragover"); });
