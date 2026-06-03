@@ -7,10 +7,13 @@ Selbst gehosteter Support-Chatbot mit **mandanten-isolierter** Wissensdatenbank 
 ```bash
 git clone https://github.com/sealsnipe/MARIS_QA_Helper.git ~/projects/SUP_QA_Helper
 cd ~/projects/SUP_QA_Helper
-./setup.sh
+./install.sh
 ```
 
-**Credentials nur auf der Zielmaschine** — der Wizard fragt API-Key und Auth interaktiv ab (nichts ins Git).
+**Frisches Ubuntu:** `./install.sh` installiert Pakete + Docker, dann Credentials-Wizard.  
+**Docker schon vorhanden:** `./setup.sh`
+
+**Credentials nur auf der Zielmaschine** — API-Key und Auth werden interaktiv abgefragt (nichts ins Git).
 
 Deploy & Updates: [`docs/DEPLOY.md`](docs/DEPLOY.md)
 

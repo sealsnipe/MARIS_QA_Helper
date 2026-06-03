@@ -7,21 +7,25 @@ Repo: https://github.com/sealsnipe/MARIS_QA_Helper
 
 ---
 
-## Erst-Deploy (Ziel-WSL, interaktiv)
+## Erst-Deploy (frisches Ubuntu/WSL)
 
 ```bash
 git clone https://github.com/sealsnipe/MARIS_QA_Helper.git ~/projects/SUP_QA_Helper
 cd ~/projects/SUP_QA_Helper
-./setup.sh
+./install.sh
 ```
 
-Der Wizard führt durch:
+**Ein Befehl** auf frischem Ubuntu:
 
-1. **Docker** — prüfen, Version validieren, bei Bedarf installieren (apt, sudo)  
-2. **Dev vs. Prod** — Prod setzt `SESSION_COOKIE_SECURE=true`  
-3. **Embedding API-Key** — interaktiv (Platform OpenAI, `sk-...`)  
-4. **Chat-Auth** — API-Key (Prod) oder OAuth mit Browser-Login (Dev)  
-5. **Docker Compose starten** — Prod: `docker-compose.prod.yml`
+1. **System-Pakete** — git, python3, curl (apt)  
+2. **Docker Engine + Compose** — installieren/prüfen, Version ≥ Minimum, sonst Abbruch  
+3. **Setup-Wizard** — Credentials interaktiv (API-Key, OAuth/API, Prod/Dev, Compose-Start)
+
+Alternative (Docker schon da): `./setup.sh`
+
+```bash
+./setup.sh
+```
 
 Health:
 

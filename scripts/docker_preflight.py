@@ -145,7 +145,7 @@ def check_docker() -> DockerStatus:
             else:
                 status.notes.append("Docker-Daemon läuft nicht — ggf. sudo systemctl start docker.")
 
-    status.in_docker_group = user_in_docker_group()
+    status.in_docker_group = os.geteuid() == 0 or user_in_docker_group()
     if status.docker_bin and not status.in_docker_group:
         status.notes.append("Nutzer nicht in Gruppe 'docker' — nach Install neu anmelden oder 'newgrp docker'.")
 
