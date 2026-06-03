@@ -128,6 +128,9 @@ async def upload_error_handler(_request: Request, exc: UploadError):
         "empty_text": 400,
         "file_too_large": 413,
         "extraction_failed": 422,
+        "inspection_failed": 422,
+        "images_only_requires_vision": 422,
+        "vision_failed": 502,
     }
     status_code = status_by_code.get(exc.code, 400)
     body: dict[str, str] = {"error": exc.code}

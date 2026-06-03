@@ -29,7 +29,9 @@ Basis: `layout.html` (Sidebar, Kunde, Chat-Historie, Admin-Nav).
 | Chat senden | `POST /api/chat` |
 | Chat-Verlauf | `GET /api/chats`, `GET /api/chats/{id}` |
 | KB Text | `POST /api/documents/text` |
-| KB Upload | `POST /api/documents` |
+| KB Inspect | `POST /api/documents/inspect` |
+| KB Upload | `POST /api/documents` (+ `process_images`, `transcribe_image_ids`) |
+| KB Bild | `GET /api/documents/{id}/images/{image_id}` |
 | KB löschen | `DELETE /api/documents/{id}` |
 | Admin Kunden CRUD | `/api/admin/customers` |
 | Admin User CRUD | `/api/admin/users` |

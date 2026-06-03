@@ -2,19 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from docx import Document as DocxDocument
+from app.loaders.docx_content import compose_docx_text, load_docx as load_docx_rich
 
-from app.loaders.errors import LoaderError
+__all__ = ["load_docx"]
 
 
 def load_docx(path: Path) -> str:
-    try:
-        document = DocxDocument(str(path))
-        parts = [paragraph.text.strip() for paragraph in document.paragraphs if paragraph.text.strip()]
-        text = "\n\n".join(parts).strip()
-    except Exception as exc:
-        raise LoaderError("extraction_failed") from exc
-
-    if not text:
-        raise LoaderError("extraction_failed")
-    return text
+    return load_docx_rich(path)

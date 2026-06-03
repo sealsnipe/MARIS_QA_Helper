@@ -1,7 +1,8 @@
 from pathlib import Path
+import json
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -42,9 +43,11 @@ from app.customers import (
     user_has_customer,
 )
 from app.db import get_db
+from app.document_assets import image_payloads, resolve_document_image_path
 from app.ingestion import (
     IngestionError,
     delete_document,
+    get_document,
     get_document_text,
     ingest_text,
     list_documents,
@@ -60,7 +63,7 @@ from app.tenant import (
 from app.system_prompts import get_system_prompt, set_system_prompt
 from app.retrieval import filter_sources_by_answer_citations
 
-from app.upload import UploadError, ingest_combined
+from app.upload import UploadError, ingest_combined, inspect_upload, parse_form_bool
 from app.users_admin import (
     UserAdminError,
     create_admin_user,
@@ -155,6 +158,14 @@ def _page_context(
 
 
 def _document_payload(document) -> dict:
+    meta = None
+    raw_meta = getattr(document, "extraction_meta", None)
+    if raw_meta:
+        try:
+            parsed = json.loads(raw_meta)
+            meta = parsed if isinstance(parsed, dict) else None
+        except json.JSONDecodeError:
+            meta = None
     return {
         "id": document.id,
         "customer_id": document.customer_id,
@@ -165,12 +176,19 @@ def _document_payload(document) -> dict:
         "chunk_count": document.chunk_count,
         "status": document.status,
         "error_message": getattr(document, "error_message", None),
+        "extraction_meta": meta,
         "created_at": document.created_at,
         "updated_at": document.updated_at,
     }
 
 
-def _admin_document_detail(db: Session, customer_id: str, document_id: str) -> dict | None:
+def _admin_document_detail(
+    db: Session,
+    customer_id: str,
+    document_id: str,
+    *,
+    assets_base_path: str,
+) -> dict | None:
     loaded = get_document_text(db, customer_id, document_id)
     if loaded is None:
         return None
@@ -181,7 +199,22 @@ def _admin_document_detail(db: Session, customer_id: str, document_id: str) -> d
         "text": text,
         "editable": editable,
         "from_file": bool(document.storage_path),
+        "images": image_payloads(document, base_url=assets_base_path),
     }
+
+
+def _document_image_file_response(document, image_id: str) -> Response:
+    path = resolve_document_image_path(document, image_id)
+    if path is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    media_type = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+    }.get(path.suffix.lower(), "application/octet-stream")
+    return FileResponse(path, media_type=media_type)
 
 
 @router.get("/api/health")
@@ -440,6 +473,22 @@ def api_create_text_document(
     return {"document": _document_payload(result.document)}
 
 
+@router.post("/api/documents/inspect")
+async def api_inspect_document(
+    customer: Customer = Depends(get_current_customer),
+    file: UploadFile = File(...),
+) -> dict:
+    if blocked := _reject_global_write(customer):
+        return blocked
+    if not file.filename:
+        return JSONResponse({"error": "unsupported_file_type"}, status_code=400)
+    content = await file.read()
+    try:
+        return inspect_upload(content, file.filename)
+    except UploadError as exc:
+        return JSONResponse({"error": exc.code}, status_code=400 if exc.code != "inspection_failed" else 422)
+
+
 @router.post("/api/documents")
 async def api_upload_document(
     customer: Customer = Depends(get_current_customer),
@@ -447,6 +496,8 @@ async def api_upload_document(
     title: str | None = Form(default=None),
     text: str | None = Form(default=None),
     file: UploadFile | None = File(default=None),
+    process_images: str | None = Form(default=None),
+    transcribe_image_ids: str | None = Form(default=None),
 ) -> dict:
     if blocked := _reject_global_write(customer):
         return blocked
@@ -465,6 +516,8 @@ async def api_upload_document(
             filename=filename,
             content=content,
             mime_type=file.content_type if file else None,
+            process_images=parse_form_bool(process_images),
+            transcribe_image_ids_raw=transcribe_image_ids,
         )
     except UploadError:
         raise
@@ -599,6 +652,19 @@ def api_delete_document(
     return JSONResponse({"deleted": True, "id": document_id})
 
 
+@router.get("/api/documents/{document_id}/images/{image_id}")
+def api_get_document_image(
+    document_id: str,
+    image_id: str,
+    customer: Customer = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+) -> Response:
+    document = get_document(db, customer.id, document_id)
+    if document is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return _document_image_file_response(document, image_id)
+
+
 @router.get("/api/admin/system-prompt")
 def api_get_system_prompt(
     customer_id: str | None = None,
@@ -701,6 +767,20 @@ def api_admin_list_documents(
     }
 
 
+@router.post("/api/admin/documents/inspect")
+async def api_admin_inspect_document(
+    _admin: User = Depends(get_admin_user),
+    file: UploadFile = File(...),
+) -> dict:
+    if not file.filename:
+        return JSONResponse({"error": "unsupported_file_type"}, status_code=400)
+    content = await file.read()
+    try:
+        return inspect_upload(content, file.filename)
+    except UploadError as exc:
+        return JSONResponse({"error": exc.code}, status_code=400 if exc.code != "inspection_failed" else 422)
+
+
 @router.post("/api/admin/documents")
 async def api_admin_upload_document(
     _admin: User = Depends(get_admin_user),
@@ -708,6 +788,8 @@ async def api_admin_upload_document(
     title: str | None = Form(default=None),
     text: str | None = Form(default=None),
     file: UploadFile | None = File(default=None),
+    process_images: str | None = Form(default=None),
+    transcribe_image_ids: str | None = Form(default=None),
 ) -> dict:
     content: bytes | None = None
     filename: str | None = None
@@ -724,6 +806,8 @@ async def api_admin_upload_document(
             filename=filename,
             content=content,
             mime_type=file.content_type if file else None,
+            process_images=parse_form_bool(process_images),
+            transcribe_image_ids_raw=transcribe_image_ids,
         )
     except UploadError:
         raise
@@ -736,10 +820,28 @@ def api_admin_get_document(
     _admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ):
-    payload = _admin_document_detail(db, GLOBAL_CUSTOMER_ID, document_id)
+    payload = _admin_document_detail(
+        db,
+        GLOBAL_CUSTOMER_ID,
+        document_id,
+        assets_base_path=f"/api/admin/documents/{document_id}",
+    )
     if payload is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
     return payload
+
+
+@router.get("/api/admin/documents/{document_id}/images/{image_id}")
+def api_admin_get_document_image(
+    document_id: str,
+    image_id: str,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    document = get_document(db, GLOBAL_CUSTOMER_ID, document_id)
+    if document is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return _document_image_file_response(document, image_id)
 
 
 @router.put("/api/admin/documents/{document_id}")
@@ -798,6 +900,23 @@ def api_admin_list_customer_documents(
     }
 
 
+@router.post("/api/admin/customers/{customer_id}/documents/inspect")
+async def api_admin_inspect_customer_document(
+    customer_id: str,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+    file: UploadFile = File(...),
+) -> dict:
+    _admin_tenant_customer(db, customer_id)
+    if not file.filename:
+        return JSONResponse({"error": "unsupported_file_type"}, status_code=400)
+    content = await file.read()
+    try:
+        return inspect_upload(content, file.filename)
+    except UploadError as exc:
+        return JSONResponse({"error": exc.code}, status_code=400 if exc.code != "inspection_failed" else 422)
+
+
 @router.post("/api/admin/customers/{customer_id}/documents")
 async def api_admin_upload_customer_document(
     customer_id: str,
@@ -806,6 +925,8 @@ async def api_admin_upload_customer_document(
     title: str | None = Form(default=None),
     text: str | None = Form(default=None),
     file: UploadFile | None = File(default=None),
+    process_images: str | None = Form(default=None),
+    transcribe_image_ids: str | None = Form(default=None),
 ) -> dict:
     customer = _admin_tenant_customer(db, customer_id)
     content: bytes | None = None
@@ -823,6 +944,8 @@ async def api_admin_upload_customer_document(
             filename=filename,
             content=content,
             mime_type=file.content_type if file else None,
+            process_images=parse_form_bool(process_images),
+            transcribe_image_ids_raw=transcribe_image_ids,
         )
     except UploadError:
         raise
@@ -837,10 +960,30 @@ def api_admin_get_customer_document(
     db: Session = Depends(get_db),
 ):
     customer = _admin_tenant_customer(db, customer_id)
-    payload = _admin_document_detail(db, customer.id, document_id)
+    payload = _admin_document_detail(
+        db,
+        customer.id,
+        document_id,
+        assets_base_path=f"/api/admin/customers/{customer_id}/documents/{document_id}",
+    )
     if payload is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
     return payload
+
+
+@router.get("/api/admin/customers/{customer_id}/documents/{document_id}/images/{image_id}")
+def api_admin_get_customer_document_image(
+    customer_id: str,
+    document_id: str,
+    image_id: str,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    customer = _admin_tenant_customer(db, customer_id)
+    document = get_document(db, customer.id, document_id)
+    if document is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return _document_image_file_response(document, image_id)
 
 
 @router.put("/api/admin/customers/{customer_id}/documents/{document_id}")

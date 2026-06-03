@@ -168,19 +168,45 @@ Datenfluss: Fast alle Aktionen gehen über `fetch` mit Session-Cookie (`credenti
 
 ---
 
-### `setupDropzone(dropzone, fileInput, fileLabel, onSelect)`
+### `setupDropzone(dropzone, fileInput, fileLabel, onSelect, isFileSelected)`
 
-**Beschreibung:** Klick, Tastatur, Drag&Drop für Dateiauswahl; ruft `onSelect(file)` auf.
+**Beschreibung:** Klick, Tastatur, Drag&Drop und **Strg+V** auf der Dropzone für Dateiauswahl; ruft `onSelect(file)` auf.
 
 ---
 
-### `bindIngestForm({ form, titleInput, textInput, submitBtn, statusEl, fileInput, dropzone, fileLabel, apiPath, onSuccess })`
+### `fileFromClipboard(clipboardData)`
 
-**Beschreibung:** Generisches Einpflege-Formular: Validierung (Text und/oder Datei), `FormData` POST, Fehlercodes mappen, Reset bei Erfolg.
+**Beschreibung:** Liest erste Datei aus der Zwischenablage; Screenshots (`image/*`) werden als `eingefuegtes-bild-{timestamp}.png|jpg|…` benannt.
 
-**Lokale Variablen:** `selectedFile`, `setFile` — Dropzone-State.
+---
 
-**API-Pfad:** String oder Funktion `() => path`.
+### `bindIngestForm({ form, … })`
+
+**Beschreibung:** Generisches Einpflege-Formular: Validierung, optional **Inspect** (`POST …/inspect`), **Vision-Modal** mit Bild-Checkboxen, Upload mit `process_images` + `transcribe_image_ids`, Fehlercodes, Reset bei Erfolg.
+
+**Lokale Variablen:** `selectedFile`, `fileInspection`, `warningEl`, `INSPECTABLE_FILE_PATTERN`.
+
+**Vision-Flow:** `askImageVisionChoice` → `{ action: "transcribe"|"text"|"cancel", selectedIds }`.
+
+**Paste:** zusätzlicher `paste`-Listener auf `form` — Strg+V im Formular (auch aus Textarea-Kontext wenn Clipboard Datei enthält).
+
+---
+
+### `ensureImageVisionModal()` / `askImageVisionChoice(inspection)`
+
+**Beschreibung:** Modal mit Thumbnail-Grid und Checkboxen; Buttons „Ausgewählte transkribieren“, „Ohne OCR einpflegen“, „Abbrechen“.
+
+---
+
+### `ensureImageLightbox()` / `openImageLightbox(url, label)`
+
+**Beschreibung:** Vollbild-Vorschau extrahierter Bilder im Admin-Editor.
+
+---
+
+### `bindDocumentImagePreviews(container)`
+
+**Beschreibung:** Klick auf `.doc-edit-image-item` öffnet Lightbox.
 
 ---
 
@@ -351,7 +377,7 @@ Globales Dark-Theme-Stylesheet: Sidebar, Main, Chat, KB, Admin, Login. Eingebund
 | Layout | `.app-layout`, `.sidebar`, `.main-area`, `.panel` |
 | Navigation | `.nav-link`, `.nav-group`, `.chat-history-list` |
 | Chat | `body.page-chat`, `.chat-log`, `.bubble`, `.sources-popover` |
-| Forms/KB | `.ingest-form`, `.dropzone`, `.doc-list`, `.status` |
+| Forms/KB | `.ingest-form`, `.dropzone`, `.image-vision-modal`, `.image-vision-grid`, `.doc-edit-images`, `.image-lightbox`, `.doc-list`, `.status` |
 | Admin | `.customer-table`, `.user-customer-checkboxes`, `.icon-btn` |
 | Login | `.login-card`, `.login-brand-banner` |
 | Utils | `.hidden`, `.muted`, `button.secondary/danger/small` |

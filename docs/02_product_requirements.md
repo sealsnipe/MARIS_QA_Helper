@@ -60,8 +60,9 @@ und **Kundentrennung**.
 
 ### Wissensdatenbank / Ingestion (pro Kunde)
 - **FR-7** Angemeldete Nutzer pflegen **Text** mit Titel in die KB des **aktiven Kunden** ein.
-- **FR-23** Angemeldete Nutzer laden **Dateien** (`.txt/.md/.pdf/.docx`, max **30 MB**) per
-  Multipart in die KB des aktiven Kunden hoch (`POST /api/documents`).
+- **FR-23** Angemeldete Nutzer laden **Dateien** (`.txt/.md/.pdf/.docx/.png/.jpg/.jpeg/.webp/.gif`, max **30 MB**) per
+  Multipart in die KB des aktiven Kunden hoch (`POST /api/documents`). Einfügen per **Drag&Drop, Klick oder Strg+V** (Screenshots als `.png`).
+- **FR-23a** Vor Upload können PDF/DOCX/Bilddateien per `POST …/inspect` auf eingebettete Bilder geprüft werden; UI zeigt Thumbnails und erlaubt **selektive Vision-OCR**.
 - **FR-8** Eingepflegtes Wissen (Text **oder** Datei) wird normalisiert, gechunkt, eingebettet und
   in die **kundenspezifische** Qdrant-Collection `kb_{customer_id}` geschrieben; Metadaten in
   SQLite mit `customer_id`.

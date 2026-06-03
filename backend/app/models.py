@@ -71,6 +71,7 @@ class Document(Base):
     mime_type: Mapped[str | None] = mapped_column(String, nullable=True)
     storage_path: Mapped[str | None] = mapped_column(String, nullable=True)
     source_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    extraction_meta: Mapped[str | None] = mapped_column(Text, nullable=True)
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String, nullable=False, default="indexed")
     error_message: Mapped[str | None] = mapped_column(String, nullable=True)

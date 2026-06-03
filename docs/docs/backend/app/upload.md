@@ -116,4 +116,29 @@ Lesereihenfolge: Exception `UploadError` → öffentliche Hilfsfunktion `sanitiz
 
 **Aufrufer / Aufgerufene:** `routes.api_upload_document` und weitere Routen; ruft `get_settings`, `sanitize_filename`, `load_document`, `ingest_text`, `normalize_text` auf.
 
-**Fehlercodes (`UploadError.code`):** `empty_text`, `unsupported_file_type`, `file_too_large`, `extraction_failed` (siehe `main.py` Status-Mapping).
+**Fehlercodes (`UploadError.code`):** `empty_text`, `unsupported_file_type`, `file_too_large`, `extraction_failed`, `inspection_failed`, `images_only_requires_vision`, `vision_failed` (siehe `main.py` Status-Mapping).
+
+---
+
+### `inspect_upload(content, filename) -> dict`
+
+**Beschreibung:** Pre-Upload-Inspect für PDF, DOCX und standalone Bilder; liefert `images[]` mit `preview_data_url` für UI-Modal.
+
+---
+
+### `parse_transcribe_image_ids(value) -> set[str]`
+
+**Beschreibung:** Parst JSON-Array oder kommagetrennte Liste gültiger IDs (`img_\d{3}`).
+
+---
+
+### `ingest_combined(…, process_images=False, transcribe_image_ids_raw=None) -> Document`
+
+**Erweiterungen (2026-06-03):**
+
+- Speichert **alle** erkannten Bilder unter `images/` (`save_embedded_images`)
+- Vision-OCR nur für IDs in `transcribe_image_ids` wenn gesetzt; sonst alle (Legacy)
+- Setzt `extraction_meta` mit `transcribed` pro Bild
+- Unterstützt standalone Bilddateien (`.png`, …) — OCR oder Prefix-Text erforderlich
+
+**Aufrufer:** `routes.py` — `process_images`, `transcribe_image_ids` Form-Felder.

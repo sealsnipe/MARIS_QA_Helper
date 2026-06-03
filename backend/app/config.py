@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     EMBEDDING_DIM: int = 1536
     LLM_AUTH_MODE: LLMAuthMode = "chatgpt_oauth"
     CHAT_MODEL: str = "gpt-4.1-mini"
+    VISION_MODEL: str = "gpt-5.4-mini"
+    VISION_MAX_IMAGES: int = 20
+    VISION_ENABLED: bool = True
     CODEX_AUTH_PATH: str = "~/.codex/auth.json"
     CODEX_OAUTH_AUTH_PATH: str = "~/.oauth_codex/auth.json"
     CODEX_BASE_URL: str = "https://chatgpt.com/backend-api/codex"
@@ -35,7 +38,7 @@ class Settings(BaseSettings):
     MIN_SCORE_DEFAULT: float = 0.25
     MAX_TOOL_ROUNDS: int = 4
     MAX_UPLOAD_MB: int = 30
-    ALLOWED_EXTENSIONS: str = ".txt,.md,.pdf,.docx"
+    ALLOWED_EXTENSIONS: str = ".txt,.md,.pdf,.docx,.png,.jpg,.jpeg,.webp,.gif"
 
     @field_validator("SESSION_SECRET", "OPENAI_API_KEY")
     @classmethod
@@ -59,6 +62,14 @@ class Settings(BaseSettings):
     @property
     def uses_chatgpt_oauth(self) -> bool:
         return self.LLM_AUTH_MODE == "chatgpt_oauth"
+
+    @property
+    def vision_enabled(self) -> bool:
+        return self.VISION_ENABLED
+
+    @property
+    def vision_max_images(self) -> int:
+        return max(1, self.VISION_MAX_IMAGES)
 
 
 @lru_cache

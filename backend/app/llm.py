@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 import json
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -235,3 +237,145 @@ def get_llm() -> LLMBackend:
 def set_llm(backend: LLMBackend | None) -> None:
     global _llm_backend
     _llm_backend = backend
+
+
+_vision_transcriber_override: Callable[[bytes, str, str], str] | None = None
+
+
+def set_vision_transcriber(fn: Callable[[bytes, str, str], str] | None) -> None:
+    global _vision_transcriber_override
+    _vision_transcriber_override = fn
+
+
+def _image_data_url(image_data: bytes, mime_type: str) -> str:
+    encoded = base64.b64encode(image_data).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
+
+
+def _oauth_auth_headers(auth_path: Path, base_url: str, *, accept_json: bool) -> dict[str, str]:
+    try:
+        from oauth_codex import Client
+        from oauth_codex.store import FileTokenStore
+    except ImportError as exc:
+        raise LLMError("oauth_codex_missing") from exc
+
+    client = Client(
+        token_store=FileTokenStore(path=auth_path),
+        base_url=base_url.rstrip("/"),
+    )
+    client.authenticate()
+    headers = dict(client.auth.get_headers())
+    headers["Content-Type"] = "application/json"
+    headers["Accept"] = "application/json" if accept_json else "text/event-stream"
+    return headers
+
+
+def _extract_responses_text(data: dict[str, Any]) -> str:
+    direct = data.get("output_text")
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip()
+
+    parts: list[str] = []
+    for item in data.get("output") or []:
+        if item.get("type") == "message":
+            for block in item.get("content") or []:
+                block_type = block.get("type")
+                if block_type in {"output_text", "text"}:
+                    parts.append(block.get("text") or "")
+        elif item.get("type") == "output_text":
+            parts.append(item.get("text") or "")
+    return "".join(parts).strip()
+
+
+def _transcribe_image_oauth(image_data: bytes, mime_type: str, prompt: str) -> str:
+    settings = get_settings()
+    auth_path = Path(settings.codex_oauth_auth_path)
+    headers = _oauth_auth_headers(auth_path, settings.CODEX_BASE_URL, accept_json=False)
+    payload = {
+        "model": settings.VISION_MODEL,
+        "instructions": prompt,
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": "Bitte das Bild gemäß den Anweisungen verarbeiten."},
+                    {
+                        "type": "input_image",
+                        "image_url": _image_data_url(image_data, mime_type),
+                        "detail": "auto",
+                    },
+                ],
+            }
+        ],
+        "store": False,
+        "stream": True,
+    }
+    parts: list[str] = []
+    try:
+        with httpx.stream(
+            "POST",
+            f"{settings.CODEX_BASE_URL.rstrip('/')}/responses",
+            headers=headers,
+            json=payload,
+            timeout=120.0,
+        ) as response:
+            if response.status_code >= 400:
+                body = response.read().decode(errors="replace")
+                raise LLMError(f"{response.status_code} {body[:300]}")
+
+            for line in response.iter_lines():
+                if not line.startswith("data: ") or line == "data: [DONE]":
+                    continue
+                event = json.loads(line[6:])
+                if event.get("type") == "response.output_text.delta":
+                    parts.append(event.get("delta") or "")
+    except LLMError:
+        raise
+    except Exception as exc:
+        raise LLMError(str(exc)) from exc
+
+    text = "".join(parts).strip()
+    if not text:
+        raise LLMError("empty_answer")
+    return text
+
+
+def _transcribe_image_api_key(image_data: bytes, mime_type: str, prompt: str) -> str:
+    settings = get_settings()
+    client = OpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL)
+    try:
+        response = client.chat.completions.create(
+            model=settings.VISION_MODEL,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": _image_data_url(image_data, mime_type),
+                                "detail": "auto",
+                            },
+                        },
+                    ],
+                }
+            ],
+        )
+    except Exception as exc:
+        raise LLMError(str(exc)) from exc
+
+    text = (response.choices[0].message.content or "").strip()
+    if not text:
+        raise LLMError("empty_answer")
+    return text
+
+
+def transcribe_image(image_data: bytes, mime_type: str, *, prompt: str) -> str:
+    if _vision_transcriber_override is not None:
+        return _vision_transcriber_override(image_data, mime_type, prompt)
+
+    settings = get_settings()
+    if settings.uses_chatgpt_oauth:
+        return _transcribe_image_oauth(image_data, mime_type, prompt)
+    return _transcribe_image_api_key(image_data, mime_type, prompt)

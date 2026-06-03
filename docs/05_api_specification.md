@@ -1,6 +1,6 @@
 # 05 — API-Spezifikation
 
-**Stand:** 2026-06-03 · **Status:** verbindlich (Admin-API ergänzt)
+**Stand:** 2026-06-03 · **Status:** verbindlich (Admin-API, Vision-OCR, Inspect)
 
 > Querschnitt: [`system/02_request_and_session_flow.md`](../system/02_request_and_session_flow.md), [`system/06_admin_flows.md`](../system/06_admin_flows.md)
 
@@ -31,7 +31,8 @@
 | POST | `/api/session/customer` | JSON | ✅ | — | Aktiven Kunden setzen/wechseln |
 | GET | `/api/documents` | JSON | ✅ | ✅ | Dokumentliste (aktiver Kunde) |
 | POST | `/api/documents/text` | JSON | ✅ | ✅ | Text einpflegen |
-| POST | `/api/documents` | Multipart | ✅ | ✅ | **Datei-Upload** |
+| POST | `/api/documents/inspect` | Multipart | ✅ | ✅ | **Datei auf Bilder prüfen** (Vorschau) |
+| POST | `/api/documents` | Multipart | ✅ | ✅ | **Datei-Upload** (+ optional Vision-OCR) |
 | DELETE | `/api/documents/{id}` | JSON | ✅ | ✅ | Dokument löschen |
 | POST | `/api/chat` | JSON | ✅ | ✅ | Frage stellen (Agent); optional `chat_id` |
 | GET | `/chat` | HTML | ✅ | ✅ | Chat (Sidebar-Historie) |
@@ -92,28 +93,62 @@ Erfolg `200 {"document":{...,"source_type":"manual","status":"indexed","chunk_co
 Fehler: `400 empty_text`, `502 embedding_failed`, `502 vector_store_failed` (jeweils kein
 `indexed`-Doc).
 
-### 3.6 `POST /api/documents` (Datei-Upload)
-- Multipart: Feld `file` (eine Datei), optional `title` (Default: Dateiname).
-- Schritte: Typ prüfen (`.txt/.md/.pdf/.docx`) → Größe ≤ `MAX_UPLOAD_MB` → Filename sanitizen →
-  speichern unter `./data/uploads/{customer_id}/{document_id}/` → Loader extrahiert Text →
-  `ingest_text(customer_id, ...)`.
+### 3.6 `POST /api/documents/inspect`
+- Multipart: Feld `file` (eine Datei).
+- Unterstützt `.pdf`, `.docx`, standalone Bilder (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`).
+- Erfolg `200`:
+  ```json
+  {
+    "has_images": true,
+    "image_count": 3,
+    "file_type": "docx",
+    "text_extractable": true,
+    "image_only": false,
+    "pages_with_images": [],
+    "filename": "guide.docx",
+    "images": [
+      {
+        "id": "img_001",
+        "page": null,
+        "label": "img_001",
+        "preview_data_url": "data:image/png;base64,..."
+      }
+    ]
+  }
+  ```
+- Fehler: `400 unsupported_file_type`, `413 file_too_large`, `422 inspection_failed`.
+- Admin-Spiegel: `POST /api/admin/documents/inspect`, `POST /api/admin/customers/{id}/documents/inspect`.
+
+### 3.7 `POST /api/documents` (Datei-Upload)
+- Multipart: Feld `file` (eine Datei), optional `title`, optional Prefix-Feld `text`, optional `process_images=true`, optional `transcribe_image_ids` (JSON-Array, z. B. `["img_001","img_003"]`).
+- Erlaubte Typen: `.txt`, `.md`, `.pdf`, `.docx`, `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`.
+- Schritte: Typ/Größe prüfen → speichern unter `./data/uploads/{customer_id}/{document_id}/` → ggf. **Inspect** (Bilder) → Loader extrahiert Text → optional **Vision-OCR** (nur ausgewählte Bild-IDs) → alle Bilder werden unter `…/images/` gespeichert → `ingest_text`.
+- **DOCX:** OCR-Blöcke `[BILD id="…"]…[/BILD]` **inline** im Fließtext; nicht transkribierte Bilder als Platzhalter `status="nicht_verarbeitet"`.
+- **PDF / standalone Bild:** OCR-Blöcke am Ende (PDF mit `seite="N"`); standalone Bild nur mit Vision-OCR oder Prefix-Text.
 - Erfolg `200`:
   ```json
   { "document": { "id":"uuid","customer_id":"acme","title":"VPN Runbook",
-      "source_type":"file","original_filename":"vpn.pdf","status":"indexed","chunk_count":3 } }
+      "source_type":"pdf","original_filename":"vpn.pdf","status":"indexed","chunk_count":3,
+      "extraction_meta": { "image_count": 2, "images_processed": 1, "vision_used": true, "coverage": "partial", "images": [...] } } }
   ```
 - Fehler:
   - `400 {"error":"unsupported_file_type"}` — Extension nicht erlaubt.
   - `413 {"error":"file_too_large"}` — über `MAX_UPLOAD_MB`.
-  - `422 {"error":"extraction_failed"}` — leeres/kaputtes Dokument → `status=failed` gespeichert,
-    **nichts** in Qdrant.
+  - `422 {"error":"extraction_failed"}` — leeres/kaputtes Dokument ohne Bilder.
+  - `422 {"error":"images_only_requires_vision"}` — nur Bilder, kein Text, Vision nicht gewählt.
+  - `422 {"error":"vision_failed"}` — Vision-OCR für ausgewählte Bilder fehlgeschlagen.
+  - `422 {"error":"inspection_failed"}` — Inspect fehlgeschlagen.
   - `502 embedding_failed` / `vector_store_failed`.
 
-### 3.7 `DELETE /api/documents/{id}`
+### 3.8 `GET /api/documents/{id}/images/{image_id}` (Admin + Tenant)
+- Liefert extrahiertes Bild aus `./data/uploads/…/images/` (Authentifizierung + Mandanten-Check).
+- Nutzung: Thumbnails im Admin-Editor, Lightbox.
+
+### 3.9 `DELETE /api/documents/{id}`
 - Prüft `document.customer_id == aktiver Kunde` (sonst `403`/`404`), löscht Qdrant-Points + setzt
   `deleted_at`. Erfolg `200 {"deleted":true,"id":"uuid"}`. Unbekannt → `404`.
 
-### 3.8 `POST /api/chat`
+### 3.10 `POST /api/chat`
 Request `{ "message":"…", "top_k":6, "chat_id":"uuid-optional" }`.
 Erfolg `200`:
 ```json
@@ -124,7 +159,7 @@ Erfolg `200`:
 - `no_context:true` + leere `sources` wenn keine Treffer über `MIN_SCORE_DEFAULT`.
 - `sources` nur aus Retrieval (FR-15). Fehler: `400 empty_message`, `502 llm_failed`.
 
-### 3.9 `GET /api/health`
+### 3.11 `GET /api/health`
 `{ "ok": true }` — ohne Auth.
 
 ## 4. Statuscodes
@@ -137,7 +172,7 @@ Erfolg `200`:
 | 403 | forbidden_customer (kein Zugriff auf Kunden) |
 | 404 | nicht gefunden |
 | 413 | file_too_large |
-| 422 | extraction_failed |
+| 422 | extraction_failed / images_only_requires_vision / vision_failed / inspection_failed |
 | 502 | Upstream-Fehler (OpenAI/Qdrant) |
 
 ## 5. Admin-API (Kurz)

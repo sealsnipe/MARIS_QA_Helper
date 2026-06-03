@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from pathlib import Path
@@ -10,6 +11,17 @@ from app.chunking import normalize_text
 from app.config import get_settings
 from app.ingestion import IngestionError, ingest_text
 from app.loaders import LoaderError, load_document, source_type_for_extension
+from app.document_assets import IMAGE_ID_PATTERN, SavedDocumentImage, build_image_preview_data_url, format_image_placeholder
+from app.loaders.image_inspect import IMAGE_FILE_EXTENSIONS, ImageInspectResult, inspect_document_bytes, inspect_document_path, inspect_result_to_dict
+from app.loaders.vision_ocr import (
+    VisionOcrResult,
+    append_pdf_image_blocks,
+    compose_docx_with_vision,
+    extract_embedded_images_from_bytes,
+    merge_ocr_blocks,
+    run_vision_ocr,
+    save_embedded_images,
+)
 from app.models import Document
 
 
@@ -24,6 +36,46 @@ def sanitize_filename(name: str) -> str:
     base = Path(name).name
     cleaned = re.sub(r"[^\w.\- ]", "_", base).strip()
     return (cleaned or "upload")[:200]
+
+
+def parse_form_bool(value: str | bool | None) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return value.strip().lower() in {"true", "1", "yes", "on"}
+
+
+def build_extraction_meta(
+    *,
+    image_count: int,
+    images_processed: int,
+    vision_used: bool,
+    saved_images: list[SavedDocumentImage] | None = None,
+) -> str:
+    if image_count == 0 or images_processed >= image_count:
+        coverage = "full"
+    else:
+        coverage = "partial"
+    images = [
+        {
+            "id": item.id,
+            "filename": item.filename,
+            "page": item.page,
+            "mime_type": item.mime_type,
+            "transcribed": item.transcribed,
+        }
+        for item in (saved_images or [])
+    ]
+    return json.dumps(
+        {
+            "image_count": image_count,
+            "images_processed": images_processed,
+            "vision_used": vision_used,
+            "coverage": coverage,
+            "images": images,
+        }
+    )
 
 
 def _upload_root() -> Path:
@@ -58,6 +110,75 @@ def _resolve_title(title: str | None, filename: str | None) -> str:
     return "Wissenseintrag"
 
 
+def _validate_upload_file(content: bytes, filename: str) -> tuple[str, str]:
+    settings = get_settings()
+    safe_name = sanitize_filename(filename)
+    extension = Path(safe_name).suffix.lower()
+    if extension not in settings.allowed_extensions:
+        raise UploadError("unsupported_file_type")
+    if len(content) > settings.max_upload_bytes:
+        raise UploadError("file_too_large")
+    return safe_name, extension
+
+
+def parse_transcribe_image_ids(value: str | None) -> set[str]:
+    if value is None or not value.strip():
+        return set()
+    raw = value.strip()
+    if raw.startswith("["):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return set()
+        if not isinstance(parsed, list):
+            return set()
+        ids = parsed
+    else:
+        ids = [part.strip() for part in raw.split(",") if part.strip()]
+    return {item for item in ids if isinstance(item, str) and IMAGE_ID_PATTERN.match(item)}
+
+
+def _inspect_images_payload(content: bytes, extension: str) -> list[dict]:
+    images: list[dict] = []
+    for image in extract_embedded_images_from_bytes(content, extension):
+        image_id = image.image_id or f"img_{image.index:03d}"
+        label = f"Seite {image.page}" if image.page is not None else image_id
+        images.append(
+            {
+                "id": image_id,
+                "page": image.page,
+                "label": label,
+                "preview_data_url": build_image_preview_data_url(image.data, image.mime_type),
+            }
+        )
+    return images
+
+
+def inspect_upload(content: bytes, filename: str) -> dict:
+    safe_name, extension = _validate_upload_file(content, filename)
+    if extension not in {".pdf", ".docx", *IMAGE_FILE_EXTENSIONS}:
+        return {
+            "has_images": False,
+            "image_count": 0,
+            "file_type": extension.lstrip(".") or "file",
+            "pages_with_images": [],
+            "text_extractable": True,
+            "image_only": False,
+            "filename": safe_name,
+            "images": [],
+        }
+
+    try:
+        result = inspect_document_bytes(content, extension)
+    except LoaderError as exc:
+        raise UploadError("inspection_failed") from exc
+
+    payload = inspect_result_to_dict(result)
+    payload["filename"] = safe_name
+    payload["images"] = _inspect_images_payload(content, extension)
+    return payload
+
+
 def ingest_combined(
     db: Session,
     customer_id: str,
@@ -67,6 +188,8 @@ def ingest_combined(
     filename: str | None = None,
     content: bytes | None = None,
     mime_type: str | None = None,
+    process_images: bool = False,
+    transcribe_image_ids_raw: str | None = None,
 ) -> Document:
     settings = get_settings()
     prefix = (prefix_text or "").strip()
@@ -80,30 +203,102 @@ def ingest_combined(
     stored_path: Path | None = None
     file_text = ""
     file_source_type = "manual"
+    image_count = 0
+    images_processed = 0
+    vision_used = False
+    extraction_meta: str | None = None
 
     if has_file:
         assert content is not None
         assert filename is not None
-        safe_name = sanitize_filename(filename)
-        extension = Path(safe_name).suffix.lower()
-
-        if extension not in settings.allowed_extensions:
-            raise UploadError("unsupported_file_type")
-
-        if len(content) > settings.max_upload_bytes:
-            raise UploadError("file_too_large")
+        safe_name, extension = _validate_upload_file(content, filename)
+        file_source_type = source_type_for_extension(extension)
 
         storage_dir = _upload_root() / customer_id / document_id
         storage_dir.mkdir(parents=True, exist_ok=True)
         stored_path = storage_dir / safe_name
         stored_path.write_bytes(content)
-        file_source_type = source_type_for_extension(extension)
 
+        try:
+            inspection = inspect_document_path(stored_path, extension)
+        except LoaderError as exc:
+            _discard_stored_upload(stored_path)
+            raise UploadError("inspection_failed") from exc
+
+        image_count = inspection.image_count
+        saved_images: list[SavedDocumentImage] = []
+        assets_dir = storage_dir / "images"
+
+        file_text = ""
         try:
             file_text = load_document(stored_path, extension)
         except LoaderError as exc:
-            _discard_stored_upload(stored_path)
-            raise UploadError("extraction_failed") from exc
+            if exc.args[0] != "extraction_failed" or (not inspection.has_images and not prefix):
+                _discard_stored_upload(stored_path)
+                raise UploadError("extraction_failed") from exc
+            if inspection.has_images and not process_images and not prefix:
+                _discard_stored_upload(stored_path)
+                raise UploadError("images_only_requires_vision") from exc
+
+        if inspection.has_images:
+            saved_images = save_embedded_images(stored_path, extension, assets_dir)
+
+        selected_ids: set[str] | None = None
+        if transcribe_image_ids_raw is not None and transcribe_image_ids_raw.strip():
+            selected_ids = parse_transcribe_image_ids(transcribe_image_ids_raw)
+
+        wants_transcription = process_images and inspection.has_images and settings.vision_enabled
+        if wants_transcription:
+            ocr_result = run_vision_ocr(
+                stored_path,
+                extension,
+                assets_dir=assets_dir,
+                transcribe_ids=selected_ids,
+                saved_images=saved_images,
+            )
+            saved_images = ocr_result.saved_images
+            if extension == ".docx":
+                file_text = compose_docx_with_vision(stored_path, ocr_result)
+            elif extension == ".pdf":
+                file_text = append_pdf_image_blocks(file_text, stored_path, ocr_result)
+            elif extension in IMAGE_FILE_EXTENSIONS:
+                file_text = merge_ocr_blocks(file_text, ocr_result.blocks)
+            images_processed = ocr_result.images_processed
+            vision_used = images_processed > 0
+            if images_processed == 0:
+                _discard_stored_upload(stored_path)
+                raise UploadError("vision_failed")
+        elif inspection.has_images:
+            if extension == ".docx":
+                from app.loaders.docx_content import compose_docx_text
+                from docx import Document as DocxDocument
+
+                document = DocxDocument(str(stored_path))
+                interleaved = compose_docx_text(
+                    document,
+                    ocr_text_by_id={},
+                    include_unprocessed_placeholders=True,
+                ).strip()
+                if interleaved:
+                    file_text = interleaved
+            elif extension == ".pdf" and saved_images:
+                file_text = append_pdf_image_blocks(
+                    file_text,
+                    stored_path,
+                    VisionOcrResult(blocks=[], images_processed=0, images_failed=0, saved_images=saved_images),
+                )
+            elif extension in IMAGE_FILE_EXTENSIONS and saved_images:
+                file_text = merge_ocr_blocks(
+                    file_text,
+                    [format_image_placeholder(image_id=saved_images[0].id, page=None)],
+                )
+
+        extraction_meta = build_extraction_meta(
+            image_count=image_count,
+            images_processed=images_processed,
+            vision_used=vision_used,
+            saved_images=saved_images,
+        )
 
     combined = _combine_text(prefix, file_text)
     if len(normalize_text(combined)) < 20:
@@ -124,6 +319,7 @@ def ingest_combined(
             original_filename=safe_name,
             mime_type=mime_type,
             storage_path=str(stored_path) if stored_path else None,
+            extraction_meta=extraction_meta,
         )
     except IngestionError as exc:
         if exc.code == "empty_text":

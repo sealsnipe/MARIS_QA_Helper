@@ -30,6 +30,11 @@
 | [backend/app/llm.md](./backend/app/llm.md) | `backend/app/llm.py` |
 | [backend/app/loaders/__init__.md](./backend/app/loaders/__init__.md) | `backend/app/loaders/__init__.py` |
 | [backend/app/loaders/docx_loader.md](./backend/app/loaders/docx_loader.md) | `backend/app/loaders/docx_loader.py` |
+| [backend/app/loaders/docx_content.md](./backend/app/loaders/docx_content.md) | `backend/app/loaders/docx_content.py` |
+| [backend/app/loaders/image_inspect.md](./backend/app/loaders/image_inspect.md) | `backend/app/loaders/image_inspect.py` |
+| [backend/app/loaders/vision_ocr.md](./backend/app/loaders/vision_ocr.md) | `backend/app/loaders/vision_ocr.py` |
+| [backend/app/document_assets.md](./backend/app/document_assets.md) | `backend/app/document_assets.py` |
+| [backend/app/upload.md](./backend/app/upload.md) | `backend/app/upload.py` |
 | [backend/app/loaders/errors.md](./backend/app/loaders/errors.md) | `backend/app/loaders/errors.py` |
 | [backend/app/loaders/pdf_loader.md](./backend/app/loaders/pdf_loader.md) | `backend/app/loaders/pdf_loader.py` |
 | [backend/app/loaders/text_loaders.md](./backend/app/loaders/text_loaders.md) | `backend/app/loaders/text_loaders.py` |

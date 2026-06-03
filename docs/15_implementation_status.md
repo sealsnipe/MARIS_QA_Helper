@@ -36,6 +36,7 @@ Abgleich zwischen **Planungsdocs** (`docs/01–14`, Stand teils 2026-06-02) und 
 | **Global-Mandant** | — | ✅ `global` + scoped multi-KB-Suche |
 | **Admin KB bearbeiten** | — | ✅ GET/PUT Admin-Dokument, Re-Index, `source_text` |
 | **Slug-Rename Migration** | Entscheidungsvorlage `14` | ✅ SQLite + Qdrant + Uploads |
+| **Vision-OCR / Bilder** | Roadmap | ✅ Inspect, selektive OCR, inline DOCX, Thumbnails, Strg+V |
 
 ---
 

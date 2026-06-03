@@ -53,6 +53,9 @@ def _migrate_schema(engine) -> None:
         if "source_text" not in columns:
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE documents ADD COLUMN source_text TEXT"))
+        if "extraction_meta" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE documents ADD COLUMN extraction_meta TEXT"))
 
 
 def init_db() -> None:

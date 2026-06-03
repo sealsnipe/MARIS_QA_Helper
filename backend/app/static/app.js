@@ -250,6 +250,7 @@
           <span class="badge ${doc.status === "failed" ? "failed" : ""}">${escapeHtml(doc.source_type)}</span>
           · ${doc.chunk_count} Chunks
           ${doc.status === "failed" ? "· fehlgeschlagen" : ""}
+          ${renderExtractionBadges(doc.extraction_meta)}
         </span>
       `;
 
@@ -327,10 +328,21 @@
       const fromFileHint = data.from_file
         ? `<p class="muted doc-edit-hint">Text stammt aus einer Datei. Speichern ersetzt den indexierten Inhalt; die Originaldatei bleibt archiviert.</p>`
         : "";
+      const images = Array.isArray(data.images) ? data.images : [];
+      const imagesHtml = images.length
+        ? `<div class="doc-edit-images"><p class="doc-edit-images-title">Extrahierte Bilder — klicken für Vollbild</p><div class="doc-edit-image-grid">${images
+            .map((image) => {
+              const base = image.page ? `Seite ${image.page}` : image.id;
+              const label = image.transcribed ? `${base} · OCR` : `${base} · Vorschau`;
+              return `<button type="button" class="doc-edit-image-item" title="Vollbild anzeigen"><img src="${escapeHtml(image.url)}" alt="${escapeHtml(label)}" loading="lazy"><span class="doc-edit-image-label">${escapeHtml(label)}</span></button>`;
+            })
+            .join("")}</div></div>`
+        : "";
       panel.innerHTML = `
         <label>Titel<input type="text" class="doc-edit-title" maxlength="200" value="${escapeHtml(data.document.title)}"></label>
         <label>Inhalt<textarea class="doc-edit-text" rows="12" spellcheck="true"></textarea></label>
         ${fromFileHint}
+        ${imagesHtml}
         <div class="doc-edit-actions">
           <button type="button" class="secondary small doc-edit-save">Speichern</button>
           <button type="button" class="secondary small doc-edit-cancel">Abbrechen</button>
@@ -339,6 +351,7 @@
       `;
       const textArea = panel.querySelector(".doc-edit-text");
       if (textArea) textArea.value = data.text || "";
+      bindDocumentImagePreviews(panel);
 
       panel.querySelector(".doc-edit-cancel")?.addEventListener("click", () => editRow.remove());
       panel.querySelector(".doc-edit-save")?.addEventListener("click", async () => {
@@ -439,6 +452,24 @@
     });
   }
 
+  const INSPECTABLE_FILE_PATTERN = /\.(pdf|docx|png|jpe?g|webp|gif)$/i;
+
+  function fileFromClipboard(clipboardData) {
+    const items = clipboardData?.items;
+    if (!items) return null;
+    for (const item of items) {
+      if (item.kind !== "file") continue;
+      const file = item.getAsFile();
+      if (!file) continue;
+      if (file.type.startsWith("image/")) {
+        const ext = file.type === "image/jpeg" ? "jpg" : file.type === "image/webp" ? "webp" : file.type === "image/gif" ? "gif" : "png";
+        return new File([file], `eingefuegtes-bild-${Date.now()}.${ext}`, { type: file.type });
+      }
+      return file;
+    }
+    return null;
+  }
+
   function setupDropzone(dropzone, fileInput, fileLabel, onSelect, isFileSelected) {
     if (!dropzone || !fileInput) return;
 
@@ -481,6 +512,167 @@
       const file = fileInput.files?.[0];
       onSelect(file || null);
     });
+    dropzone.addEventListener("paste", (event) => {
+      const file = fileFromClipboard(event.clipboardData);
+      if (!file) return;
+      event.preventDefault();
+      onSelect(file);
+    });
+  }
+
+  function renderExtractionBadges(extractionMeta) {
+    if (!extractionMeta || typeof extractionMeta !== "object") return "";
+    const parts = [];
+    if (extractionMeta.coverage === "partial" && extractionMeta.image_count > 0) {
+      const missing = Math.max(0, extractionMeta.image_count - (extractionMeta.images_processed || 0));
+      if (missing > 0) {
+        parts.push(`<span class="badge partial">· ${missing} Bild(er) nicht verarbeitet</span>`);
+      }
+    }
+    if (extractionMeta.vision_used) {
+      parts.push('<span class="badge vision">· Vision-OCR</span>');
+    }
+    return parts.join(" ");
+  }
+
+  function resolveInspectPath(apiPath) {
+    const uploadPath = typeof apiPath === "function" ? apiPath() : apiPath;
+    return `${uploadPath}/inspect`;
+  }
+
+  function ensureImageLightbox() {
+    let lightbox = document.getElementById("image-lightbox");
+    if (lightbox) return lightbox;
+
+    lightbox = document.createElement("div");
+    lightbox.id = "image-lightbox";
+    lightbox.className = "image-lightbox hidden";
+    lightbox.innerHTML = `
+      <button type="button" class="image-lightbox-backdrop" aria-label="Vollbild schließen"></button>
+      <div class="image-lightbox-content" role="dialog" aria-modal="true" aria-label="Bildvorschau">
+        <button type="button" class="image-lightbox-close" aria-label="Schließen">×</button>
+        <img class="image-lightbox-img" src="" alt="">
+        <p class="image-lightbox-caption"></p>
+      </div>
+    `;
+    document.body.appendChild(lightbox);
+
+    const close = () => lightbox.classList.add("hidden");
+    lightbox.querySelector(".image-lightbox-backdrop")?.addEventListener("click", close);
+    lightbox.querySelector(".image-lightbox-close")?.addEventListener("click", close);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !lightbox.classList.contains("hidden")) close();
+    });
+
+    return lightbox;
+  }
+
+  function openImageLightbox(url, label = "") {
+    const lightbox = ensureImageLightbox();
+    const img = lightbox.querySelector(".image-lightbox-img");
+    const caption = lightbox.querySelector(".image-lightbox-caption");
+    if (img) {
+      img.src = url;
+      img.alt = label || "Extrahiertes Bild";
+    }
+    if (caption) caption.textContent = label || "";
+    lightbox.classList.remove("hidden");
+  }
+
+  function bindDocumentImagePreviews(container) {
+    if (!container) return;
+    container.querySelectorAll(".doc-edit-image-item").forEach((item) => {
+      item.addEventListener("click", () => {
+        const img = item.querySelector("img");
+        const label = item.querySelector(".doc-edit-image-label")?.textContent?.trim() || "";
+        if (img?.src) openImageLightbox(img.src, label);
+      });
+    });
+  }
+
+  function ensureImageVisionModal() {
+    let modal = document.getElementById("image-vision-modal");
+    if (modal) return modal;
+
+    modal = document.createElement("div");
+    modal.id = "image-vision-modal";
+    modal.className = "image-vision-modal hidden";
+    modal.innerHTML = `
+      <div class="image-vision-dialog" role="dialog" aria-modal="true" aria-labelledby="image-vision-title">
+        <h3 id="image-vision-title">Bilder in der Datei erkannt</h3>
+        <p class="image-vision-text">
+          <span class="modal-count">0</span> Bild(er) gefunden. Wähle, welche per Vision-OCR transkribiert werden.
+          Alle Bilder werden im Eintrag als klickbare Vorschau gespeichert.
+        </p>
+        <div class="image-vision-grid" aria-label="Bilder für OCR auswählen"></div>
+        <div class="image-vision-actions">
+          <button type="button" class="modal-vision">Ausgewählte transkribieren</button>
+          <button type="button" class="secondary modal-text">Ohne OCR einpflegen</button>
+          <button type="button" class="secondary modal-cancel">Abbrechen</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    return modal;
+  }
+
+  function askImageVisionChoice(inspection) {
+    return new Promise((resolve) => {
+      const modal = ensureImageVisionModal();
+      const countEl = modal.querySelector(".modal-count");
+      const grid = modal.querySelector(".image-vision-grid");
+      const images = Array.isArray(inspection?.images) ? inspection.images : [];
+      const imageCount = inspection?.image_count || images.length || 0;
+      if (countEl) countEl.textContent = String(imageCount);
+
+      if (grid) {
+        grid.innerHTML = images.length
+          ? images
+              .map((image) => {
+                const label = image.label || image.id || "Bild";
+                const preview = image.preview_data_url || "";
+                return `
+                  <label class="image-vision-option">
+                    <input type="checkbox" name="transcribe-image" value="${escapeHtml(image.id || "")}">
+                    <span class="image-vision-thumb-wrap">
+                      <img src="${preview}" alt="${escapeHtml(label)}" loading="lazy">
+                    </span>
+                    <span class="image-vision-option-label">${escapeHtml(label)}</span>
+                  </label>
+                `;
+              })
+              .join("")
+          : `<p class="image-vision-empty">Keine Vorschau verfügbar — alle Bilder werden gespeichert.</p>`;
+      }
+
+      modal.classList.remove("hidden");
+
+      const finish = (result) => {
+        modal.classList.add("hidden");
+        resolve(result);
+      };
+
+      const selectedIds = () =>
+        Array.from(modal.querySelectorAll('input[name="transcribe-image"]:checked'))
+          .map((input) => input.value)
+          .filter(Boolean);
+
+      modal.querySelector(".modal-vision")?.addEventListener(
+        "click",
+        () => finish({ action: "transcribe", selectedIds: selectedIds() }),
+        { once: true },
+      );
+      modal.querySelector(".modal-text")?.addEventListener(
+        "click",
+        () => finish({ action: "text", selectedIds: [] }),
+        { once: true },
+      );
+      modal.querySelector(".modal-cancel")?.addEventListener(
+        "click",
+        () => finish({ action: "cancel", selectedIds: [] }),
+        { once: true },
+      );
+    });
   }
 
   function bindIngestForm({
@@ -496,9 +688,23 @@
     onSuccess,
   }) {
     let selectedFile = null;
+    let fileInspection = null;
 
-    const setFile = (file) => {
+    const warningEl = document.createElement("p");
+    warningEl.className = "image-warning-banner hidden";
+    warningEl.setAttribute("role", "status");
+    if (submitBtn?.parentNode === form) {
+      form.insertBefore(warningEl, submitBtn);
+    } else if (form) {
+      form.appendChild(warningEl);
+    }
+
+    const setFile = async (file) => {
       selectedFile = file;
+      fileInspection = null;
+      warningEl.textContent = "";
+      warningEl.classList.add("hidden");
+
       if (fileLabel) {
         fileLabel.textContent = file
           ? `${file.name} — klicken zum Entfernen`
@@ -506,9 +712,42 @@
       }
       dropzone?.classList.toggle("has-file", Boolean(file));
       dropzone?.setAttribute("aria-label", file ? "Ausgewählte Datei entfernen" : "Datei auswählen");
+
+      if (!file) return;
+
+      const lowerName = file.name.toLowerCase();
+      if (!INSPECTABLE_FILE_PATTERN.test(lowerName)) return;
+
+      const formData = new FormData();
+      formData.append("file", file);
+      try {
+        const inspectPath = resolveInspectPath(apiPath);
+        fileInspection = await api(inspectPath, { method: "POST", body: formData });
+        if (fileInspection?.has_images) {
+          const count = fileInspection.image_count || 0;
+          if (fileInspection.image_only) {
+            warningEl.textContent = `${count} Bild(er), kein extrahierbarer Text — Vision-OCR erforderlich.`;
+          } else {
+            warningEl.textContent = `${count} Bild(er) erkannt — ohne Vision-OCR fehlt ggf. Inhalt.`;
+          }
+          warningEl.classList.remove("hidden");
+        }
+      } catch (_error) {
+        warningEl.textContent = "Bilder konnten nicht geprüft werden.";
+        warningEl.classList.remove("hidden");
+      }
     };
 
-    setupDropzone(dropzone, fileInput, fileLabel, setFile, () => Boolean(selectedFile));
+    setupDropzone(dropzone, fileInput, fileLabel, (file) => {
+      setFile(file).catch(() => {});
+    }, () => Boolean(selectedFile));
+
+    form?.addEventListener("paste", (event) => {
+      const file = fileFromClipboard(event.clipboardData);
+      if (!file) return;
+      event.preventDefault();
+      setFile(file).catch(() => {});
+    });
 
     form?.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -518,13 +757,39 @@
         return;
       }
 
+      let processImages = false;
+      let transcribeImageIds = [];
+      if (fileInspection?.has_images) {
+        const choice = await askImageVisionChoice(fileInspection);
+        if (choice.action === "cancel") return;
+        if (choice.action === "text" && fileInspection.image_only) {
+          showStatus(statusEl, "PDF enthält nur Bilder — bitte Vision-OCR wählen oder Text im Formular ergänzen.", "error");
+          return;
+        }
+        processImages = choice.action === "transcribe";
+        transcribeImageIds = choice.selectedIds || [];
+        if (processImages && transcribeImageIds.length === 0) {
+          showStatus(statusEl, "Bitte mindestens ein Bild für Vision-OCR auswählen.", "error");
+          return;
+        }
+      }
+
       submitBtn.disabled = true;
-      showStatus(statusEl, "Wird indexiert…");
+      showStatus(
+        statusEl,
+        processImages
+          ? `Vision-OCR läuft (${transcribeImageIds.length} Bild(er))…`
+          : "Wird indexiert…",
+      );
 
       const formData = new FormData();
       if (titleInput?.value.trim()) formData.append("title", titleInput.value.trim());
       if (prefixText) formData.append("text", prefixText);
       if (selectedFile) formData.append("file", selectedFile);
+      if (processImages) {
+        formData.append("process_images", "true");
+        formData.append("transcribe_image_ids", JSON.stringify(transcribeImageIds));
+      }
 
       try {
         const resolvedPath = typeof apiPath === "function" ? apiPath() : apiPath;
@@ -533,7 +798,7 @@
         if (titleInput) titleInput.value = "";
         if (textInput) textInput.value = "";
         if (fileInput) fileInput.value = "";
-        setFile(null);
+        await setFile(null);
         await onSuccess();
       } catch (error) {
         const messages = {
@@ -541,6 +806,9 @@
           unsupported_file_type: "Nur .txt, .md, .pdf, .docx erlaubt.",
           file_too_large: "Datei überschreitet 30 MB.",
           extraction_failed: "Text konnte nicht extrahiert werden.",
+          inspection_failed: "Datei konnte nicht auf Bilder geprüft werden.",
+          images_only_requires_vision: "PDF enthält nur Bilder — Vision-OCR wählen oder Begleittext ergänzen.",
+          vision_failed: "Vision-OCR fehlgeschlagen — bitte erneut versuchen oder API/Token prüfen.",
           forbidden: "Keine Berechtigung.",
         };
         showStatus(statusEl, messages[error.code] || "Einpflegen fehlgeschlagen.", "error");

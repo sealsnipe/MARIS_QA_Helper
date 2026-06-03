@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -29,6 +30,16 @@ def _estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
+def _parse_extraction_meta(raw: str | None) -> dict[str, Any] | None:
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 def _document_to_dict(document: Document) -> dict[str, Any]:
     return {
         "id": document.id,
@@ -39,6 +50,7 @@ def _document_to_dict(document: Document) -> dict[str, Any]:
         "mime_type": document.mime_type,
         "chunk_count": document.chunk_count,
         "status": document.status,
+        "extraction_meta": _parse_extraction_meta(document.extraction_meta),
         "created_at": document.created_at,
         "updated_at": document.updated_at,
     }
@@ -190,6 +202,7 @@ def ingest_text(
     storage_path: str | None = None,
     source_url: str | None = None,
     external_id: str | None = None,
+    extraction_meta: str | None = None,
     embeddings: EmbeddingsBackend | None = None,
     vector_store: VectorStore | None = None,
 ) -> IngestResult:
@@ -222,6 +235,7 @@ def ingest_text(
         mime_type=mime_type,
         storage_path=storage_path,
         source_text=normalized,
+        extraction_meta=extraction_meta,
         chunk_count=0,
         status="indexed",
         created_at=now,

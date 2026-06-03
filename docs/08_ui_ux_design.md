@@ -81,9 +81,10 @@ Quelle/Typ als kleines Badge: `man` (Text), `pdf`, `txt`, `md`, `docx` (später 
 | **Header** | App-Name; **Kunden-Auswahl** (Dropdown bei >1, sonst Label); E-Mail; „Abmelden". |
 | **Kunden-Dropdown** | Wechsel → `POST /api/session/customer` → Seite neu laden (KB+Chat gescoped). |
 | **KB-Tabs** | „Text" (Titel+Textarea+Einpflegen) / „Datei" (Dropzone + Auswahl-Button). |
-| **Dropzone** | Drag&Drop + Klick; zeigt erlaubte Typen + Limit; Upload → `POST /api/documents`. |
-| **Dokumentliste** | Titel, Typ-Badge, Chunk-Anzahl, Löschen; nur aktiver Kunde. |
-| **Admin-Dokumentliste** | Wie Nutzer-KB, plus **Stift** (Bearbeiten) und **Mülleimer** nebeneinander; inline Edit-Panel (Titel + Textarea, Speichern/Abbrechen). |
+| **Dropzone** | Drag&Drop, Klick und **Strg+V** (Formular + Dropzone); zeigt erlaubte Typen + Limit; bei PDF/DOCX/Bildern Inspect → Vision-Modal mit Checkboxen. |
+| **Vision-Modal** | Thumbnails aller erkannten Bilder; Nutzer wählt OCR-Ziele; „Ausgewählte transkribieren“ / „Ohne OCR“ / Abbrechen. |
+| **Dokumentliste** | Titel, Typ-Badge, Chunk-Anzahl, Extraction-Badges (`partial`, `Vision-OCR`), Löschen; nur aktiver Kunde. |
+| **Admin-Dokumentliste** | Wie Nutzer-KB, plus **Stift** (Bearbeiten) und **Mülleimer**; inline Edit-Panel mit **klickbaren Bild-Thumbnails** (Lightbox). |
 | **Chat-Verlauf** | Bubbles; Assistent-Bubble enthält Quellenblock. |
 | **Frage-Eingabe** | Enter sendet, Shift+Enter = Umbruch. |
 
@@ -93,8 +94,10 @@ Quelle/Typ als kleines Badge: `man` (Text), `pdf`, `txt`, `md`, `docx` (später 
 | Kunde | keiner aktiv (mehrere erlaubt) | Hinweis „Bitte Kunde wählen", KB/Chat deaktiviert |
 | Dokumentliste | leer | „Noch kein Wissen für diesen Kunden." |
 | Text einpflegen | lädt/Fehler/Erfolg | Button „Wird indexiert…"; rote Inline-Meldung; Liste refresh |
-| Upload | läuft | Fortschritt/„Wird hochgeladen & indexiert…", Button disabled |
-| Upload | falscher Typ | „Nur .txt, .md, .pdf, .docx erlaubt." |
+| Upload | läuft | „Wird indexiert…“ / „Vision-OCR läuft (N Bild(er))…“, Button disabled |
+| Upload | falscher Typ | „Nur .txt, .md, .pdf, .docx, Bildformate erlaubt." |
+| Upload | Bild-only ohne OCR | „PDF/Bild enthält nur Bilder — Vision-OCR wählen …" |
+| Upload | Vision fehlgeschlagen | „Vision-OCR fehlgeschlagen …" |
 | Upload | zu groß | „Datei überschreitet 30 MB." |
 | Upload | Extraktion fehlgeschlagen | „Text konnte nicht extrahiert werden (Dokument: fehlgeschlagen)." |
 | Chat | lädt/Fehler/kein Treffer | „…"-Platzhalter; Fehler-Bubble; No-Context-Text ohne Quellen |

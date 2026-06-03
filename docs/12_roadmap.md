@@ -26,7 +26,7 @@ Phasen sind additiv; vorbereitete Haken sind genannt.
 - Mehrfach-Datei-Upload, Drag&Drop mehrerer Dateien.
 - Confluence-Sync; scheduled Re-Index; Background-Jobs für große Uploads (asynchrone Indexierung).
 - Duplikaterkennung via `text_sha256`, Dokument-Versionierung.
-- Tabellen-/Bildextraktion aus PDF/DOCX (über reine Absatztexte hinaus).
+- Tabellen-/Bildextraktion aus PDF/DOCX: **teilweise** (Text + eingebettete Bilder, selektive Vision-OCR, inline DOCX) — siehe `15_implementation_status.md`.
 
 ## Phase 4 — Auth & Compliance
 - SSO (Entra/Okta) — `get_current_user`/`get_current_customer` bleiben, nur Login-Schritt tauscht.
