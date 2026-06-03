@@ -10,14 +10,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "backend"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from seed_customers import seed_customers
-from seed_data import GLOBAL_CUSTOMER, PRODUCTION_CUSTOMERS
-from seed_users import seed_user
-
-DEFAULT_ADMIN_EMAIL = "matthias.schindler@maris-healthcare.de"
+from seed_setup import DEFAULT_ADMIN_EMAIL, run_seed
 
 
 def parse_args() -> argparse.Namespace:
@@ -30,7 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--with-demo",
         action="store_true",
-        help="Also seed demo customers acme/globex (not for production servers)",
+        help="Use dev profile (includes demo customers acme/globex)",
     )
     return parser.parse_args()
 
@@ -52,16 +47,9 @@ def _resolve_password(cli_password: str | None) -> str:
 
 def main() -> None:
     args = parse_args()
-    customers = (GLOBAL_CUSTOMER,) + PRODUCTION_CUSTOMERS
-    if args.with_demo:
-        from seed_data import DEMO_CUSTOMERS
-
-        customers = customers + DEMO_CUSTOMERS
-
-    seed_customers(customers)
     password = _resolve_password(args.password)
-    customer_ids = tuple(slug for slug, _ in PRODUCTION_CUSTOMERS)
-    seed_user(args.email.strip().lower(), password, customer_ids, is_admin=True)
+    profile = "dev" if args.with_demo else "prod"
+    run_seed(profile=profile, email=args.email.strip().lower(), password=password)
     print(f"Production seed done for {args.email}")
 
 

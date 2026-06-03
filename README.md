@@ -30,10 +30,11 @@ Health-Check: `curl http://127.0.0.1:8088/api/health` → `{"ok":true}`
 ### Demo-Daten
 
 ```bash
-docker compose exec api python scripts/seed_data.py
+docker compose exec api python scripts/seed_setup.py --profile dev
+# oder Demo-Wissen: docker compose exec api python scripts/seed_kb.py
 ```
 
-Login mit dem in `seed_users.py` / `seed_data.py` angelegten Nutzer.
+Login mit dem im Setup angelegten Admin-Nutzer (E-Mail + Passwort beim `./setup.sh`).
 
 ## Entwicklung (ohne Docker)
 

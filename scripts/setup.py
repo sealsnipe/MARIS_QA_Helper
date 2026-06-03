@@ -21,6 +21,7 @@ COMPOSE_BASE = ROOT / "docker-compose.yml"
 COMPOSE_PROD = ROOT / "docker-compose.prod.yml"
 COMPOSE_OAUTH = ROOT / "docker-compose.oauth.yml"
 DEFAULT_OAUTH_PATH = Path.home() / ".oauth_codex" / "auth.json"
+DEFAULT_ADMIN_EMAIL = "matthias.schindler@maris-healthcare.de"
 
 PLACEHOLDER_KEY = "sk-placeholder-replace-me"
 KEY_PATTERN = re.compile(r"^sk-[A-Za-z0-9_-]{10,}$")
@@ -328,21 +329,59 @@ def _ensure_session_secret(lines: list[str]) -> list[str]:
     return lines
 
 
-def _compose_command(profile: DeployProfile, llm_mode: LlmAuthMode, oauth_path: Path) -> list[str]:
-    if not COMPOSE_BASE.exists():
-        raise SystemExit(f"Fehlt: {COMPOSE_BASE}")
-
-    cmd = ["docker", "compose", "-f", str(COMPOSE_BASE)]
+def _compose_file_args(profile: DeployProfile, llm_mode: LlmAuthMode) -> list[str]:
+    args = ["-f", str(COMPOSE_BASE)]
     if profile == "prod":
         if not COMPOSE_PROD.exists():
             raise SystemExit(f"Fehlt: {COMPOSE_PROD}")
-        cmd.extend(["-f", str(COMPOSE_PROD)])
+        args.extend(["-f", str(COMPOSE_PROD)])
     elif llm_mode == "chatgpt_oauth":
         if not COMPOSE_OAUTH.exists():
             raise SystemExit(f"Fehlt: {COMPOSE_OAUTH}")
-        cmd.extend(["-f", str(COMPOSE_OAUTH)])
-    cmd.extend(["up", "--build", "-d"])
-    return cmd
+        args.extend(["-f", str(COMPOSE_OAUTH)])
+    return args
+
+
+def _prompt_admin_credentials(
+    *,
+    interactive: bool,
+    admin_email: str | None,
+    admin_password: str | None,
+) -> tuple[str, str]:
+    print("\n=== Erster Login-Nutzer (Admin) ===\n")
+    print("Wird nach dem Stack-Start angelegt (Kunden + Admin-Zugriff).\n")
+
+    if not interactive:
+        email = (admin_email or DEFAULT_ADMIN_EMAIL).strip().lower()
+        password = (admin_password or os.environ.get("SEED_ADMIN_PASSWORD") or "").strip()
+        if not password:
+            raise SystemExit("--non-interactive: --admin-password oder SEED_ADMIN_PASSWORD setzen.")
+        return email, password
+
+    default = admin_email or DEFAULT_ADMIN_EMAIL
+    raw_email = input(f"Admin-E-Mail [{default}]: ").strip()
+    email = (raw_email or default).strip().lower()
+    if "@" not in email:
+        raise SystemExit("Ungültige E-Mail-Adresse.")
+
+    print("  Passwort sichtbar (Paste ok) — nur für Login in dieser Instanz.")
+    while True:
+        password = input("Admin-Passwort: ").strip()
+        confirm = input("Passwort wiederholen: ").strip()
+        if not password:
+            print("  Passwort ist Pflicht.")
+            continue
+        if password != confirm:
+            print("  Passwörter stimmen nicht überein.")
+            continue
+        print(f"  ✓ Admin {email} wird nach Stack-Start angelegt.")
+        return email, password
+
+
+def _compose_command(profile: DeployProfile, llm_mode: LlmAuthMode, oauth_path: Path) -> list[str]:
+    if not COMPOSE_BASE.exists():
+        raise SystemExit(f"Fehlt: {COMPOSE_BASE}")
+    return ["docker", "compose", *_compose_file_args(profile, llm_mode), "up", "--build", "-d"]
 
 
 def _compose_env(profile: DeployProfile, llm_mode: LlmAuthMode, oauth_path: Path) -> dict[str, str]:
@@ -372,21 +411,21 @@ def _maybe_start_compose(
     llm_mode: LlmAuthMode,
     oauth_path: Path,
     docker_status,
-) -> None:
+) -> bool:
     if runtime == "local":
         print("\n  Lokaler Modus — Docker Compose übersprungen.")
-        return
+        return False
     if start is False:
-        return
+        return False
     if start is None and not _prompt_yes_no("\nDocker Compose jetzt starten (api + qdrant)?", default=True):
-        return
+        return False
 
     if docker_status is not None:
         _require_docker_ready(docker_status)
 
     if not shutil.which("docker"):
         print("  Docker nicht installiert — übersprungen.")
-        return
+        return False
 
     print("\n=== Docker Compose ===\n")
     try:
@@ -394,7 +433,7 @@ def _maybe_start_compose(
         env = _compose_env(profile, llm_mode, oauth_path)
     except SystemExit as exc:
         print(f"  {exc}")
-        return
+        return False
 
     print(f"  $ {_format_compose_hint(cmd, env)}")
     try:
@@ -406,19 +445,79 @@ def _maybe_start_compose(
     except subprocess.CalledProcessError:
         print("  docker compose fehlgeschlagen.")
         print(f"  Manuell: {_format_compose_hint(cmd, env)}")
-        return
+        return False
 
     print("  ✓ Stack gestartet — http://127.0.0.1:8088")
     print("  Health: curl http://127.0.0.1:8088/api/health")
+    return True
+
+
+def _maybe_run_seed(
+    *,
+    runtime: Runtime,
+    profile: DeployProfile,
+    llm_mode: LlmAuthMode,
+    oauth_path: Path,
+    admin_email: str,
+    admin_password: str,
+    compose_started: bool,
+    skip_seed: bool,
+) -> bool:
+    if skip_seed:
+        print("\n  ○ Seed übersprungen (--skip-seed).")
+        return False
+
+    print("\n=== Seed (Kunden + Admin) ===\n")
+
+    if runtime == "docker":
+        if not compose_started:
+            print("  ⚠ Stack nicht gestartet — Seed manuell nach ./scripts/start.sh:")
+            print(
+                f"    SEED_ADMIN_PASSWORD='…' docker compose exec -T api "
+                f"python scripts/seed_setup.py --profile {profile} --email {admin_email}"
+            )
+            return False
+
+        env = _compose_env(profile, llm_mode, oauth_path)
+        env["SEED_ADMIN_EMAIL"] = admin_email
+        env["SEED_ADMIN_PASSWORD"] = admin_password
+        cmd = [
+            "docker",
+            "compose",
+            *_compose_file_args(profile, llm_mode),
+            "exec",
+            "-T",
+            "api",
+            "python",
+            "scripts/seed_setup.py",
+            "--profile",
+            profile,
+            "--email",
+            admin_email,
+        ]
+        print(f"  → Admin {admin_email} anlegen …")
+        from docker_preflight import run_with_docker_session
+
+        result = run_with_docker_session(cmd, cwd=ROOT, env=env)
+        if result.returncode != 0:
+            print("  ✗ Seed fehlgeschlagen.")
+            print(
+                f"  Manuell: SEED_ADMIN_PASSWORD='…' {_format_compose_hint(cmd, env)}"
+            )
+            return False
+        print(f"  ✓ Login: {admin_email}")
+        return True
+
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from seed_setup import run_seed
+
+    run_seed(profile=profile, email=admin_email, password=admin_password)
+    print(f"  ✓ Login: {admin_email}")
+    return True
 
 
 def _compose_start_hint(profile: DeployProfile, llm_mode: LlmAuthMode, oauth_path: Path) -> str:
-    cmd = ["docker", "compose", "-f", "docker-compose.yml"]
-    if profile == "prod":
-        cmd.extend(["-f", "docker-compose.prod.yml"])
-    elif llm_mode == "chatgpt_oauth":
-        cmd.extend(["-f", "docker-compose.oauth.yml"])
-    cmd.extend(["up", "-d", "--build"])
+    cmd = ["docker", "compose", *_compose_file_args(profile, llm_mode), "up", "-d", "--build"]
     prefix = ""
     if profile != "prod" and llm_mode == "chatgpt_oauth":
         prefix = f"OAUTH_AUTH_HOST_PATH={shlex.quote(str(oauth_path.resolve()))} "
@@ -431,6 +530,8 @@ def _print_next_steps(
     runtime: Runtime,
     llm_mode: LlmAuthMode,
     oauth_path: Path,
+    admin_email: str,
+    seeded: bool,
 ) -> None:
     print("\n=== Fertig ===\n")
     print("Nächste Schritte:")
@@ -442,13 +543,19 @@ def _print_next_steps(
         print("  • Health:       curl http://127.0.0.1:8088/api/health")
         print("  • Logs:         docker compose logs -f api")
 
+        if seeded:
+            print(f"  • Login:        {admin_email} + dein Setup-Passwort")
+        else:
+            print(
+                "  • Seed:         SEED_ADMIN_PASSWORD='…' docker compose exec -T api "
+                f"python scripts/seed_setup.py --profile {profile} --email {admin_email}"
+            )
+
         if profile == "prod":
-            print("  • Prod-Seed:    docker compose -f docker-compose.yml -f docker-compose.prod.yml exec api \\")
-            print("                    python scripts/seed_production.py")
             print("\n  Produktion: Reverse-Proxy (Caddy/nginx) vor Port 8088, SESSION_COOKIE_SECURE=true.")
         else:
-            print("  • Demo-Seed:    docker compose exec api python scripts/seed_data.py")
-            print("\n  Entwicklung: HTTP auf :8088 — HTTPS/Prod-Overlay erst bei Server-Deploy.")
+            print("\n  Entwicklung: HTTP auf :8088 — optional Demo-KB:")
+            print("    docker compose exec api python scripts/seed_kb.py")
 
         print("  • Updates:      ./scripts/update.sh  (nach git pull)")
     else:
@@ -496,6 +603,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--skip-oauth-login", action="store_true", help="OAuth nur in .env eintragen")
     parser.add_argument("--skip-docker-check", action="store_true")
+    parser.add_argument("--skip-seed", action="store_true", help="Keinen Admin-Nutzer anlegen")
+    parser.add_argument(
+        "--admin-email",
+        default=None,
+        help=f"Admin-Login (Default: {DEFAULT_ADMIN_EMAIL})",
+    )
+    parser.add_argument(
+        "--admin-password",
+        default=None,
+        help="Admin-Passwort (non-interactive; sonst SEED_ADMIN_PASSWORD)",
+    )
     parser.add_argument(
         "--install-docker",
         action="store_true",
@@ -561,8 +679,14 @@ def main() -> None:
     lines = _ensure_session_secret(lines)
     _write_env(lines)
 
+    admin_email, admin_password = _prompt_admin_credentials(
+        interactive=not args.non_interactive,
+        admin_email=args.admin_email,
+        admin_password=args.admin_password,
+    )
+
     start: bool | None = True if args.start else False if args.no_start else None
-    _maybe_start_compose(
+    compose_started = _maybe_start_compose(
         start=start,
         runtime=runtime,
         profile=profile,
@@ -570,11 +694,23 @@ def main() -> None:
         oauth_path=oauth_path,
         docker_status=docker_status,
     )
+    seeded = _maybe_run_seed(
+        runtime=runtime,
+        profile=profile,
+        llm_mode=llm_mode,
+        oauth_path=oauth_path,
+        admin_email=admin_email,
+        admin_password=admin_password,
+        compose_started=compose_started,
+        skip_seed=args.skip_seed,
+    )
     _print_next_steps(
         profile=profile,
         runtime=runtime,
         llm_mode=llm_mode,
         oauth_path=oauth_path,
+        admin_email=admin_email,
+        seeded=seeded,
     )
 
 
