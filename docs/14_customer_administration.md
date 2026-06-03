@@ -25,7 +25,7 @@ Regel laut Spec: nur `[a-z0-9_-]+`, keine Umlaute/Leerzeichen.
 
 ### PM-Entscheid (2026-06-02, FINAL)
 
-Es gelten die **internen Kürzel** als Slug (lowercase). Slugs sind **final und permanent**:
+Es gelten die **internen Kürzel** als Slug (lowercase). Slugs können in der Admin-Oberfläche nachträglich geändert werden (siehe §4.2):
 
 | # | Anzeigename | `customer_id` (final) | Collection |
 |---|---|---|---|
@@ -92,10 +92,25 @@ Admin legt Kunden an (Slug + Anzeigename)
 - Keine Nutzer-Zuordnung — **ohne** `user_customers` → 403 / leere Kundenliste
 - Keine Qdrant-Collection — erst bei erster erfolgreicher Ingestion
 
-### 4.2 Slug-Wechsel nachträglich
+### 4.2 Slug-Wechsel (Kürzel umbenennen) nachträglich
 
-**Praktisch unmöglich ohne Migration:** `customer_id` ist Primary Key, referenziert in `documents`, `chunks`, Qdrant-Payload und Collection-Name.  
-→ Slug beim Anlegen **final** klären (PM + Fachbereich).
+Wird unterstützt über die Kunden-Administration (Admin-UI + `PATCH /api/admin/customers/{id}` mit `{"id": "neues-kuerzel", "name": "..."}`).
+
+Die zentrale Funktion `rename_tenant_customer` (in `customers.py`) übernimmt die komplette Umdrahtung **atomar** (soweit möglich):
+
+- SQLite: neue `customers`-Row mit neuem PK, alle abhängigen Tabellen (`documents`, `chunks`, `user_customers`, `chat_sessions`, `system_prompts` inkl. Scope-PK bei per-Kunde-Prompts) werden umgeschrieben, alte Row gelöscht.
+- Qdrant: Collection `kb_{alt}` → Daten in `kb_{neu}` kopiert (inkl. Payload-Update `customer_id`), alte Collection entfernt (via `copy_collection` + `delete_collection` im VectorStore).
+- Uploads: `data/uploads/{alt}/` → `{neu}/` (Best-Effort; bei Fehler Warnung + manuelle Nacharbeit möglich).
+- Sessions: aktive `customer_id` im Admin-Kontext wird mitgeführt; fremde Nutzer-Sessions mit altem Slug werden beim nächsten Zugriff automatisch bereinigt (Stale-Clear in `get_current_customer`).
+
+**Risiken / Hinweise:**
+- Bei sehr großen KBs (viele Punkte) ist der Kopiervorgang in Qdrant zeitintensiv (scroll + upsert).
+- Gleichzeitig aktive Nutzer mit dem umbenannten Kunden in der Session erhalten 403 und müssen den Kunden neu wählen (Dropdown zeigt neuen Slug).
+- Vor Rename: idealerweise Backup von `./data/` und Qdrant-Volume.
+- Globaler Kunde (`global`) kann nicht umbenannt werden.
+- ID-Format bleibt `[a-z0-9_-]+`, Kollisionen werden abgelehnt.
+
+→ Slug muss nicht mehr „final“ beim Anlegen sein; Änderungen sind aber ein administrativer Eingriff mit sichtbaren Seiteneffekten für laufende Sessions.
 
 ### 4.3 Kunde „löschen“
 

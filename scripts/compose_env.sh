@@ -1,5 +1,27 @@
 #!/usr/bin/env bash
-# Shared docker compose file selection from ./.env (sourced by start.sh / update.sh).
+# Shared docker compose file selection from ./.env (sourced by start.sh / update.sh / stop.sh).
+
+_docker_group_in_session() {
+  local gid
+  gid="$(getent group docker 2>/dev/null | cut -d: -f3)" || return 1
+  [[ " $(id -G) " == *" ${gid} "* ]]
+}
+
+# Run docker compose with sg docker when user is in group but session is stale (common after install).
+compose_run() {
+  if _docker_group_in_session || [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    "${COMPOSE[@]}" "$@"
+    return
+  fi
+  if id -nG | grep -qw docker && command -v sg >/dev/null 2>&1; then
+    local inner
+    inner=$(printf '%q ' "${COMPOSE[@]}" "$@")
+    sg docker -c "cd $(printf '%q' "$PWD") && ${inner% }"
+    return
+  fi
+  "${COMPOSE[@]}" "$@"
+}
+
 compose_env() {
   COMPOSE=(docker compose -f docker-compose.yml)
   local profile="${DEPLOY_PROFILE:-}"

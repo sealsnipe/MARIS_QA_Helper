@@ -29,6 +29,10 @@ class VectorStore(Protocol):
 
     def delete_document(self, customer_id: str, document_id: str) -> None: ...
 
+    def copy_collection(self, old_customer_id: str, new_customer_id: str) -> None: ...
+    def delete_collection(self, customer_id: str) -> None: ...
+    def rename_collection(self, old_customer_id: str, new_customer_id: str) -> None: ...
+
 
 class QdrantVectorStore:
     def __init__(self, url: str, collection_prefix: str, vector_dim: int) -> None:
@@ -102,6 +106,59 @@ class QdrantVectorStore:
             ),
         )
 
+    def copy_collection(self, old_customer_id: str, new_customer_id: str) -> None:
+        old_name = self._name(old_customer_id)
+        new_name = self._name(new_customer_id)
+        if not self._client.collection_exists(old_name):
+            # ensure target exists empty (for consistency)
+            self.ensure_collection(new_customer_id)
+            return
+        if self._client.collection_exists(new_name):
+            # cleanup stale from previous partial rename
+            self._client.delete_collection(new_name)
+        # we know our dim; recreate with same params as we use everywhere
+        self._client.create_collection(
+            collection_name=new_name,
+            vectors_config=qmodels.VectorParams(size=self._vector_dim, distance=qmodels.Distance.COSINE),
+        )
+        offset: Any = None
+        batch_size = 256
+        while True:
+            records, next_offset = self._client.scroll(
+                collection_name=old_name,
+                offset=offset,
+                limit=batch_size,
+                with_payload=True,
+                with_vectors=True,
+            )
+            if not records:
+                break
+            new_points: list[qmodels.PointStruct] = []
+            for rec in records:
+                payload = dict(rec.payload or {})
+                payload["customer_id"] = new_customer_id
+                vec = rec.vector
+                if isinstance(vec, dict):
+                    # named vectors; take first (we use single unnamed)
+                    vec = next(iter(vec.values())) if vec else []
+                new_points.append(
+                    qmodels.PointStruct(id=rec.id, vector=vec, payload=payload)
+                )
+            if new_points:
+                self._client.upsert(collection_name=new_name, points=new_points)
+            offset = next_offset
+            if offset is None:
+                break
+
+    def delete_collection(self, customer_id: str) -> None:
+        name = self._name(customer_id)
+        if self._client.collection_exists(name):
+            self._client.delete_collection(name)
+
+    def rename_collection(self, old_customer_id: str, new_customer_id: str) -> None:
+        self.copy_collection(old_customer_id, new_customer_id)
+        self.delete_collection(old_customer_id)
+
 
 class InMemoryVectorStore:
     """Test double: separate dict per collection."""
@@ -150,6 +207,29 @@ class InMemoryVectorStore:
         for point_id, (_, payload) in list(bucket.items()):
             if payload.get("document_id") == document_id:
                 del bucket[point_id]
+
+    def copy_collection(self, old_customer_id: str, new_customer_id: str) -> None:
+        old_name = collection_name(old_customer_id)
+        new_name = collection_name(new_customer_id)
+        if old_name not in self.collections:
+            self.collections.setdefault(new_name, {})
+            return
+        if new_name in self.collections:
+            del self.collections[new_name]
+        bucket = self.collections.pop(old_name, {})
+        for pid, (vec, payload) in list(bucket.items()):
+            p = dict(payload or {})
+            p["customer_id"] = new_customer_id
+            bucket[pid] = (vec, p)
+        self.collections[new_name] = bucket
+
+    def delete_collection(self, customer_id: str) -> None:
+        name = collection_name(customer_id)
+        self.collections.pop(name, None)
+
+    def rename_collection(self, old_customer_id: str, new_customer_id: str) -> None:
+        self.copy_collection(old_customer_id, new_customer_id)
+        # old removed inside copy
 
 
 _vector_store: VectorStore | None = None

@@ -635,7 +635,10 @@
         const row = document.createElement("tr");
         row.dataset.customerId = customer.id;
         row.innerHTML = `
-          <td><code>${escapeHtml(customer.id)}</code></td>
+          <td>
+            <code class="customer-id-display">${escapeHtml(customer.id)}</code>
+            <input type="text" class="customer-id-input hidden" value="${escapeHtml(customer.id)}" maxlength="64">
+          </td>
           <td>
             <span class="customer-name-display">${escapeHtml(customer.name)}</span>
             <input type="text" class="customer-name-input hidden" value="${escapeHtml(customer.name)}" maxlength="200">
@@ -664,6 +667,8 @@
       const row = target.closest("tr");
       if (!row) return;
       const customerId = row.dataset.customerId;
+      const idDisplay = row.querySelector(".customer-id-display");
+      const idInput = row.querySelector(".customer-id-input");
       const nameDisplay = row.querySelector(".customer-name-display");
       const nameInput = row.querySelector(".customer-name-input");
       const editBtn = row.querySelector(".customer-edit-btn");
@@ -671,19 +676,27 @@
       const cancelBtn = row.querySelector(".customer-cancel-btn");
 
       if (target.classList.contains("customer-edit-btn")) {
+        idDisplay?.classList.add("hidden");
+        idInput?.classList.remove("hidden");
         nameDisplay?.classList.add("hidden");
         nameInput?.classList.remove("hidden");
         editBtn?.classList.add("hidden");
         saveBtn?.classList.remove("hidden");
         cancelBtn?.classList.remove("hidden");
-        if (nameInput instanceof HTMLInputElement) nameInput.focus();
+        if (idInput instanceof HTMLInputElement) idInput.focus();
+        else if (nameInput instanceof HTMLInputElement) nameInput.focus();
         return;
       }
 
       if (target.classList.contains("customer-cancel-btn")) {
+        if (idInput instanceof HTMLInputElement && idDisplay) {
+          idInput.value = idDisplay.textContent || "";
+        }
         if (nameInput instanceof HTMLInputElement && nameDisplay) {
           nameInput.value = nameDisplay.textContent || "";
         }
+        idDisplay?.classList.remove("hidden");
+        idInput?.classList.add("hidden");
         nameDisplay?.classList.remove("hidden");
         nameInput?.classList.add("hidden");
         editBtn?.classList.remove("hidden");
@@ -693,26 +706,53 @@
       }
 
       if (target.classList.contains("customer-save-btn")) {
+        const nextIdRaw = idInput instanceof HTMLInputElement ? idInput.value.trim() : "";
+        const nextId = (nextIdRaw || customerId).toLowerCase();
         const nextName = nameInput instanceof HTMLInputElement ? nameInput.value.trim() : "";
-        if (!nextName) {
-          showStatus(listStatus, "Name darf nicht leer sein.", "error");
+        if (!nextId || !nextName) {
+          showStatus(listStatus, "ID und Name sind Pflicht.", "error");
           return;
         }
-        showStatus(listStatus, "Speichern…");
+        if (!/^[a-z0-9_-]+$/.test(nextId)) {
+          showStatus(listStatus, "Ungültige Kunden-ID (nur a-z, 0-9, -, _).", "error");
+          return;
+        }
+        const isSlugChange = nextId !== customerId;
+        const progressMsg = isSlugChange
+          ? "Speichern + migriere KB (Qdrant) … kann bei großen KBs etwas dauern."
+          : "Speichern…";
+        showStatus(listStatus, progressMsg);
         try {
+          const body = { name: nextName };
+          if (isSlugChange) body.id = nextId;
           const data = await api(`/api/admin/customers/${encodeURIComponent(customerId)}`, {
             method: "PATCH",
-            body: JSON.stringify({ name: nextName }),
+            body: JSON.stringify(body),
           });
-          if (nameDisplay) nameDisplay.textContent = data.customer.name;
-          nameDisplay?.classList.remove("hidden");
-          nameInput?.classList.add("hidden");
-          editBtn?.classList.remove("hidden");
-          saveBtn?.classList.add("hidden");
-          cancelBtn?.classList.add("hidden");
-          showStatus(listStatus, "Kunde gespeichert.", "ok");
-        } catch (_error) {
-          showStatus(listStatus, "Speichern fehlgeschlagen.", "error");
+          const returned = data.customer;
+          let okMsg = "Kunde gespeichert.";
+          if (isSlugChange) {
+            okMsg = `Kunde umbenannt zu „${returned.id}“. KB (Qdrant-Collection kb_${returned.id}) erfolgreich migriert.`;
+          }
+          showStatus(listStatus, okMsg, "ok");
+          // Full refresh so the updated list (new slug, new name) is visible — clear visual confirmation.
+          await loadCustomers();
+        } catch (err) {
+          const code = err && err.code;
+          let msg = "Speichern fehlgeschlagen.";
+          if (code === "customer_exists") {
+            msg = "Kunden-ID existiert bereits.";
+          } else if (code === "invalid_customer_id") {
+            msg = "Ungültige Kunden-ID (nur a-z, 0-9, -, _).";
+          } else if (code === "vector_store_failed") {
+            msg = "KB-Migration (Qdrant) fehlgeschlagen." + (err.detail ? " " + err.detail : " Siehe Logs / Qdrant.");
+          } else if (code === "rename_failed") {
+            msg = "Daten-Migration fehlgeschlagen." + (err.detail ? " " + err.detail : "");
+          } else if (err && err.detail) {
+            msg = "Speichern fehlgeschlagen: " + err.detail;
+          }
+          showStatus(listStatus, msg, "error");
+          // leave edit mode open on error so the user can see/correct the attempted values
         }
         return;
       }

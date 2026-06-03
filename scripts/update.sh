@@ -12,7 +12,7 @@ echo "→ git pull"
 git pull --ff-only
 
 echo "→ rebuild & restart"
-"${COMPOSE[@]}" up -d --build
+compose_run up -d --build
 
 echo "→ health"
 sleep 2

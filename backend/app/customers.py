@@ -1,9 +1,14 @@
-import re
+from __future__ import annotations
 
-from sqlalchemy import select
+import logging
+import re
+import shutil
+from pathlib import Path
+
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from app.models import Customer, User, UserCustomer, utc_now_iso
+from app.models import Customer, SystemPrompt, User, UserCustomer, utc_now_iso
 
 CUSTOMER_SLUG_PATTERN = re.compile(r"^[a-z0-9_-]+$")
 
@@ -141,6 +146,141 @@ def update_tenant_customer(db: Session, customer_id: str, name: str) -> Customer
     row.name = display_name
     db.commit()
     db.refresh(row)
+    return row
+
+
+def rename_tenant_customer(
+    db: Session,
+    old_customer_id: str,
+    new_customer_id: str,
+    *,
+    vector_store: VectorStore | None = None,
+) -> Customer:
+    """Rename a tenant customer (Kürzel/slug).
+
+    This is the central, stable place that rewires KB, Qdrant, uploads, chats, prompts, etc.
+    - old row in customers is removed, new PK row created
+    - all dependent rows (documents, chunks, user_customers, chat_sessions, system_prompts) updated to new slug
+    - per-customer system prompt scope (if any) is moved
+    - Qdrant: points copied to kb_{new} (payload customer_id updated), old collection removed
+    - FS uploads: data/uploads/{old}/ -> {new}/ (best effort; warn on failure)
+    """
+    old_slug = old_customer_id.strip().lower()
+    new_slug = new_customer_id.strip().lower()
+
+    if is_global_customer(old_slug) or is_global_customer(new_slug):
+        raise CustomerAdminError("forbidden_customer", status_code=403)
+    if not validate_customer_slug(new_slug):
+        raise CustomerAdminError("invalid_customer_id")
+    if old_slug == new_slug:
+        row = db.get(Customer, old_slug)
+        if row is None or not is_customer_active(row):
+            raise CustomerAdminError("not_found", status_code=404)
+        return row
+    if db.get(Customer, new_slug) is not None:
+        raise CustomerAdminError("customer_exists", status_code=409)
+
+    old_row = db.get(Customer, old_slug)
+    if old_row is None or not is_customer_active(old_row):
+        raise CustomerAdminError("not_found", status_code=404)
+
+    from app.qdrant_store import VectorStore, get_vector_store
+
+    store: VectorStore = vector_store or get_vector_store()
+
+    # Stage 1: copy vector data to new collection (keep old until after sqlite success)
+    try:
+        store.copy_collection(old_slug, new_slug)
+    except Exception as exc:
+        raise CustomerAdminError("vector_store_failed", status_code=500, detail=f"copy failed: {exc}") from exc
+
+    # Stage 2: SQLite identity move (new PK row, re-point children, delete old row)
+    try:
+        # create replacement customer row (preserve created_at, active, name)
+        new_row = Customer(
+            id=new_slug,
+            name=old_row.name,
+            active=old_row.active,
+            created_at=old_row.created_at,
+        )
+        db.add(new_row)
+        db.flush()
+
+        # re-point all references (use raw UPDATE for multi-table + to avoid stale FK during delete)
+        params = {"new": new_slug, "old": old_slug}
+
+        db.execute(text("UPDATE user_customers SET customer_id = :new WHERE customer_id = :old"), params)
+        db.execute(text("UPDATE documents SET customer_id = :new WHERE customer_id = :old"), params)
+        db.execute(text("UPDATE chunks SET customer_id = :new WHERE customer_id = :old"), params)
+        db.execute(text("UPDATE chat_sessions SET customer_id = :new WHERE customer_id = :old"), params)
+
+        # system_prompts: move PK scope if it matches the slug (per-cust prompt), plus any FK
+        prompt_row = db.get(SystemPrompt, old_slug)
+        if prompt_row is not None:
+            new_prompt = SystemPrompt(
+                scope=new_slug,
+                customer_id=new_slug,
+                content=prompt_row.content,
+                updated_at=prompt_row.updated_at,
+                updated_by=prompt_row.updated_by,
+            )
+            db.add(new_prompt)
+            db.delete(prompt_row)
+        # catch any other prompt rows that might reference via customer_id column
+        db.execute(
+            text("UPDATE system_prompts SET customer_id = :new WHERE customer_id = :old"),
+            params,
+        )
+
+        # now remove the old identity
+        db.delete(old_row)
+
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        # best-effort: remove the partially created target collection to allow retry
+        try:
+            store.delete_collection(new_slug)
+        except Exception:
+            pass
+        raise CustomerAdminError("rename_failed", status_code=500, detail=str(exc)) from exc
+
+    # Stage 3: now that sqlite is on new slug, remove old qdrant collection
+    try:
+        store.delete_collection(old_slug)
+    except Exception:
+        # non-fatal; orphan collection can be cleaned manually in qdrant ui
+        pass
+
+    # Stage 4: move upload directory (best effort)
+    try:
+        from app.upload import _upload_root
+
+        root = _upload_root()
+        old_dir = root / old_slug
+        new_dir = root / new_slug
+        if old_dir.exists() and old_dir.is_dir():
+            if new_dir.exists():
+                # target exists (shouldn't for fresh rename) — leave as-is, admin can merge if needed
+                pass
+            else:
+                new_dir.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(old_dir), str(new_dir))
+    except Exception as fs_exc:
+        # non-fatal for KB consistency; uploads are secondary
+        # caller / UI can surface a warning
+        logging.getLogger(__name__).warning(
+            "customer rename: failed to move uploads %s -> %s : %s",
+            old_slug,
+            new_slug,
+            fs_exc,
+        )
+
+    # return fresh row
+    row = db.get(Customer, new_slug)
+    if row is None:
+        # should not happen
+        raise CustomerAdminError("not_found", status_code=404)
     return row
 
 

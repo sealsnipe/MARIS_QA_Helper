@@ -2,7 +2,7 @@ from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 
 from app.auth import NotAuthenticatedError, get_current_user
-from app.customers import get_customer, user_has_customer
+from app.customers import get_customer, is_customer_active, user_has_customer
 from app.db import get_db
 from app.models import Customer, User
 
@@ -25,10 +25,12 @@ async def get_current_customer(
         raise ForbiddenCustomerError()
 
     if not user_has_customer(db, user.id, customer_id):
+        request.session.pop("customer_id", None)
         raise ForbiddenCustomerError()
 
     customer = get_customer(db, customer_id)
-    if customer is None:
+    if customer is None or not is_customer_active(customer):
+        request.session.pop("customer_id", None)
         raise ForbiddenCustomerError()
 
     return customer

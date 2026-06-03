@@ -9,7 +9,7 @@ source "$(dirname "$0")/compose_env.sh"
 compose_env
 
 echo "→ docker compose up (${COMPOSE[*]})"
-"${COMPOSE[@]}" up -d --build
+compose_run up -d --build
 
 echo "→ health"
 sleep 2

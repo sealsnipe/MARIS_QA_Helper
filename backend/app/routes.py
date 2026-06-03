@@ -37,6 +37,7 @@ from app.customers import (
     list_customers_for_nav,
     list_customers_for_user,
     list_tenant_customers,
+    rename_tenant_customer,
     update_tenant_customer,
     user_has_customer,
 )
@@ -83,7 +84,8 @@ class AdminCustomerCreateRequest(BaseModel):
 
 
 class AdminCustomerUpdateRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
+    id: str | None = Field(default=None, min_length=1, max_length=64)
+    name: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 def _page_context(
@@ -533,11 +535,30 @@ def api_admin_create_customer(
 def api_admin_update_customer(
     customer_id: str,
     payload: AdminCustomerUpdateRequest,
+    request: Request,
     _admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    customer = update_tenant_customer(db, customer_id, payload.name)
-    return {"customer": customer_to_dict(customer)}
+    current_id = customer_id
+    original_active = request.session.get("customer_id")
+    # rename (id change) first if requested and different
+    if payload.id is not None:
+        new_slug = payload.id.strip().lower()
+        if new_slug != customer_id:
+            renamed = rename_tenant_customer(db, customer_id, new_slug)
+            current_id = renamed.id
+            # keep this admin's session consistent if they had the old slug active
+            if original_active == customer_id:
+                request.session["customer_id"] = current_id
+    # then name (if provided)
+    if payload.name is not None:
+        updated = update_tenant_customer(db, current_id, payload.name)
+        return {"customer": customer_to_dict(updated)}
+    # id-only change or no-op
+    cust = get_customer(db, current_id) or db.get(Customer, current_id)
+    if cust is None:
+        raise CustomerNotFoundError()
+    return {"customer": customer_to_dict(cust)}
 
 
 @router.delete("/api/admin/customers/{customer_id}")

@@ -32,8 +32,8 @@ CREATE TABLE customers (
   created_at TEXT NOT NULL
 );
 ```
-- `id` ist der **Slug** und zugleich `customer_id`; er bildet den Collection-Namen
-  `kb_{id}`. Erlaubt: `[a-z0-9_-]+` (validieren — nie aus freiem Client-Input ableiten).
+- `id` ist der **Slug** (Kürzel) und zugleich `customer_id`; er bildet den Collection-Namen
+  `kb_{id}`. Erlaubt: `[a-z0-9_-]+` (validieren). Der Slug kann über die Admin-Kundenverwaltung geändert werden (dann werden alle Referenzen, Qdrant-Collection `kb_{neu}` und Upload-Pfade migriert — siehe `customers.py:rename_tenant_customer`).
 
 ### 1.3 `user_customers` (n:m)
 ```sql
