@@ -39,7 +39,7 @@ app.add_middleware(
     session_cookie="session",
     max_age=60 * 60 * 24 * 7,
     same_site="lax",
-    https_only=False,
+    https_only=settings.SESSION_COOKIE_SECURE,
 )
 app.include_router(router)
 

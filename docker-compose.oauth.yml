@@ -1,0 +1,11 @@
+# OAuth overlay: mount host ChatGPT auth into the API container (read-only).
+# Usage:
+#   OAUTH_AUTH_HOST_PATH=$HOME/.oauth_codex/auth.json \
+#     docker compose -f docker-compose.yml -f docker-compose.oauth.yml up -d
+services:
+  api:
+    volumes:
+      - ${OAUTH_AUTH_HOST_PATH:?Set OAUTH_AUTH_HOST_PATH to host auth.json path}:/root/.oauth_codex/auth.json:ro
+    environment:
+      LLM_AUTH_MODE: chatgpt_oauth
+      CODEX_OAUTH_AUTH_PATH: /root/.oauth_codex/auth.json

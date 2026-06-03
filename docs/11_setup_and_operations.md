@@ -16,7 +16,10 @@ Ubuntu (WSL2); das Projekt liegt im Linux-Dateisystem (`~/projects/SUP_QA_Helper
 - Optional: VS Code Remote-WSL für Editor-Komfort.
 
 ## 2. Voraussetzungen
-- Docker + Docker Compose, gültiger OpenAI API-Key.
+- Docker + Docker Compose (Plugin v2), gültiger OpenAI API-Key.
+- **Automatisch:** `./setup.sh` prüft Docker und kann auf Ubuntu/Debian per apt installieren
+  (`scripts/docker_preflight.py --install`, im Wizard interaktiv oder `--install-docker`).
+- **WSL:** Docker Desktop WSL-Integration (Dev) oder Engine-Install im Wizard.
 - (Für Tests ohne Container: Python 3.12.)
 
 ## 3. Environment-Variablen
@@ -35,7 +38,9 @@ Ubuntu (WSL2); das Projekt liegt im Linux-Dateisystem (`~/projects/SUP_QA_Helper
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | | Embeddings |
 | `EMBEDDING_DIM` | `1536` | | Vektordimension (muss zur Collection passen!) |
 | `CHAT_MODEL` | `gpt-4.1-mini` | | Chat (Fallback: `gpt-4o-mini`) |
-| `TOP_K_DEFAULT` | `6` | | Treffer pro Suche |
+| `LLM_AUTH_MODE` | `chatgpt_oauth` | | `api_key` oder `chatgpt_oauth` |
+| `SESSION_COOKIE_SECURE` | `false` | | `true` hinter HTTPS/TLS-Proxy |
+| `TOP_K_DEFAULT` | `4` | | Treffer pro Suche |
 | `MIN_SCORE_DEFAULT` | `0.25` | | Score-Schwelle (empirisch tunen) |
 | `MAX_TOOL_ROUNDS` | `4` | | Agent-Loop-Begrenzung |
 | `MAX_UPLOAD_MB` | `30` | | Upload-Limit |
@@ -78,12 +83,14 @@ cd ~/projects/SUP_QA_Helper
 
 Ablauf:
 1. Voraussetzungen prüfen (Python, Docker)
-2. `.env` aus `.env.example` anlegen
-3. **OpenAI API-Key** für Embeddings (immer Pflicht, Platform-Billing)
-4. **Chat-Modus wählen:**
-   - **API-Key** — gleicher Key für Chat (`LLM_AUTH_MODE=api_key`, für Produktion/Docker)
-   - **ChatGPT OAuth** — Browser-Login mit Einmalcode (`LLM_AUTH_MODE=chatgpt_oauth`, Dev/WSL)
-5. Optional: `docker compose up --build -d`
+2. **Einsatzumgebung:** Entwicklung oder Produktion (HTTPS)
+3. **Start-Art:** Docker Compose oder nur `.env` (uvicorn lokal)
+4. **OpenAI API-Key** für Embeddings (immer Pflicht)
+5. **Chat-Modus:** API-Key (Produktion) oder ChatGPT OAuth (Dev/WSL, Browser-Login)
+6. `.env` schreiben (`SESSION_COOKIE_SECURE`, `QDRANT_URL` passend zur Wahl)
+7. Optional: `docker compose` mit passendem Overlay starten
+   - Produktion: `-f docker-compose.prod.yml`
+   - OAuth in Docker: `-f docker-compose.oauth.yml` + `OAUTH_AUTH_HOST_PATH`
 
 **Manuell:**
 
@@ -112,13 +119,17 @@ docker compose exec api python scripts/seed_kb.py                   # Demo-Wisse
 ```bash
 # Voraussetzung: Docker Engine + Compose-Plugin auf dem Server
 git clone <repo> ~/SUP_QA_Helper && cd ~/SUP_QA_Helper
-cp .env.example .env       # OPENAI_API_KEY, SESSION_SECRET setzen
-docker compose up -d --build
+python3 scripts/setup.py --non-interactive \
+  --openai-key "$OPENAI_API_KEY" \
+  --llm-auth-mode api_key \
+  --no-start
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 # Seed wie in §6
 ```
 - **Autostart:** `restart: unless-stopped` (compose) oder `systemd`-Unit, die `docker compose up -d` fährt.
-- **TLS/Domain (empfohlen produktiv):** Reverse-Proxy (Caddy/nginx) vor Port 8088, dann
-  `secure`-Cookie aktivieren. Firewall: nur Proxy-Ports (80/443) öffnen.
+- **TLS/Domain (empfohlen produktiv):** Reverse-Proxy (Caddy/nginx) vor Port 8088; dann
+  `SESSION_COOKIE_SECURE=true` (bereits in `docker-compose.prod.yml`).
+- **OAuth in Docker (Dev):** `docker-compose.oauth.yml` mit `OAUTH_AUTH_HOST_PATH` — siehe Root-`README.md`.
 - Da Dev in Ubuntu erfolgt, ist der Server-Deploy im Kern derselbe `docker compose up`.
 
 ## 8. Betrieb / häufige Aufgaben
@@ -138,7 +149,7 @@ docker compose up -d --build
 2. **`SESSION_SECRET`** generieren + setzen.
 3. **Modellverfügbarkeit** prüfen; Fallback `CHAT_MODEL=gpt-4o-mini`.
 4. **Smoke** mit echtem Key (nach M5): Seed-KB, echte Frage, Quellen prüfen.
-5. **HTTPS/`secure`-Cookie** bei Server-Betrieb hinter TLS.
+5. **HTTPS/`SESSION_COOKIE_SECURE=true`** bei Server-Betrieb hinter TLS (`docker-compose.prod.yml`).
 
 > Produktionsreife Secrets-Behandlung (Manager statt `.env`, Rotation) ist Roadmap (`12`, Auth & Compliance).
 
@@ -155,6 +166,6 @@ docker compose up -d --build
 | Login klappt nie | Nutzer/Kunde nicht geseedet; E-Mail-Case (lower) |
 
 ## 11. Sicherheits-Hinweise Betrieb
-- `.env` nie committen (`.gitignore`). Produktiv TLS vorschalten, `secure`-Cookie.
+- `.env` nie committen (`.gitignore`). Produktiv TLS vorschalten, `SESSION_COOKIE_SECURE=true`.
 - Key-Rotation: `OPENAI_API_KEY`/`SESSION_SECRET` rotierbar (invalidiert Sessions — gewollt).
 - `data/uploads/` enthält Originaldateien pro Kunde — Backup/Aufbewahrung beachten.

@@ -1,7 +1,7 @@
 # SUP_QA_Helper — Planungsdokumentation
 
-**Projekt:** SUP_QA_Helper (Support Q&A Helper)
-**Status:** Planung / Pre-Implementation
+**Projekt:** MARIS Q/A Helper (ehem. SUP_QA_Helper)
+**Status:** MVP implementiert — Betrieb & Abnahme
 **Stand:** 2026-06-02
 **Verantwortlich:** Product Owner + Projektleitung + Engineering (eine Rolle, Claude)
 

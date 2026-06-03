@@ -136,7 +136,8 @@ def main() -> None:
         return
 
     _write_env(lines)
-    print("Next: python scripts/smoke_openai.py")
+    print("Next: python3 scripts/setup.py   # full wizard (auth + deploy)")
+    print("      python3 scripts/smoke_openai.py")
 
 
 if __name__ == "__main__":

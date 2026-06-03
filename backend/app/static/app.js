@@ -437,6 +437,14 @@
     const chatInput = document.getElementById("chat-input");
     const chatSubmit = document.getElementById("chat-submit");
     const chatStatus = document.getElementById("chat-status");
+
+    function scrollChatToBottom() {
+      if (!chatLog) return;
+      requestAnimationFrame(() => {
+        chatLog.scrollTop = chatLog.scrollHeight;
+      });
+    }
+
     function appendBubble(role, text, sources = null) {
       const bubble = document.createElement("div");
       bubble.className = `bubble ${role}`;
@@ -452,7 +460,7 @@
       }
 
       chatLog.appendChild(bubble);
-      chatLog.scrollTop = chatLog.scrollHeight;
+      scrollChatToBottom();
       return bubble;
     }
 
@@ -478,6 +486,7 @@
       activeChatId = data.chat.id;
       setActiveChatInUrl(activeChatId);
       renderChatLog(data.messages || []);
+      scrollChatToBottom();
       await refreshChatHistory();
     }
 

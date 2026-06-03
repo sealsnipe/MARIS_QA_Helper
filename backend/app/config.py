@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     CODEX_AUTH_PATH: str = "~/.codex/auth.json"
     CODEX_OAUTH_AUTH_PATH: str = "~/.oauth_codex/auth.json"
     CODEX_BASE_URL: str = "https://chatgpt.com/backend-api/codex"
+    SESSION_COOKIE_SECURE: bool = False
     TOP_K_DEFAULT: int = 4
     MIN_SCORE_DEFAULT: float = 0.25
     MAX_TOOL_ROUNDS: int = 4

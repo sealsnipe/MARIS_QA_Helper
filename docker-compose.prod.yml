@@ -1,0 +1,8 @@
+# Production overlay: TLS behind reverse proxy, API-key chat (no browser OAuth in container).
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+services:
+  api:
+    environment:
+      SESSION_COOKIE_SECURE: "true"
+      LLM_AUTH_MODE: api_key
+      CHAT_MODEL: gpt-4.1-mini

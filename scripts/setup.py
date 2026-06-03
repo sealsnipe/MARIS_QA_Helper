@@ -1,20 +1,26 @@
 #!/usr/bin/env python3
-"""Interactive first-time setup: prerequisites, .env, embeddings key, chat auth (API or OAuth)."""
+"""Interactive first-time setup: env, credentials, deploy profile, Docker start."""
 
 from __future__ import annotations
 
 import argparse
 import getpass
+import os
 import re
 import secrets
+import shlex
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Literal
 
 ROOT = Path(__file__).resolve().parents[1]
 ENV_PATH = ROOT / ".env"
 EXAMPLE_PATH = ROOT / ".env.example"
+COMPOSE_BASE = ROOT / "docker-compose.yml"
+COMPOSE_PROD = ROOT / "docker-compose.prod.yml"
+COMPOSE_OAUTH = ROOT / "docker-compose.oauth.yml"
 DEFAULT_OAUTH_PATH = Path.home() / ".oauth_codex" / "auth.json"
 
 PLACEHOLDER_KEY = "sk-placeholder-replace-me"
@@ -22,6 +28,10 @@ KEY_PATTERN = re.compile(r"^sk-[A-Za-z0-9_-]{10,}$")
 
 CHAT_MODEL_API = "gpt-4.1-mini"
 CHAT_MODEL_OAUTH = "gpt-5.4-mini"
+
+DeployProfile = Literal["dev", "prod"]
+Runtime = Literal["docker", "local"]
+LlmAuthMode = Literal["api_key", "chatgpt_oauth"]
 
 
 def _read_lines(path: Path) -> list[str]:
@@ -96,7 +106,13 @@ def _prompt_choice(question: str, options: list[tuple[str, str]]) -> str:
         print("  Ungültige Auswahl.")
 
 
-def _check_prerequisites(*, skip_docker: bool) -> None:
+def _check_prerequisites(
+    *,
+    skip_docker: bool,
+    runtime: Runtime,
+    interactive: bool,
+    auto_install_docker: bool,
+):
     print("\n=== Voraussetzungen ===\n")
     py = sys.version_info
     if py < (3, 12):
@@ -104,27 +120,30 @@ def _check_prerequisites(*, skip_docker: bool) -> None:
     else:
         print(f"  ✓ Python {py.major}.{py.minor}")
 
+    if runtime == "local":
+        print("  ○ Docker optional (lokaler Start mit uvicorn)")
+        return None
+
     if skip_docker:
         print("  ○ Docker-Check übersprungen")
-        return
+        return None
 
-    if shutil.which("docker"):
-        print("  ✓ docker")
-    else:
-        print("  ⚠ docker nicht gefunden (für Compose-Start nötig)")
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from docker_preflight import check_docker, ensure_docker, print_docker_status
 
-    compose_ok = False
-    if shutil.which("docker"):
-        for cmd in (["docker", "compose", "version"], ["docker-compose", "version"]):
-            try:
-                subprocess.run(cmd, check=True, capture_output=True, text=True)
-                compose_ok = True
-                print(f"  ✓ {' '.join(cmd[:2])}")
-                break
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                continue
-    if not compose_ok:
-        print("  ⚠ docker compose nicht gefunden")
+    status = ensure_docker(
+        interactive=interactive,
+        auto_install=auto_install_docker,
+        skip_install=False,
+    )
+    print_docker_status(status)
+    return status
+
+
+def _require_docker_ready(status) -> None:
+    from docker_preflight import assert_docker_ready
+
+    assert_docker_ready(status, context="Docker Compose Start")
 
 
 def _ensure_env_file() -> list[str]:
@@ -138,7 +157,62 @@ def _ensure_env_file() -> list[str]:
     return _read_lines(ENV_PATH)
 
 
-def _prompt_embedding_key(lines: list[str], *, openai_key: str | None) -> tuple[list[str], str]:
+def _resolve_deploy_profile(args: argparse.Namespace) -> DeployProfile:
+    if args.profile:
+        return args.profile
+    if args.non_interactive:
+        return "prod" if args.production else "dev"
+    return _prompt_choice(
+        "\nEinsatzumgebung?",
+        [
+            ("dev", "Entwicklung — WSL/lokal, HTTP ok"),
+            ("prod", "Produktion — Server hinter HTTPS-Proxy"),
+        ],
+    )
+
+
+def _resolve_runtime(args: argparse.Namespace, profile: DeployProfile) -> Runtime:
+    if args.runtime:
+        return args.runtime
+    if args.non_interactive:
+        return "docker"
+    default_docker = profile == "prod"
+    choice = _prompt_choice(
+        "\nWie starten?",
+        [
+            ("docker", "Docker Compose (api + qdrant) — empfohlen"),
+            ("local", "Nur .env — uvicorn + Qdrant manuell"),
+        ],
+    )
+    return choice  # type: ignore[return-value]
+
+
+def _resolve_llm_mode(args: argparse.Namespace, profile: DeployProfile) -> LlmAuthMode:
+    if args.llm_auth_mode:
+        return args.llm_auth_mode
+    if args.non_interactive:
+        return "api_key" if profile == "prod" else args.llm_auth_mode or "chatgpt_oauth"
+    if profile == "prod":
+        print("\nProduktion: OpenAI API-Key für Chat empfohlen (OAuth im Container ist umständlich).")
+    choice = _prompt_choice(
+        "\nWie soll der Chat-Agent authentifizieren?",
+        [
+            ("chatgpt_oauth", "ChatGPT OAuth — Browser-Login (Codex/Plus, Dev/WSL)"),
+            ("api_key", "OpenAI API-Key — Platform-Billing (Produktion/Docker)"),
+        ],
+    )
+    if profile == "prod" and choice == "chatgpt_oauth":
+        if not _prompt_yes_no("  OAuth in Produktion ist unüblich. Trotzdem OAuth?", default=False):
+            return "api_key"
+    return choice  # type: ignore[return-value]
+
+
+def _prompt_embedding_key(
+    lines: list[str],
+    *,
+    openai_key: str | None,
+    interactive: bool = True,
+) -> tuple[list[str], str]:
     print("\n=== Embeddings (OpenAI API-Key) ===\n")
     print(
         "Für die Wissensdatenbank-Suche werden Vektoren berechnet — dafür ist immer\n"
@@ -153,6 +227,8 @@ def _prompt_embedding_key(lines: list[str], *, openai_key: str | None) -> tuple[
         if _prompt_yes_no(f"Vorhandenen Embedding-Key behalten ({current[:8]}…)?", default=True):
             key = current
     if not key:
+        if not interactive:
+            raise SystemExit("--non-interactive braucht --openai-key")
         while True:
             entered = getpass.getpass("OpenAI API-Key für Embeddings (sk-..., versteckt): ").strip()
             if not entered:
@@ -190,13 +266,13 @@ def _configure_chat_oauth(lines: list[str], *, oauth_path: Path, skip_login: boo
         if oauth_path.exists():
             print(f"  ✓ OAuth-Datei vorhanden: {oauth_path}")
         else:
-            print(f"  ⚠ Keine OAuth-Datei unter {oauth_path} — später: python3 scripts/login_chat_oauth.py")
+            print(f"  ⚠ Keine OAuth-Datei unter {oauth_path}")
+            print("     Später: python3 scripts/login_chat_oauth.py")
         return lines
 
     if oauth_path.exists() and _prompt_yes_no(f"Vorhandene OAuth-Session behalten ({oauth_path})?", default=True):
         return lines
 
-    # Import login flow from sibling script (same repo, no package install needed).
     sys.path.insert(0, str(ROOT / "scripts"))
     try:
         from login_chat_oauth import login_device_code
@@ -213,6 +289,23 @@ def _configure_chat_oauth(lines: list[str], *, oauth_path: Path, skip_login: boo
     return lines
 
 
+def _configure_runtime(lines: list[str], *, runtime: Runtime) -> list[str]:
+    if runtime == "local":
+        lines = _upsert(lines, "QDRANT_URL", "http://127.0.0.1:6333")
+        print("\n  QDRANT_URL → http://127.0.0.1:6333 (lokal)")
+    else:
+        lines = _upsert(lines, "QDRANT_URL", "http://qdrant:6333")
+    return lines
+
+
+def _configure_deploy(lines: list[str], *, profile: DeployProfile) -> list[str]:
+    secure = "true" if profile == "prod" else "false"
+    lines = _upsert(lines, "SESSION_COOKIE_SECURE", secure)
+    if profile == "prod":
+        print("\n  SESSION_COOKIE_SECURE → true (HTTPS-Proxy vorausgesetzt)")
+    return lines
+
+
 def _ensure_session_secret(lines: list[str]) -> list[str]:
     current = _get_value(lines, "SESSION_SECRET")
     weak = not current or "change-me" in current or len(current) < 32
@@ -222,49 +315,148 @@ def _ensure_session_secret(lines: list[str]) -> list[str]:
     return lines
 
 
-def _maybe_start_compose(*, start: bool | None) -> None:
+def _compose_command(profile: DeployProfile, llm_mode: LlmAuthMode, oauth_path: Path) -> list[str]:
+    if not COMPOSE_BASE.exists():
+        raise SystemExit(f"Fehlt: {COMPOSE_BASE}")
+
+    cmd = ["docker", "compose", "-f", str(COMPOSE_BASE)]
+    if profile == "prod":
+        if not COMPOSE_PROD.exists():
+            raise SystemExit(f"Fehlt: {COMPOSE_PROD}")
+        cmd.extend(["-f", str(COMPOSE_PROD)])
+    elif llm_mode == "chatgpt_oauth":
+        if not COMPOSE_OAUTH.exists():
+            raise SystemExit(f"Fehlt: {COMPOSE_OAUTH}")
+        cmd.extend(["-f", str(COMPOSE_OAUTH)])
+    cmd.extend(["up", "--build", "-d"])
+    return cmd
+
+
+def _compose_env(profile: DeployProfile, llm_mode: LlmAuthMode, oauth_path: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    if profile != "prod" and llm_mode == "chatgpt_oauth":
+        if not oauth_path.exists():
+            raise SystemExit(
+                f"OAuth-Datei fehlt: {oauth_path}\n"
+                "Erst OAuth-Login abschließen oder LLM_AUTH_MODE=api_key wählen."
+            )
+        env["OAUTH_AUTH_HOST_PATH"] = str(oauth_path.resolve())
+    return env
+
+
+def _format_compose_hint(cmd: list[str], env: dict[str, str]) -> str:
+    prefix = ""
+    if "OAUTH_AUTH_HOST_PATH" in env:
+        prefix = f"OAUTH_AUTH_HOST_PATH={shlex.quote(env['OAUTH_AUTH_HOST_PATH'])} "
+    return prefix + " ".join(shlex.quote(part) for part in cmd)
+
+
+def _maybe_start_compose(
+    *,
+    start: bool | None,
+    runtime: Runtime,
+    profile: DeployProfile,
+    llm_mode: LlmAuthMode,
+    oauth_path: Path,
+    docker_status,
+) -> None:
+    if runtime == "local":
+        print("\n  Lokaler Modus — Docker Compose übersprungen.")
+        return
     if start is False:
         return
     if start is None and not _prompt_yes_no("\nDocker Compose jetzt starten (api + qdrant)?", default=True):
         return
+
+    if docker_status is not None:
+        _require_docker_ready(docker_status)
 
     if not shutil.which("docker"):
         print("  Docker nicht installiert — übersprungen.")
         return
 
     print("\n=== Docker Compose ===\n")
-    cmd = ["docker", "compose", "up", "--build", "-d"]
     try:
-        subprocess.run(cmd, cwd=ROOT, check=True)
+        cmd = _compose_command(profile, llm_mode, oauth_path)
+        env = _compose_env(profile, llm_mode, oauth_path)
+    except SystemExit as exc:
+        print(f"  {exc}")
+        return
+
+    print(f"  $ {_format_compose_hint(cmd, env)}")
+    try:
+        subprocess.run(cmd, cwd=ROOT, check=True, env=env)
     except subprocess.CalledProcessError:
-        print("  docker compose fehlgeschlagen. Manuell: docker compose up --build")
+        print("  docker compose fehlgeschlagen.")
+        print(f"  Manuell: {_format_compose_hint(cmd, env)}")
         return
 
     print("  ✓ Stack gestartet — http://127.0.0.1:8088")
     print("  Health: curl http://127.0.0.1:8088/api/health")
 
 
-def _print_next_steps(llm_mode: str) -> None:
+def _print_next_steps(
+    *,
+    profile: DeployProfile,
+    runtime: Runtime,
+    llm_mode: LlmAuthMode,
+    oauth_path: Path,
+) -> None:
     print("\n=== Fertig ===\n")
     print("Nächste Schritte:")
-    print("  • Seed (Demo):  docker compose exec api python scripts/seed_data.py")
-    print("  • Dev lokal:    cd backend && uvicorn app.main:app --reload --port 8088")
+
+    if runtime == "docker":
+        print("  • Prod-Seed:    docker compose -f docker-compose.yml -f docker-compose.prod.yml exec api \\")
+        print("                    python scripts/seed_production.py")
+        print("  • Updates:      ./scripts/update.sh")
+        if profile == "prod":
+            print("  • Prod-Stack:   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d")
+        elif llm_mode == "chatgpt_oauth":
+            host_path = oauth_path.resolve()
+            print(
+                "  • OAuth-Stack:  "
+                f"OAUTH_AUTH_HOST_PATH={host_path} "
+                "docker compose -f docker-compose.yml -f docker-compose.oauth.yml up -d"
+            )
+    else:
+        print("  • Qdrant starten (z. B. docker run -p 6333:6333 qdrant/qdrant)")
+        print("  • API starten:  cd backend && PYTHONPATH=. uvicorn app.main:app --reload --port 8088")
+
     if llm_mode == "chatgpt_oauth":
         print("  • OAuth-Test:   python3 scripts/smoke_chat_oauth.py")
     else:
         print("  • API-Test:     python3 scripts/smoke_openai.py")
+    print("  • Tests:        cd backend && PYTHONPATH=. pytest -q")
     print("  • Env prüfen:   python3 scripts/setup_env.py --check-only")
+
+    if profile == "prod":
+        print("\n  Produktion: Reverse-Proxy (Caddy/nginx) vor Port 8088, nur 443/80 öffnen.")
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="MARIS Q/A Helper — interaktives Erst-Setup (.env + Chat-Auth)",
+        description="MARIS Q/A Helper — interaktives Erst-Setup (.env + Chat-Auth + Deploy)",
     )
     parser.add_argument("--openai-key", help="OpenAI API-Key (Embeddings); sonst interaktiv")
     parser.add_argument(
         "--llm-auth-mode",
         choices=("api_key", "chatgpt_oauth"),
         help="Chat-Authentifizierung (sonst interaktive Auswahl)",
+    )
+    parser.add_argument(
+        "--profile",
+        choices=("dev", "prod"),
+        help="dev (lokal) oder prod (HTTPS-Server)",
+    )
+    parser.add_argument(
+        "--production",
+        action="store_true",
+        help="Kurzform für --profile prod (non-interactive)",
+    )
+    parser.add_argument(
+        "--runtime",
+        choices=("docker", "local"),
+        help="docker (Compose) oder local (nur .env, uvicorn manuell)",
     )
     parser.add_argument(
         "--oauth-path",
@@ -274,6 +466,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--skip-oauth-login", action="store_true", help="OAuth nur in .env eintragen")
     parser.add_argument("--skip-docker-check", action="store_true")
+    parser.add_argument(
+        "--install-docker",
+        action="store_true",
+        help="Docker Engine + Compose per apt installieren falls fehlend (sudo, Ubuntu/Debian)",
+    )
     parser.add_argument("--no-start", action="store_true", help="Docker Compose nicht starten")
     parser.add_argument("--start", action="store_true", help="Docker Compose nach Setup starten")
     parser.add_argument("--non-interactive", action="store_true", help="Keine Prompts (Keys/Modus per Flag)")
@@ -284,39 +481,71 @@ def main() -> None:
     args = parse_args()
     print("MARIS Q/A Helper — Setup\n")
 
-    _check_prerequisites(skip_docker=args.skip_docker_check)
+    profile = _resolve_deploy_profile(args)
+    runtime = _resolve_runtime(args, profile)
+    docker_status = _check_prerequisites(
+        skip_docker=args.skip_docker_check,
+        runtime=runtime,
+        interactive=not args.non_interactive,
+        auto_install_docker=args.install_docker,
+    )
     lines = _ensure_env_file()
 
     if args.non_interactive:
-        if not args.openai_key and not args.llm_auth_mode:
-            raise SystemExit("--non-interactive braucht --openai-key und --llm-auth-mode")
-        llm_mode = args.llm_auth_mode
-    else:
-        llm_mode = args.llm_auth_mode or _prompt_choice(
-            "\nWie soll der Chat-Agent authentifizieren?",
-            [
-                ("chatgpt_oauth", "ChatGPT OAuth — Browser-Login (Codex/Plus-Abo, Dev/WSL)"),
-                ("api_key", "OpenAI API-Key — Platform-Billing (Produktion/Docker)"),
-            ],
+        if not args.openai_key:
+            raise SystemExit("--non-interactive braucht --openai-key")
+        if not args.llm_auth_mode and not args.production and not args.profile:
+            raise SystemExit("--non-interactive braucht --llm-auth-mode oder --profile prod")
+
+    llm_mode = _resolve_llm_mode(args, profile)
+    oauth_path = args.oauth_path.expanduser()
+
+    if (
+        args.non_interactive
+        and llm_mode == "chatgpt_oauth"
+        and not oauth_path.exists()
+        and not args.skip_oauth_login
+    ):
+        raise SystemExit(
+            f"OAuth-Datei fehlt: {oauth_path}\n"
+            "Nutze --skip-oauth-login, login_chat_oauth.py, oder --llm-auth-mode api_key."
         )
 
-    lines, _ = _prompt_embedding_key(lines, openai_key=args.openai_key)
+    lines, _ = _prompt_embedding_key(
+        lines,
+        openai_key=args.openai_key,
+        interactive=not args.non_interactive,
+    )
 
     if llm_mode == "api_key":
         lines = _configure_chat_api_key(lines)
     else:
         lines = _configure_chat_oauth(
             lines,
-            oauth_path=args.oauth_path.expanduser(),
-            skip_login=args.skip_oauth_login or args.non_interactive,
+            oauth_path=oauth_path,
+            skip_login=args.skip_oauth_login or (args.non_interactive and not oauth_path.exists()),
         )
 
+    lines = _configure_runtime(lines, runtime=runtime)
+    lines = _configure_deploy(lines, profile=profile)
     lines = _ensure_session_secret(lines)
     _write_env(lines)
 
     start: bool | None = True if args.start else False if args.no_start else None
-    _maybe_start_compose(start=start)
-    _print_next_steps(llm_mode)
+    _maybe_start_compose(
+        start=start,
+        runtime=runtime,
+        profile=profile,
+        llm_mode=llm_mode,
+        oauth_path=oauth_path,
+        docker_status=docker_status,
+    )
+    _print_next_steps(
+        profile=profile,
+        runtime=runtime,
+        llm_mode=llm_mode,
+        oauth_path=oauth_path,
+    )
 
 
 if __name__ == "__main__":
