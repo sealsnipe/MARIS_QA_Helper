@@ -1072,7 +1072,10 @@
     }
 
     if (zone && fileInput) {
-      zone.addEventListener("click", () => fileInput.click());
+      zone.addEventListener("click", () => {
+        fileInput.click();
+        zone.focus(); // ensure focused so paste targets the zone (like KB dropzone)
+      });
       zone.addEventListener("keydown", (ev) => {
         if (ev.key === "Enter" || ev.key === " ") {
           ev.preventDefault();
@@ -1085,8 +1088,7 @@
         fileInput.value = "";
       });
 
-      // paste support (reuses global fileFromClipboard helper when present)
-      zone.addEventListener("paste", (ev) => {
+      function handlePaste(ev) {
         let added = false;
         if (typeof fileFromClipboard === "function") {
           const f = fileFromClipboard(ev.clipboardData);
@@ -1100,7 +1102,15 @@
           ev.preventDefault();
           Array.from(ev.clipboardData.files).forEach(addImage);
         }
-      });
+      }
+
+      // paste support on the zone itself (mirrors setupDropzone in KB)
+      zone.addEventListener("paste", handlePaste);
+
+      // also on the containing form (like the ingest-form paste listener in bindIngestForm for KB)
+      // this makes Ctrl+V work even if focus is on other elements inside the form area
+      const toolForm = document.getElementById("image-tool-form");
+      toolForm?.addEventListener("paste", handlePaste);
 
       // drag & drop bonus
       zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("dragover"); });
