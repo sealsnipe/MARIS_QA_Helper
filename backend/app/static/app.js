@@ -439,13 +439,28 @@
     });
   }
 
-  function setupDropzone(dropzone, fileInput, fileLabel, onSelect) {
+  function setupDropzone(dropzone, fileInput, fileLabel, onSelect, isFileSelected) {
     if (!dropzone || !fileInput) return;
 
-    dropzone.addEventListener("click", () => fileInput.click());
+    const clearSelectedFile = () => {
+      fileInput.value = "";
+      onSelect(null);
+    };
+
+    dropzone.addEventListener("click", () => {
+      if (isFileSelected?.()) {
+        clearSelectedFile();
+        return;
+      }
+      fileInput.click();
+    });
     dropzone.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
+        if (isFileSelected?.()) {
+          clearSelectedFile();
+          return;
+        }
         fileInput.click();
       }
     });
@@ -483,12 +498,15 @@
     const setFile = (file) => {
       selectedFile = file;
       if (fileLabel) {
-        fileLabel.textContent = file ? file.name : "Datei hierher ziehen oder klicken";
+        fileLabel.textContent = file
+          ? `${file.name} — klicken zum Entfernen`
+          : "Datei hierher ziehen oder klicken";
       }
       dropzone?.classList.toggle("has-file", Boolean(file));
+      dropzone?.setAttribute("aria-label", file ? "Ausgewählte Datei entfernen" : "Datei auswählen");
     };
 
-    setupDropzone(dropzone, fileInput, fileLabel, setFile);
+    setupDropzone(dropzone, fileInput, fileLabel, setFile, () => Boolean(selectedFile));
 
     form?.addEventListener("submit", async (event) => {
       event.preventDefault();

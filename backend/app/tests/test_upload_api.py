@@ -77,3 +77,26 @@ def test_upload_requires_content(client, db_session):
     response = client.post("/api/documents", data={})
     assert response.status_code == 400
     assert response.json()["error"] == "empty_text"
+
+
+def test_upload_extraction_failure_does_not_persist_document(client, db_session, monkeypatch):
+    from app.ingestion import list_documents
+    from app.loaders.errors import LoaderError
+
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen",))
+    login(client, "sven@example.com", "secret123")
+    client.post("/api/session/customer", json={"customer_id": "bg-ludwigshafen"})
+
+    def fail_load(*_args, **_kwargs):
+        raise LoaderError("extraction_failed")
+
+    monkeypatch.setattr("app.upload.load_document", fail_load)
+
+    response = client.post(
+        "/api/documents",
+        files={"file": ("scan.pdf", b"%PDF-1.4", "application/pdf")},
+    )
+    assert response.status_code == 422
+    assert response.json()["error"] == "extraction_failed"
+    assert list_documents(db_session, "bg-ludwigshafen") == []

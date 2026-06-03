@@ -645,6 +645,12 @@ select:focus-visible,
 .dropzone.has-file {
   border-color: var(--ok);
   background: rgba(63, 185, 80, 0.08);
+  cursor: pointer;
+}
+
+.dropzone.has-file:hover {
+  border-color: var(--danger);
+  background: rgba(229, 83, 75, 0.08);
 }
 
 .doc-list {

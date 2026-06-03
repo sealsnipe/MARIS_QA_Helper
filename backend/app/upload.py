@@ -10,7 +10,7 @@ from app.chunking import normalize_text
 from app.config import get_settings
 from app.ingestion import IngestionError, ingest_text
 from app.loaders import LoaderError, load_document, source_type_for_extension
-from app.models import Document, utc_now_iso
+from app.models import Document
 
 
 class UploadError(Exception):
@@ -28,6 +28,18 @@ def sanitize_filename(name: str) -> str:
 
 def _upload_root() -> Path:
     return Path("./data/uploads")
+
+
+def _discard_stored_upload(stored_path: Path | None) -> None:
+    if stored_path is None or not stored_path.exists():
+        return
+    try:
+        stored_path.unlink(missing_ok=True)
+        parent = stored_path.parent
+        if parent.is_dir() and not any(parent.iterdir()):
+            parent.rmdir()
+    except OSError:
+        pass
 
 
 def _combine_text(prefix_text: str, file_text: str) -> str:
@@ -90,28 +102,12 @@ def ingest_combined(
         try:
             file_text = load_document(stored_path, extension)
         except LoaderError as exc:
-            doc_title = _resolve_title(title, safe_name)
-            failed = Document(
-                id=document_id,
-                customer_id=customer_id,
-                title=doc_title,
-                source_type="file",
-                original_filename=safe_name,
-                mime_type=mime_type,
-                storage_path=str(stored_path),
-                chunk_count=0,
-                status="failed",
-                error_message=exc.args[0] if exc.args else "extraction_failed",
-                created_at=utc_now_iso(),
-                updated_at=utc_now_iso(),
-            )
-            db.add(failed)
-            db.commit()
-            db.refresh(failed)
+            _discard_stored_upload(stored_path)
             raise UploadError("extraction_failed") from exc
 
     combined = _combine_text(prefix, file_text)
     if len(normalize_text(combined)) < 20:
+        _discard_stored_upload(stored_path)
         raise UploadError("empty_text")
 
     doc_title = _resolve_title(title, safe_name)
