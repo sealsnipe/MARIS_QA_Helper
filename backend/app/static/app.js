@@ -610,7 +610,13 @@
     modal.className = "image-vision-modal hidden";
     modal.innerHTML = `
       <div class="image-vision-dialog" role="dialog" aria-modal="true" aria-labelledby="image-vision-title">
-        <h3 id="image-vision-title">Bilder in der Datei erkannt</h3>
+        <div class="image-vision-header">
+          <h3 id="image-vision-title">Bilder in der Datei erkannt</h3>
+          <div class="image-vision-select-actions">
+            <button type="button" class="secondary small modal-select-all">Alle markieren</button>
+            <button type="button" class="secondary small modal-unselect-all">Alle abwählen</button>
+          </div>
+        </div>
         <p class="image-vision-text">
           <span class="modal-count">0</span> Bild(er) gefunden. Wähle, welche per Vision-OCR transkribiert werden.
           Alle Bilder werden im Eintrag als klickbare Vorschau gespeichert.
@@ -624,6 +630,23 @@
       </div>
     `;
     document.body.appendChild(modal);
+
+    // Attach permanent "mark all / unmark all" listeners (once, on modal creation)
+    const selectAllBtn = modal.querySelector(".modal-select-all");
+    const unselectAllBtn = modal.querySelector(".modal-unselect-all");
+    const attachToggle = (btn, checked) => {
+      if (!btn) return;
+      btn.addEventListener("click", () => {
+        const grid = modal.querySelector(".image-vision-grid");
+        if (!grid) return;
+        grid.querySelectorAll('input[name="transcribe-image"]').forEach((cb) => {
+          cb.checked = checked;
+        });
+      });
+    };
+    attachToggle(selectAllBtn, true);
+    attachToggle(unselectAllBtn, false);
+
     return modal;
   }
 

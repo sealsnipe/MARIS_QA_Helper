@@ -1013,9 +1013,32 @@ select:focus-visible,
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
 }
 
-.image-vision-dialog h3 {
-  margin: 0 0 0.55rem;
+.image-vision-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.image-vision-header h3 {
+  margin: 0;
   font-size: 1rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.image-vision-select-actions {
+  display: flex;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+.image-vision-select-actions button {
+  font-size: 0.72rem;
+  padding: 0.1rem 0.4rem;
+  white-space: nowrap;
 }
 
 .image-vision-text {

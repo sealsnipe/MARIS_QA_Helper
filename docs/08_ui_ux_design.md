@@ -82,7 +82,7 @@ Quelle/Typ als kleines Badge: `man` (Text), `pdf`, `txt`, `md`, `docx` (später 
 | **Kunden-Dropdown** | Wechsel → `POST /api/session/customer` → Seite neu laden (KB+Chat gescoped). |
 | **KB-Tabs** | „Text" (Titel+Textarea+Einpflegen) / „Datei" (Dropzone + Auswahl-Button). |
 | **Dropzone** | Drag&Drop, Klick und **Strg+V** (Formular + Dropzone); zeigt erlaubte Typen + Limit; bei PDF/DOCX/Bildern Inspect → Vision-Modal mit Checkboxen. |
-| **Vision-Modal** | Thumbnails aller erkannten Bilder; Nutzer wählt OCR-Ziele; „Ausgewählte transkribieren“ / „Ohne OCR“ / Abbrechen. |
+| **Vision-Modal** | Header mit Titel + „Alle markieren“/„Alle abwählen“; Thumbnails aller erkannten Bilder mit Checkboxen; Nutzer wählt OCR-Ziele (oder per Buttons alle); „Ausgewählte transkribieren“ / „Ohne OCR“ / Abbrechen. |
 | **Dokumentliste** | Titel, Typ-Badge, Chunk-Anzahl, Extraction-Badges (`partial`, `Vision-OCR`), Löschen; nur aktiver Kunde. |
 | **Admin-Dokumentliste** | Wie Nutzer-KB, plus **Stift** (Bearbeiten) und **Mülleimer**; inline Edit-Panel mit **klickbaren Bild-Thumbnails** (Lightbox). |
 | **Chat-Verlauf** | Bubbles; Assistent-Bubble enthält Quellenblock. |

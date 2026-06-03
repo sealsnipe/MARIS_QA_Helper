@@ -194,7 +194,7 @@ Datenfluss: Fast alle Aktionen gehen über `fetch` mit Session-Cookie (`credenti
 
 ### `ensureImageVisionModal()` / `askImageVisionChoice(inspection)`
 
-**Beschreibung:** Modal mit Thumbnail-Grid und Checkboxen; Buttons „Ausgewählte transkribieren“, „Ohne OCR einpflegen“, „Abbrechen“.
+**Beschreibung:** Modal mit Header (Titel + „Alle markieren“ / „Alle abwählen“ Buttons), Thumbnail-Grid und Checkboxen; Buttons „Ausgewählte transkribieren“, „Ohne OCR einpflegen“, „Abbrechen“. Die Select-Buttons togglen alle sichtbaren Bild-Checkboxen.
 
 ---
 
@@ -377,7 +377,7 @@ Globales Dark-Theme-Stylesheet: Sidebar, Main, Chat, KB, Admin, Login. Eingebund
 | Layout | `.app-layout`, `.sidebar`, `.main-area`, `.panel` |
 | Navigation | `.nav-link`, `.nav-group`, `.chat-history-list` |
 | Chat | `body.page-chat`, `.chat-log`, `.bubble`, `.sources-popover` |
-| Forms/KB | `.ingest-form`, `.dropzone`, `.image-vision-modal`, `.image-vision-grid`, `.doc-edit-images`, `.image-lightbox`, `.doc-list`, `.status` |
+| Forms/KB | `.ingest-form`, `.dropzone`, `.image-vision-modal`, `.image-vision-header`, `.image-vision-select-actions`, `.image-vision-grid`, `.doc-edit-images`, `.image-lightbox`, `.doc-list`, `.status` |
 | Admin | `.customer-table`, `.user-customer-checkboxes`, `.icon-btn` |
 | Login | `.login-card`, `.login-brand-banner` |
 | Utils | `.hidden`, `.muted`, `button.secondary/danger/small` |
