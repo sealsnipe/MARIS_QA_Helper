@@ -18,8 +18,17 @@ cd ~/projects/SUP_QA_Helper
 **Ein Befehl** auf frischem Ubuntu:
 
 1. **System-Pakete** — git, python3, curl (apt)  
-2. **Docker Engine + Compose** — installieren/prüfen, Version ≥ Minimum, sonst Abbruch  
+2. **Docker Engine + Compose** — installieren/prüfen, Version ≥ Minimum  
 3. **Setup-Wizard** — Credentials interaktiv (API-Key, OAuth/API, Prod/Dev, Compose-Start)
+
+**WSL:** Schritt 2 kann mit Hinweis enden (systemd-Neustart). Dann:
+
+```bash
+# PowerShell: wsl --shutdown && wsl -d <Distro-Name>
+./install.sh --continue
+```
+
+Nur Pakete ohne Wizard: `./install.sh --install-only` → danach `./setup.sh` oder `--continue`.
 
 Alternative (Docker schon da): `./setup.sh`
 
@@ -127,9 +136,10 @@ Bereits installiert und Version ok → Installation wird übersprungen.
 
 ## WSL-Hinweise
 
-- **Docker Desktop:** WSL-Integration für diese Distro aktivieren, dann erneut `./setup.sh`
-- **Ohne Desktop:** Wizard bietet Engine-Install in WSL (sudo)
-- Nach `usermod -aG docker`: Terminal neu öffnen oder `newgrp docker`
+- **`install.sh` setzt `systemd=true`** in `/etc/wsl.conf` — danach einmal `wsl --shutdown` (Windows), Distro neu öffnen, `./install.sh --continue`
+- **Docker Desktop:** WSL-Integration für diese Distro aktivieren, dann `./setup.sh` oder `--continue`
+- **Ohne Desktop:** Engine-Install in WSL (sudo) — Gruppe `docker` wird gesetzt; Script nutzt `sg docker` wenn die Session noch alt ist
+- Manuell: `newgrp docker` oder Terminal neu öffnen
 
 ---
 

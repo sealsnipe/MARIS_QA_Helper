@@ -385,7 +385,11 @@ def _maybe_start_compose(
 
     print(f"  $ {_format_compose_hint(cmd, env)}")
     try:
-        subprocess.run(cmd, cwd=ROOT, check=True, env=env)
+        from docker_preflight import run_with_docker_session
+
+        result = run_with_docker_session(cmd, cwd=ROOT, env=env)
+        if result.returncode != 0:
+            raise subprocess.CalledProcessError(result.returncode, cmd)
     except subprocess.CalledProcessError:
         print("  docker compose fehlgeschlagen.")
         print(f"  Manuell: {_format_compose_hint(cmd, env)}")

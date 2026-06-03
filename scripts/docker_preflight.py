@@ -7,6 +7,7 @@ import getpass
 import grp
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -26,7 +27,10 @@ class DockerStatus:
     compose_plugin: bool = False
     compose_version: tuple[int, int, int] | None = None
     daemon_ok: bool = False
+    daemon_ok_sudo: bool = False
+    daemon_permission_denied: bool = False
     in_docker_group: bool = False
+    docker_group_in_session: bool = False
     platform_id: str = "unknown"
     platform_version: str = ""
     wsl: bool = False
@@ -35,12 +39,26 @@ class DockerStatus:
 
     @property
     def ready(self) -> bool:
+        daemon_reachable = self.daemon_ok or (
+            self.daemon_ok_sudo and self.in_docker_group
+        )
         return (
             self.docker_bin
             and self.compose_ok
-            and self.daemon_ok
+            and daemon_reachable
             and self.in_docker_group
             and self.version_ok
+        )
+
+    @property
+    def bootstrap_ready(self) -> bool:
+        """Packages + daemon (sudo ok) — enough to pause install before WSL restart."""
+        daemon_reachable = self.daemon_ok or self.daemon_ok_sudo
+        return (
+            self.docker_bin
+            and self.compose_ok
+            and self.version_ok
+            and daemon_reachable
         )
 
     @property
@@ -84,21 +102,52 @@ def read_os_release() -> dict[str, str]:
     return data
 
 
+def docker_group_in_session() -> bool:
+    try:
+        return grp.getgrnam("docker").gr_gid in os.getgroups()
+    except (KeyError, OSError):
+        return False
+
+
 def user_in_docker_group(username: str | None = None) -> bool:
     username = username or getpass.getuser()
     try:
         grp.getgrnam("docker")
     except KeyError:
         return False
-    if username == getpass.getuser():
-        try:
-            return grp.getgrnam("docker").gr_gid in os.getgroups()
-        except OSError:
-            pass
     result = _run(["id", "-nG", username])
     if result.returncode != 0:
         return False
     return "docker" in result.stdout.split()
+
+
+def _sudo_docker_info_ok() -> bool:
+    if os.geteuid() == 0:
+        return _run(["docker", "info"]).returncode == 0
+    sudo = shutil.which("sudo")
+    if not sudo:
+        return False
+    return _run(["env", "-u", "SUDO_ASKPASS", sudo, "docker", "info"]).returncode == 0
+
+
+def systemd_is_running() -> bool:
+    if not shutil.which("systemctl"):
+        return False
+    return _run(["systemctl", "is-system-running"]).returncode == 0
+
+
+def wsl_systemd_enabled() -> bool:
+    if not is_wsl():
+        return False
+    try:
+        text = Path("/etc/wsl.conf").read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return bool(re.search(r"^\s*systemd\s*=\s*true\s*$", text, re.MULTILINE | re.IGNORECASE))
+
+
+def wsl_needs_restart_for_systemd() -> bool:
+    return is_wsl() and wsl_systemd_enabled() and not systemd_is_running()
 
 
 def _version_at_least(found: tuple[int, int, int] | None, minimum: tuple[int, int, int]) -> bool:
@@ -135,18 +184,32 @@ def check_docker() -> DockerStatus:
                 )
 
         info = _run(["docker", "info"])
+        combined = (info.stdout + info.stderr).lower()
         status.daemon_ok = info.returncode == 0
         if not status.daemon_ok:
-            if status.wsl:
+            status.daemon_permission_denied = "permission denied" in combined
+            status.daemon_ok_sudo = _sudo_docker_info_ok()
+            if status.daemon_permission_denied and status.daemon_ok_sudo:
+                status.notes.append(
+                    "Docker-Daemon läuft — Gruppe 'docker' in dieser Session: newgrp docker"
+                )
+            elif status.wsl:
                 status.notes.append(
                     "Docker-Daemon nicht erreichbar. WSL: Docker Desktop WSL-Integration "
                     "aktivieren oder 'sudo service docker start'."
                 )
             else:
                 status.notes.append("Docker-Daemon läuft nicht — ggf. sudo systemctl start docker.")
+        else:
+            status.daemon_ok_sudo = True
 
     status.in_docker_group = os.geteuid() == 0 or user_in_docker_group()
-    if status.docker_bin and not status.in_docker_group:
+    status.docker_group_in_session = os.geteuid() == 0 or docker_group_in_session()
+    if status.docker_bin and status.in_docker_group and not status.docker_group_in_session:
+        status.notes.append(
+            "Gruppe 'docker' gesetzt, Session noch alt — newgrp docker oder Terminal neu öffnen."
+        )
+    elif status.docker_bin and not status.in_docker_group:
         status.notes.append("Nutzer nicht in Gruppe 'docker' — nach Install neu anmelden oder 'newgrp docker'.")
 
     engine_ok = _version_at_least(status.docker_version, MIN_DOCKER_VERSION)
@@ -169,6 +232,15 @@ def check_docker() -> DockerStatus:
 
 def assert_docker_ready(status: DockerStatus, *, context: str = "Setup") -> None:
     if status.ready:
+        return
+    if (
+        status.docker_bin
+        and status.compose_ok
+        and status.version_ok
+        and status.in_docker_group
+        and (status.daemon_ok or status.daemon_ok_sudo)
+        and not status.docker_group_in_session
+    ):
         return
     print(f"\n  ✗ {context}: Docker-Anforderungen nicht erfüllt.")
     print_docker_status(status)
@@ -200,11 +272,15 @@ def print_docker_status(status: DockerStatus) -> None:
 
     if status.daemon_ok:
         print("  ✓ Docker-Daemon erreichbar")
+    elif status.daemon_ok_sudo:
+        print("  ○ Docker-Daemon läuft (sudo)")
     elif status.docker_bin:
         print("  ✗ Docker-Daemon nicht erreichbar")
 
-    if status.in_docker_group:
-        print("  ✓ Nutzer in Gruppe docker")
+    if status.docker_group_in_session:
+        print("  ✓ Nutzer in Gruppe docker (Session)")
+    elif status.in_docker_group:
+        print("  ⚠ Gruppe docker gesetzt — Session neu (newgrp docker)")
     elif status.docker_bin:
         print("  ⚠ Nutzer nicht in Gruppe docker")
 
@@ -224,6 +300,18 @@ def _sudo_cmd(args: list[str]) -> list[str]:
     if not sudo:
         raise RuntimeError("sudo nicht gefunden — Installation braucht root-Rechte.")
     return [sudo, *args]
+
+
+def run_with_docker_session(cmd: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+    """Run docker CLI; use sg docker when group is configured but not active in session."""
+    if docker_group_in_session() or os.geteuid() == 0:
+        return subprocess.run(cmd, cwd=cwd, check=False, env=env)
+    if user_in_docker_group() and shutil.which("sg"):
+        inner = " ".join(shlex.quote(part) for part in cmd)
+        if cwd is not None:
+            inner = f"cd {shlex.quote(str(cwd))} && {inner}"
+        return subprocess.run(["sg", "docker", "-c", inner], check=False, env=env)
+    return subprocess.run(cmd, cwd=cwd, check=False, env=env)
 
 
 def _sudo_run(args: list[str]) -> None:
@@ -286,6 +374,7 @@ def install_docker_engine(*, force: bool = False) -> None:
     tmp_list.unlink(missing_ok=True)
 
     _sudo_run(["apt-get", "update", "-qq"])
+    print("  → apt: docker-ce, compose-plugin … (Download, bitte warten)", flush=True)
     _sudo_run(
         [
             "apt-get",
@@ -372,6 +461,11 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Docker preflight / optional install")
     parser.add_argument("--check", action="store_true", help="Nur prüfen (Exit 1 wenn nicht ready)")
+    parser.add_argument(
+        "--check-bootstrap",
+        action="store_true",
+        help="Install-Phase: Pakete + Daemon (sudo ok), Gruppe darf Session-verzögert sein",
+    )
     parser.add_argument("--install", action="store_true", help="Pakete installieren (sudo)")
     args = parser.parse_args()
 
@@ -380,14 +474,16 @@ def main() -> None:
         status = check_docker()
     else:
         status = ensure_docker(
-            interactive=not args.check,
+            interactive=not (args.check or args.check_bootstrap),
             auto_install=False,
-            skip_install=args.check,
+            skip_install=args.check or args.check_bootstrap,
         )
 
     print()
     print_docker_status(status)
 
+    if args.check_bootstrap and not status.bootstrap_ready:
+        raise SystemExit(1)
     if args.check and not status.ready:
         raise SystemExit(1)
 

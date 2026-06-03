@@ -6,10 +6,13 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
 INSTALL_ONLY=0
+CONTINUE=0
+WSL_CONF_CHANGED=0
 for arg in "$@"; do
-  if [[ "$arg" == "--install-only" ]]; then
-    INSTALL_ONLY=1
-  fi
+  case "$arg" in
+    --install-only) INSTALL_ONLY=1 ;;
+    --continue) CONTINUE=1 ;;
+  esac
 done
 
 log() {
@@ -18,7 +21,11 @@ log() {
 
 log "=============================================="
 log " MARIS Q/A Helper — Installation"
-log " Frisches Ubuntu/WSL: Pakete + Docker + Setup"
+if [[ "$CONTINUE" -eq 1 ]]; then
+  log " Fortsetzen nach WSL-Neustart / Docker"
+else
+  log " Frisches Ubuntu/WSL: Pakete + Docker + Setup"
+fi
 log "=============================================="
 
 if [[ ! -f /etc/os-release ]]; then
@@ -38,31 +45,77 @@ run_as_root() {
   fi
 }
 
+finish_install_only() {
+  log "=== Install-Phase fertig (Setup noch ausstehend) ==="
+  log "Weiter:"
+  log "  ./install.sh --continue    # nach WSL-Neustart oder wenn Docker läuft"
+  log "  ./setup.sh                 # nur Credentials + Compose (Docker muss ready sein)"
+}
+
 # WSL: systemd helps docker service (Ubuntu 24.04+)
 if grep -qi microsoft /proc/version 2>/dev/null; then
   if [[ ! -f /etc/wsl.conf ]] || ! grep -q '^systemd=true' /etc/wsl.conf 2>/dev/null; then
-    log "WSL: aktiviere systemd in /etc/wsl.conf (einmalig, WSL-Neustart danach ggf. nötig)"
+    log "WSL: aktiviere systemd in /etc/wsl.conf (WSL-Neustart danach nötig)"
     run_as_root tee /etc/wsl.conf >/dev/null <<'EOF'
 [boot]
 systemd=true
 EOF
+    WSL_CONF_CHANGED=1
   fi
 fi
 
-log "=== Schritt 1/3: System-Pakete (git, python3, curl) ==="
-run_as_root apt-get update
-run_as_root apt-get install -y git python3 curl ca-certificates
-log "Schritt 1/3 fertig."
+if [[ "$CONTINUE" -eq 1 ]]; then
+  log "=== Fortsetzen: Docker prüfen/starten ==="
+  set +e
+  python3 scripts/start_docker.py
+  START_RC=$?
+  set -e
+  if [[ "$START_RC" -eq 2 ]]; then
+    log "Abbruch: WSL-Neustart noch nötig (siehe Hinweise oben)."
+    finish_install_only
+    exit 0
+  fi
+  if [[ "$START_RC" -ne 0 ]]; then
+    exit "$START_RC"
+  fi
+  python3 scripts/docker_preflight.py --check-bootstrap
+  log "Docker bereit."
+else
+  log "=== Schritt 1/3: System-Pakete (git, python3, curl) ==="
+  run_as_root apt-get update
+  run_as_root apt-get install -y git python3 curl ca-certificates
+  log "Schritt 1/3 fertig."
 
-log "=== Schritt 2/3: Docker Engine + Compose (kann 5–15 Min. dauern) ==="
-python3 scripts/docker_preflight.py --install
-python3 scripts/start_docker.py
-python3 scripts/docker_preflight.py --check
-log "Schritt 2/3 fertig."
+  log "=== Schritt 2/3: Docker Engine + Compose (kann 5–15 Min. dauern) ==="
+  python3 scripts/docker_preflight.py --install
+  set +e
+  python3 scripts/start_docker.py
+  START_RC=$?
+  set -e
+
+  if [[ "$START_RC" -eq 2 ]]; then
+    log "Schritt 2/3: Docker installiert — WSL-Neustart nötig bevor der Daemon startet."
+    finish_install_only
+    exit 0
+  fi
+  if [[ "$START_RC" -ne 0 ]]; then
+    exit "$START_RC"
+  fi
+
+  if ! python3 scripts/docker_preflight.py --check-bootstrap; then
+    if [[ "$WSL_CONF_CHANGED" -eq 1 ]]; then
+      log "Hinweis: systemd gerade aktiviert — ggf. WSL-Neustart, dann ./install.sh --continue"
+      finish_install_only
+      exit 0
+    fi
+    exit 1
+  fi
+  log "Schritt 2/3 fertig."
+fi
 
 if [[ "$INSTALL_ONLY" -eq 1 ]]; then
   log "=== --install-only: Setup-Wizard übersprungen ==="
-  log "Weiter: ./setup.sh  (Credentials interaktiv auf dieser Maschine)"
+  finish_install_only
   exit 0
 fi
 
@@ -71,6 +124,15 @@ if printf '%s\n' "$@" | grep -q -- '--non-interactive'; then
   log "Non-interactive — Key/Auth aus Parametern oder Env."
 else
   log "Interaktiv — OpenAI API-Key und Chat-Auth werden jetzt abgefragt."
+fi
+
+# Gruppe docker in Session aktivieren wenn konfiguriert (usermod ohne Relogin)
+docker_gid="$(getent group docker 2>/dev/null | cut -d: -f3 || true)"
+if [[ -n "$docker_gid" ]] && id -nG | grep -qw docker && [[ " $(id -G) " != *" ${docker_gid} "* ]]; then
+  log "Aktiviere Gruppe docker in dieser Shell (sg docker) …"
+  quoted=()
+  for arg in "$@"; do quoted+=("$(printf '%q' "$arg")"); done
+  exec sg docker -c "cd $(printf '%q' "$ROOT") && exec python3 scripts/setup.py --skip-docker-check ${quoted[*]}"
 fi
 
 exec python3 scripts/setup.py --skip-docker-check "$@"
