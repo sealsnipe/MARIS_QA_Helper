@@ -29,14 +29,14 @@
       Text / Einleitung / Schlagworte
       <textarea id="admin-ingest-text" rows="5" placeholder="Optional…"></textarea>
     </label>
-    <label>
-      Datei
-      <div id="admin-dropzone" class="dropzone" tabindex="0">
+    <div class="ingest-field">
+      <span class="ingest-field-label">Datei</span>
+      <div id="admin-dropzone" class="dropzone" tabindex="0" role="button" aria-label="Datei auswählen">
         <p id="admin-file-label">Datei hierher ziehen oder klicken</p>
         <p class="muted">Optional · .txt · .md · .pdf · .docx</p>
         <input type="file" id="admin-file-input" accept=".txt,.md,.pdf,.docx" hidden>
       </div>
-    </label>
+    </div>
     <button type="submit" id="admin-ingest-submit">Einpflegen</button>
     <p id="admin-ingest-status" class="status" aria-live="polite"></p>
   </form>

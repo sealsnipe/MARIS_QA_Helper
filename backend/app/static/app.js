@@ -447,7 +447,9 @@
       onSelect(null);
     };
 
-    dropzone.addEventListener("click", () => {
+    dropzone.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
       if (isFileSelected?.()) {
         clearSelectedFile();
         return;

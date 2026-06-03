@@ -20,14 +20,14 @@
       Text / Einleitung / Schlagworte
       <textarea id="ingest-text" rows="6" placeholder="Optional — Einleitung, Stichworte o. Ä., wird vor den Dateiinhalt gesetzt…"></textarea>
     </label>
-    <label>
-      Datei
-      <div id="dropzone" class="dropzone" tabindex="0">
+    <div class="ingest-field">
+      <span class="ingest-field-label">Datei</span>
+      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Datei auswählen">
         <p id="file-label">Datei hierher ziehen oder klicken</p>
         <p class="muted">Optional · .txt · .md · .pdf · .docx · max. 30 MB</p>
         <input type="file" id="file-input" accept=".txt,.md,.pdf,.docx" hidden>
       </div>
-    </label>
+    </div>
     <button type="submit" id="ingest-submit">Einpflegen</button>
     <p id="ingest-status" class="status" aria-live="polite"></p>
   </form>

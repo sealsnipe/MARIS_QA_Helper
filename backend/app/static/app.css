@@ -561,6 +561,16 @@ label {
   font-weight: 600;
 }
 
+.ingest-field {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.ingest-field-label {
+  font-weight: 600;
+}
+
 input,
 textarea,
 select,
