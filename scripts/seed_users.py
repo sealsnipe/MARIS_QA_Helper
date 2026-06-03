@@ -93,7 +93,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--defaults",
         action="store_true",
-        help="Seed default users (admin + demo users for tests)",
+        help="Seed default admin user (production customers)",
     )
     return parser.parse_args()
 

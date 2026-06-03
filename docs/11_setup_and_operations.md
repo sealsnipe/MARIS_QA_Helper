@@ -103,17 +103,14 @@ docker compose up --build
 curl http://localhost:8088/api/health      # -> {"ok":true}
 ```
 
-## 6. Seed (Kunden, Nutzer, Demo-Wissen)
+## 6. Seed (Kunden, Nutzer, KB)
 ```bash
-docker compose exec api python scripts/seed_customers.py            # acme, globex
-docker compose exec api python scripts/seed_users.py \
-  --email sven@example.com --password 'GeheimesPW!' --customers acme,globex
-docker compose exec api python scripts/seed_users.py \
-  --email anna@example.com --password 'GeheimesPW!' --customers globex
-docker compose exec api python scripts/seed_kb.py                   # Demo-Wissen je Kunde
+# Erst-Setup legt Kunden + Admin an (./setup.sh / seed_setup.py)
+docker compose exec api python scripts/seed_kb.py   # optional: KB je Produktionskunde
+docker compose exec -T -e SEED_ADMIN_PASSWORD='…' api \
+  python scripts/seed_setup.py --profile prod --email admin@example.com
 ```
-- Alle Seed-Scripts idempotent. Demo-Wissen pro Kunde **deutlich unterschiedlich**, damit Isolation
-  sichtbar ist (z. B. `acme`: VPN-Runbook; `globex`: Firewall-FAQ).
+- Seed-Scripts idempotent. Kunden: `global`, `bg-ludwigshafen`, `bg-frankfurt`, `detmold-lippe`, `kkrr`.
 
 ## 7. Deployment auf Ubuntu-Server (Runbook)
 ```bash

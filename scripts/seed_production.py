@@ -22,11 +22,6 @@ def parse_args() -> argparse.Namespace:
         "--password",
         help="Admin password (prefer SEED_ADMIN_PASSWORD env or interactive prompt)",
     )
-    parser.add_argument(
-        "--with-demo",
-        action="store_true",
-        help="Use dev profile (includes demo customers acme/globex)",
-    )
     return parser.parse_args()
 
 
@@ -48,8 +43,7 @@ def _resolve_password(cli_password: str | None) -> str:
 def main() -> None:
     args = parse_args()
     password = _resolve_password(args.password)
-    profile = "dev" if args.with_demo else "prod"
-    run_seed(profile=profile, email=args.email.strip().lower(), password=password)
+    run_seed(profile="prod", email=args.email.strip().lower(), password=password)
     print(f"Production seed done for {args.email}")
 
 

@@ -23,10 +23,10 @@ class FakeLLM:
 
 
 def test_agent_no_context_without_hits(client, db_session, monkeypatch):
-    create_customer(db_session, "acme", "Acme GmbH")
-    create_user(db_session, "sven@example.com", "secret123", ("acme",))
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen",))
     login(client, "sven@example.com", "secret123")
-    client.post("/api/session/customer", json={"customer_id": "acme"})
+    client.post("/api/session/customer", json={"customer_id": "bg-ludwigshafen"})
 
     llm = FakeLLM(
         [
@@ -41,7 +41,7 @@ def test_agent_no_context_without_hits(client, db_session, monkeypatch):
     set_llm(llm)
 
     def fake_search(customer_id, query, top_k=None, **kwargs):
-        assert customer_id == "acme"
+        assert customer_id == "bg-ludwigshafen"
         return []
 
     monkeypatch.setattr("app.agent.search_knowledge_base_scoped", fake_search)
@@ -56,10 +56,10 @@ def test_agent_no_context_without_hits(client, db_session, monkeypatch):
 
 
 def test_agent_returns_sources_when_hits(client, db_session, monkeypatch):
-    create_customer(db_session, "acme", "Acme GmbH")
-    create_user(db_session, "sven@example.com", "secret123", ("acme",))
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen",))
     login(client, "sven@example.com", "secret123")
-    client.post("/api/session/customer", json={"customer_id": "acme"})
+    client.post("/api/session/customer", json={"customer_id": "bg-ludwigshafen"})
 
     llm = FakeLLM(
         [
@@ -98,10 +98,10 @@ def test_agent_returns_sources_when_hits(client, db_session, monkeypatch):
 
 
 def test_agent_only_returns_cited_sources(client, db_session, monkeypatch):
-    create_customer(db_session, "acme", "Acme GmbH")
-    create_user(db_session, "sven@example.com", "secret123", ("acme",))
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen",))
     login(client, "sven@example.com", "secret123")
-    client.post("/api/session/customer", json={"customer_id": "acme"})
+    client.post("/api/session/customer", json={"customer_id": "bg-ludwigshafen"})
 
     llm = FakeLLM(
         [
@@ -136,9 +136,9 @@ def test_agent_only_returns_cited_sources(client, db_session, monkeypatch):
 
 
 def test_chat_requires_customer(client, db_session):
-    create_customer(db_session, "acme", "Acme GmbH")
-    create_customer(db_session, "globex", "Globex AG")
-    create_user(db_session, "sven@example.com", "secret123", ("acme", "globex"))
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_customer(db_session, "kkrr", "Katholische Kliniken Rhein Ruhr")
+    create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen", "kkrr"))
     login(client, "sven@example.com", "secret123")
 
     response = client.post("/api/chat", json={"message": "Hallo"})
@@ -146,10 +146,10 @@ def test_chat_requires_customer(client, db_session):
 
 
 def test_chat_empty_message(client, db_session):
-    create_customer(db_session, "acme", "Acme GmbH")
-    create_user(db_session, "sven@example.com", "secret123", ("acme",))
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen",))
     login(client, "sven@example.com", "secret123")
-    client.post("/api/session/customer", json={"customer_id": "acme"})
+    client.post("/api/session/customer", json={"customer_id": "bg-ludwigshafen"})
 
     response = client.post("/api/chat", json={"message": "   "})
     assert response.status_code == 400

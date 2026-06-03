@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from seed_customers import seed_customers
-from seed_data import ALL_CUSTOMERS, DEMO_CUSTOMERS, GLOBAL_CUSTOMER, PRODUCTION_CUSTOMERS
+from seed_data import GLOBAL_CUSTOMER, PRODUCTION_CUSTOMERS
 from seed_users import seed_user
 
 DEFAULT_ADMIN_EMAIL = "matthias.schindler@maris-healthcare.de"
@@ -22,13 +22,10 @@ DeployProfile = Literal["dev", "prod"]
 
 
 def run_seed(*, profile: DeployProfile, email: str, password: str) -> None:
+    _ = profile  # dev and prod use the same customer set
     normalized = email.strip().lower()
-    if profile == "prod":
-        customers = (GLOBAL_CUSTOMER,) + PRODUCTION_CUSTOMERS
-        customer_ids = tuple(slug for slug, _ in PRODUCTION_CUSTOMERS)
-    else:
-        customers = ALL_CUSTOMERS
-        customer_ids = tuple(slug for slug, _ in PRODUCTION_CUSTOMERS + DEMO_CUSTOMERS)
+    customers = (GLOBAL_CUSTOMER,) + PRODUCTION_CUSTOMERS
+    customer_ids = tuple(slug for slug, _ in PRODUCTION_CUSTOMERS)
 
     seed_customers(customers)
     seed_user(normalized, password, customer_ids, is_admin=True)

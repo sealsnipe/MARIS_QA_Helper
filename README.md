@@ -27,14 +27,15 @@ Der Setup-Wizard:
 
 Health-Check: `curl http://127.0.0.1:8088/api/health` → `{"ok":true}`
 
-### Demo-Daten
+### Seed & KB
+
+Setup legt Kunden + Admin automatisch an. Optional Wissensbasis:
 
 ```bash
-docker compose exec api python scripts/seed_setup.py --profile dev
-# oder Demo-Wissen: docker compose exec api python scripts/seed_kb.py
+docker compose exec api python scripts/seed_kb.py
 ```
 
-Login mit dem im Setup angelegten Admin-Nutzer (E-Mail + Passwort beim `./setup.sh`).
+Login mit dem im Setup gesetzten Admin (E-Mail + Passwort).
 
 ## Entwicklung (ohne Docker)
 

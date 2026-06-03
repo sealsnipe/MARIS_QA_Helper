@@ -2,8 +2,8 @@ from app.tests.conftest import create_customer, create_user, login
 
 
 def test_admin_api_requires_admin(client, db_session):
-    create_customer(db_session, "acme", "Acme GmbH")
-    create_user(db_session, "sven@example.com", "secret123", ("acme",))
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen",))
     login(client, "sven@example.com", "secret123")
 
     response = client.get("/api/admin/system-prompt")
@@ -11,8 +11,8 @@ def test_admin_api_requires_admin(client, db_session):
 
 
 def test_admin_can_read_and_write_prompt(client, db_session):
-    create_customer(db_session, "acme", "Acme GmbH")
-    create_user(db_session, "admin@example.com", "secret123", ("acme",), is_admin=True)
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_user(db_session, "admin@example.com", "secret123", ("bg-ludwigshafen",), is_admin=True)
     login(client, "admin@example.com", "secret123")
 
     get_response = client.get("/api/admin/system-prompt")
@@ -27,8 +27,8 @@ def test_admin_can_read_and_write_prompt(client, db_session):
 
 
 def test_admin_page_redirects_for_non_admin(client, db_session):
-    create_customer(db_session, "acme", "Acme GmbH")
-    create_user(db_session, "sven@example.com", "secret123", ("acme",))
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen",))
     login(client, "sven@example.com", "secret123")
 
     response = client.get("/admin", follow_redirects=False)

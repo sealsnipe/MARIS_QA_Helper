@@ -2,10 +2,10 @@ from app.tests.conftest import create_customer, create_user, login
 
 
 def test_upload_txt_only(client, db_session):
-    create_customer(db_session, "acme", "Acme GmbH")
-    create_user(db_session, "sven@example.com", "secret123", ("acme",))
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen",))
     login(client, "sven@example.com", "secret123")
-    client.post("/api/session/customer", json={"customer_id": "acme"})
+    client.post("/api/session/customer", json={"customer_id": "bg-ludwigshafen"})
 
     content = b"Dies ist ein Testdokument mit genug Inhalt fuer die Indexierung."
     response = client.post(
@@ -21,10 +21,10 @@ def test_upload_txt_only(client, db_session):
 
 
 def test_upload_text_only(client, db_session):
-    create_customer(db_session, "acme", "Acme GmbH")
-    create_user(db_session, "sven@example.com", "secret123", ("acme",))
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen",))
     login(client, "sven@example.com", "secret123")
-    client.post("/api/session/customer", json={"customer_id": "acme"})
+    client.post("/api/session/customer", json={"customer_id": "bg-ludwigshafen"})
 
     response = client.post(
         "/api/documents",
@@ -37,10 +37,10 @@ def test_upload_text_only(client, db_session):
 
 
 def test_upload_combined_text_and_file(client, db_session):
-    create_customer(db_session, "acme", "Acme GmbH")
-    create_user(db_session, "sven@example.com", "secret123", ("acme",))
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen",))
     login(client, "sven@example.com", "secret123")
-    client.post("/api/session/customer", json={"customer_id": "acme"})
+    client.post("/api/session/customer", json={"customer_id": "bg-ludwigshafen"})
 
     file_content = b"Dateiinhalt mit genuegend Zeichen fuer die Indexierung."
     response = client.post(
@@ -55,10 +55,10 @@ def test_upload_combined_text_and_file(client, db_session):
 
 
 def test_upload_unsupported_type(client, db_session):
-    create_customer(db_session, "acme", "Acme GmbH")
-    create_user(db_session, "sven@example.com", "secret123", ("acme",))
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen",))
     login(client, "sven@example.com", "secret123")
-    client.post("/api/session/customer", json={"customer_id": "acme"})
+    client.post("/api/session/customer", json={"customer_id": "bg-ludwigshafen"})
 
     response = client.post(
         "/api/documents",
@@ -69,10 +69,10 @@ def test_upload_unsupported_type(client, db_session):
 
 
 def test_upload_requires_content(client, db_session):
-    create_customer(db_session, "acme", "Acme GmbH")
-    create_user(db_session, "sven@example.com", "secret123", ("acme",))
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen",))
     login(client, "sven@example.com", "secret123")
-    client.post("/api/session/customer", json={"customer_id": "acme"})
+    client.post("/api/session/customer", json={"customer_id": "bg-ludwigshafen"})
 
     response = client.post("/api/documents", data={})
     assert response.status_code == 400

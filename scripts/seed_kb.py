@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from app.db import SessionLocal, init_db
 from app.ingestion import IngestionError, ingest_text
-from seed_data import DEMO_CUSTOMERS, PRODUCTION_CUSTOMERS
+from seed_data import PRODUCTION_CUSTOMERS
 
 # Deutlich unterscheidbare Demo-Inhalte je Mandant (Isolation sichtbar).
 KB_ENTRIES: tuple[tuple[str, str, str], ...] = (
@@ -40,16 +40,6 @@ KB_ENTRIES: tuple[tuple[str, str, str], ...] = (
         "Katholische Kliniken Rhein Ruhr: Klinik-IT Support erfolgt über das KKRR Ticketportal. "
         "Medizingeräte-Netzwerk ist getrennt — niemals Geräte im Patienten-WLAN registrieren.",
     ),
-    (
-        "acme",
-        "Acme VPN Runbook (Demo)",
-        "Acme GmbH Demo: VPN Reset über acme-vpn.example.com — nur für Isolationstests.",
-    ),
-    (
-        "globex",
-        "Globex Firewall FAQ (Demo)",
-        "Globex AG Demo: Firewall-Änderungen nur via globex-fw.example.com — Isolationstest-Inhalt.",
-    ),
 )
 
 
@@ -74,6 +64,5 @@ def seed_kb(entries: tuple[tuple[str, str, str], ...] = KB_ENTRIES) -> None:
 
 
 if __name__ == "__main__":
-    print("Seeding KB for production customers:", ", ".join(c[0] for c in PRODUCTION_CUSTOMERS))
-    print("and demo customers:", ", ".join(c[0] for c in DEMO_CUSTOMERS))
+    print("Seeding KB for customers:", ", ".join(c[0] for c in PRODUCTION_CUSTOMERS))
     seed_kb()

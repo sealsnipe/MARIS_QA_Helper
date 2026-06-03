@@ -9,13 +9,7 @@ PRODUCTION_CUSTOMERS: tuple[tuple[str, str], ...] = (
     ("kkrr", "Katholische Kliniken Rhein Ruhr"),
 )
 
-# Demo-Kunden für Isolation-Tests (acme/globex).
-DEMO_CUSTOMERS: tuple[tuple[str, str], ...] = (
-    ("acme", "Acme GmbH"),
-    ("globex", "Globex AG"),
-)
-
-ALL_CUSTOMERS = (GLOBAL_CUSTOMER,) + PRODUCTION_CUSTOMERS + DEMO_CUSTOMERS
+ALL_CUSTOMERS = (GLOBAL_CUSTOMER,) + PRODUCTION_CUSTOMERS
 
 ADMIN_EMAILS: frozenset[str] = frozenset(
     {
@@ -32,15 +26,5 @@ DEFAULT_USERS: tuple[dict, ...] = (
         "password": DEFAULT_PASSWORD,
         "customers": tuple(slug for slug, _ in PRODUCTION_CUSTOMERS),
         "is_admin": True,
-    },
-    {
-        "email": "sven@example.com",
-        "password": DEFAULT_PASSWORD,
-        "customers": ("acme", "globex"),
-    },
-    {
-        "email": "anna@example.com",
-        "password": DEFAULT_PASSWORD,
-        "customers": ("globex",),
     },
 )

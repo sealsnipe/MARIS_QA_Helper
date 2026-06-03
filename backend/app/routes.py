@@ -27,7 +27,6 @@ from app.auth import (
     verify_password,
 )
 from app.customers import (
-    DEMO_CUSTOMER_IDS,
     GLOBAL_CUSTOMER_ID,
     get_customer,
     is_global_customer,
@@ -479,8 +478,6 @@ def api_get_system_prompt(
     db: Session = Depends(get_db),
 ) -> dict:
     scope = None if not customer_id or customer_id == "global" else customer_id
-    if scope in DEMO_CUSTOMER_IDS:
-        return JSONResponse({"error": "forbidden_customer"}, status_code=403)
     content = get_system_prompt(db, scope) or ""
     return {"customer_id": scope, "content": content}
 
@@ -495,8 +492,6 @@ def api_put_system_prompt(
     if scope == "global":
         scope = None
     if scope:
-        if scope in DEMO_CUSTOMER_IDS:
-            return JSONResponse({"error": "forbidden_customer"}, status_code=403)
         customer = get_customer(db, scope)
         if customer is None or scope == GLOBAL_CUSTOMER_ID:
             raise CustomerNotFoundError()

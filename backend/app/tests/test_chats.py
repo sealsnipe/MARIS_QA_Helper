@@ -3,10 +3,10 @@ from app.tests.conftest import create_customer, create_user, login
 
 
 def test_create_and_list_chats(client, db_session):
-    create_customer(db_session, "acme", "Acme GmbH")
-    create_user(db_session, "sven@example.com", "secret123", ("acme",))
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen",))
     login(client, "sven@example.com", "secret123")
-    client.post("/api/session/customer", json={"customer_id": "acme"})
+    client.post("/api/session/customer", json={"customer_id": "bg-ludwigshafen"})
 
     create = client.post("/api/chats")
     assert create.status_code == 200
@@ -23,10 +23,10 @@ def test_chat_persists_messages(client, db_session, monkeypatch):
         lambda *args, **kwargs: ChatResult("Antworttext", [{"n": 1, "document_id": "d1", "title": "Doc", "chunk_index": 0, "score": 0.9}], False),
     )
 
-    create_customer(db_session, "acme", "Acme GmbH")
-    create_user(db_session, "sven@example.com", "secret123", ("acme",))
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen",))
     login(client, "sven@example.com", "secret123")
-    client.post("/api/session/customer", json={"customer_id": "acme"})
+    client.post("/api/session/customer", json={"customer_id": "bg-ludwigshafen"})
 
     response = client.post("/api/chat", json={"message": "Was ist VPN?"})
     assert response.status_code == 200
@@ -41,15 +41,15 @@ def test_chat_persists_messages(client, db_session, monkeypatch):
 
 
 def test_chat_history_isolated_by_customer(client, db_session):
-    create_customer(db_session, "acme", "Acme GmbH")
-    create_customer(db_session, "globex", "Globex AG")
-    create_user(db_session, "sven@example.com", "secret123", ("acme", "globex"))
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_customer(db_session, "kkrr", "Katholische Kliniken Rhein Ruhr")
+    create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen", "kkrr"))
     login(client, "sven@example.com", "secret123")
 
-    client.post("/api/session/customer", json={"customer_id": "acme"})
+    client.post("/api/session/customer", json={"customer_id": "bg-ludwigshafen"})
     acme_chat_id = client.post("/api/chats").json()["chat"]["id"]
 
-    client.post("/api/session/customer", json={"customer_id": "globex"})
+    client.post("/api/session/customer", json={"customer_id": "kkrr"})
     globex_chat_id = client.post("/api/chats").json()["chat"]["id"]
 
     globex_list = client.get("/api/chats")

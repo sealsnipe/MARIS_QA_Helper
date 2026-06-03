@@ -51,22 +51,22 @@ def test_login_failure_shows_generic_error(client, db_session):
 def test_login_success_sets_session(client, db_session):
     from app.tests.conftest import create_customer, create_user, login
 
-    create_customer(db_session, "globex", "Globex AG")
-    create_user(db_session, "single@example.com", "secret123", ("globex",))
+    create_customer(db_session, "kkrr", "Katholische Kliniken Rhein Ruhr")
+    create_user(db_session, "single@example.com", "secret123", ("kkrr",))
     login(client, "single@example.com", "secret123")
 
     response = client.get("/api/me")
     assert response.status_code == 200
     body = response.json()
     assert body["email"] == "single@example.com"
-    assert body["active_customer"] == "globex"
+    assert body["active_customer"] == "kkrr"
 
 
 def test_logout_clears_session(client, db_session):
     from app.tests.conftest import create_customer, create_user, login
 
-    create_customer(db_session, "globex", "Globex AG")
-    create_user(db_session, "single@example.com", "secret123", ("globex",))
+    create_customer(db_session, "kkrr", "Katholische Kliniken Rhein Ruhr")
+    create_user(db_session, "single@example.com", "secret123", ("kkrr",))
     login(client, "single@example.com", "secret123")
 
     response = client.post("/logout", follow_redirects=False)

@@ -10,8 +10,6 @@ CUSTOMER_SLUG_PATTERN = re.compile(r"^[a-z0-9_-]+$")
 GLOBAL_CUSTOMER_ID = "global"
 GLOBAL_CUSTOMER_NAME = "Global"
 
-DEMO_CUSTOMER_IDS = frozenset({"acme", "globex"})
-
 PRODUCTION_CUSTOMER_IDS = frozenset(
     {
         "bg-ludwigshafen",

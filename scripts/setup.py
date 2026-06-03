@@ -560,7 +560,7 @@ def _print_next_steps(
         if profile == "prod":
             print("\n  Produktion: Reverse-Proxy (Caddy/nginx) vor Port 8088, SESSION_COOKIE_SECURE=true.")
         else:
-            print("\n  Entwicklung: HTTP auf :8088 — optional Demo-KB:")
+            print("\n  Entwicklung: HTTP auf :8088 — optional KB befüllen:")
             print("    docker compose exec api python scripts/seed_kb.py")
 
         print("  • Updates:      ./scripts/update.sh  (nach git pull)")
