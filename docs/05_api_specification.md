@@ -52,6 +52,8 @@
 | GET/POST/DELETE | `/api/admin/documents[/{id}]` | JSON | ✅ Admin | global KB; **GET/PUT `{id}`** = Inhalt lesen/bearbeiten |
 | GET/POST/DELETE | `/api/admin/customers/{id}/documents[/{doc}]` | JSON | ✅ Admin | pro Mandant; **GET/PUT `{doc}`** = Bearbeiten |
 | GET/POST/PATCH/DELETE | `/api/admin/users[/{id}]` | JSON | ✅ Admin | Benutzer-CRUD |
+| GET/POST/PATCH/DELETE | `/api/admin/roles[/{id}]` | JSON | ✅ Admin | Rollen-CRUD (Presets) |
+| GET/PATCH | `/api/admin/keys[/*]` | JSON | ✅ Admin | Chat/Embed/Similarity/Integration Keys + OAuth-Device-Flow |
 
 > Alle mandant-gescopten Routen ziehen `customer_id` über `get_current_customer` aus der Session
 > und prüfen `user ∈ customer` (sonst 403).

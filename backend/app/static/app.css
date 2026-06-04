@@ -790,6 +790,12 @@ select:focus-visible,
   padding-bottom: 0.35rem;
 }
 
+.sidebar-customer-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .user-customers-fieldset {
   border: none;
   padding: 0;
@@ -907,6 +913,72 @@ select:focus-visible,
 .user-role-badge {
   background: rgba(88, 166, 255, 0.16);
   color: #9fd0ff;
+}
+
+.keys-value-cell code,
+.keys-value-cell .keys-val {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+.keys-mode {
+  font-size: 0.8em;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  margin-right: 0.25rem;
+  background: var(--bg);
+}
+.keys-edit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.keys-edit-row label {
+  display: inline-flex;
+  flex-direction: column;
+  font-size: 0.85em;
+}
+.keys-edit-row input[type="password"],
+.keys-edit-row select {
+  min-width: 180px;
+}
+.icon-btn.save {
+  color: #2e7d32;
+  border-color: rgba(46, 125, 50, 0.4);
+}
+.icon-btn.save:hover {
+  background: rgba(46, 125, 50, 0.12);
+}
+
+#oauth-dialog {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+#oauth-dialog.hidden {
+  display: none;
+}
+#oauth-dialog .modal-dialog {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  padding: 1rem 1.25rem;
+  border-radius: 8px;
+  max-width: 440px;
+  width: 92%;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+#oauth-dialog h3 {
+  margin: 0 0 0.5rem;
+}
+#oauth-dialog .oauth-actions {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
 }
 
 .user-actions-cell {

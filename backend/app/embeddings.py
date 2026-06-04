@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from openai import OpenAI
+from sqlalchemy.orm import Session
 
 from app.config import get_settings
 
@@ -42,12 +43,15 @@ class OpenAIEmbeddings:
 _embeddings_backend: EmbeddingsBackend | None = None
 
 
-def get_embeddings_backend() -> EmbeddingsBackend:
+def get_embeddings_backend(db: Session | None = None) -> EmbeddingsBackend:
     global _embeddings_backend
     if _embeddings_backend is None:
+        from app.secrets_admin import get_effective_secret
+
         settings = get_settings()
+        key = get_effective_secret(db, "embedding_api_key") or settings.OPENAI_API_KEY
         _embeddings_backend = OpenAIEmbeddings(
-            api_key=settings.OPENAI_API_KEY,
+            api_key=key,
             base_url=settings.OPENAI_BASE_URL,
             model=settings.EMBEDDING_MODEL,
             expected_dim=settings.EMBEDDING_DIM,

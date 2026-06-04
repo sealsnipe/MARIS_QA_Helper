@@ -58,16 +58,30 @@ def list_customers_for_user(db: Session, user_id: str) -> list[Customer]:
     return list(db.scalars(stmt))
 
 
+def list_effective_tenant_customers_for_user(db: Session, user: User) -> list[Customer]:
+    """Tenant customers visible in nav / chat scope: all active tenants for admins, else assignments."""
+    if user.is_admin:
+        return list_tenant_customers(db)
+    return list_customers_for_user(db, user.id)
+
+
 def list_assigned_customer_ids(db: Session, user_id: str) -> list[str]:
-    return [customer.id for customer in list_customers_for_user(db, user_id)]
+    user = db.get(User, user_id)
+    if user is None:
+        return []
+    return [customer.id for customer in list_effective_tenant_customers_for_user(db, user)]
 
 
-def list_customers_for_nav(db: Session, user_id: str) -> list[Customer]:
-    assigned = list_customers_for_user(db, user_id)
+def list_customers_for_nav(db: Session, user: User) -> list[Customer]:
+    """Sidebar: Global + effective tenant customers for this user."""
+    assigned = list_effective_tenant_customers_for_user(db, user)
+    global_customer = get_customer(db, GLOBAL_CUSTOMER_ID)
+
     if not assigned:
+        if user.is_admin and global_customer is not None and is_customer_active(global_customer):
+            return [global_customer]
         return []
 
-    global_customer = get_customer(db, GLOBAL_CUSTOMER_ID)
     if global_customer is None or not is_customer_active(global_customer):
         return assigned
 
@@ -95,13 +109,22 @@ def list_production_customers(db: Session) -> list[Customer]:
 
 
 def user_has_customer(db: Session, user_id: str, customer_id: str) -> bool:
+    user = db.get(User, user_id)
+    if user is None or not user.is_active:
+        return False
+
     if is_global_customer(customer_id):
-        return bool(list_customers_for_user(db, user_id))
+        return bool(list_effective_tenant_customers_for_user(db, user))
+
     if not validate_customer_slug(customer_id):
         return False
-    customer = db.get(Customer, customer_id)
+    customer = get_customer(db, customer_id)
     if not is_customer_active(customer):
         return False
+
+    if user.is_admin:
+        return True
+
     stmt = select(UserCustomer).where(
         UserCustomer.user_id == user_id,
         UserCustomer.customer_id == customer_id,

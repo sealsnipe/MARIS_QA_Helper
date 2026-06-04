@@ -43,7 +43,7 @@ def run(
     scope_customer_ids: list[str] | None = None,
 ) -> ChatResult:
     settings = get_settings()
-    llm = llm or get_llm()
+    llm = llm or get_llm(db=db)
     default_top_k = clamp_top_k(top_k, settings.TOP_K_DEFAULT)
     if system_prompt is None:
         system_prompt = get_effective_system_prompt(db, customer_id) if db else DEFAULT_GLOBAL_SYSTEM_PROMPT

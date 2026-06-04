@@ -151,3 +151,12 @@ class ChatMessage(Base):
     created_at: Mapped[str] = mapped_column(String, nullable=False)
 
     session: Mapped[ChatSession] = relationship(back_populates="messages")
+
+
+class AppSecret(Base):
+    __tablename__ = "app_secrets"
+
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)
+    updated_by: Mapped[str] = mapped_column(String, nullable=False)

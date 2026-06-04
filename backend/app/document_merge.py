@@ -11,7 +11,7 @@ from app.chunking import MIN_TEXT_LENGTH, normalize_text, split_paragraph_blocks
 from app.config import get_settings
 from app.embeddings import EmbeddingsBackend, get_embeddings_backend
 from app.ingestion import IngestionError, get_document_text, update_document_content
-from app.llm import LLMBackend, LLMError, get_llm
+from app.llm import LLMBackend, LLMError, get_llm, get_similarity_llm
 from app.qdrant_store import VectorStore, get_vector_store
 
 VALID_BLOCK_KINDS = frozenset({"unchanged", "modified", "added", "removed"})
@@ -242,12 +242,13 @@ def llm_suggest_merge(
     *,
     heuristic: dict[str, Any] | None = None,
     llm: LLMBackend | None = None,
+    db: Session | None = None,
 ) -> dict[str, Any]:
     settings = get_settings()
     if not settings.MERGE_LLM_ENABLED:
         raise MergeError("llm_disabled")
 
-    llm = llm or get_llm()
+    llm = llm or get_similarity_llm(db=db)
     max_chars = settings.MERGE_LLM_MAX_CHARS
     heuristic_hint = ""
     if heuristic and heuristic.get("stats"):
@@ -483,7 +484,7 @@ def merge_preview_for_documents(
     document, old_text = resolved
     heuristic = build_merge_preview(old_text, new_text, embeddings=embeddings)
     if use_llm:
-        preview = llm_suggest_merge(old_text, new_text, heuristic=heuristic, llm=llm)
+        preview = llm_suggest_merge(old_text, new_text, heuristic=heuristic, llm=llm, db=db)
     else:
         preview = finalize_merge_preview(heuristic)
     preview["target_document_id"] = document.id

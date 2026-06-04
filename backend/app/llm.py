@@ -10,6 +10,7 @@ from typing import Any, Protocol
 
 import httpx
 from openai import OpenAI
+from sqlalchemy.orm import Session
 
 from app.config import get_settings
 
@@ -212,13 +213,17 @@ class CodexOAuthLLM:
 
 
 _llm_backend: LLMBackend | None = None
+_similarity_backend: LLMBackend | None = None
 
 
-def get_llm() -> LLMBackend:
+def get_llm(db: Session | None = None) -> LLMBackend:
     global _llm_backend
     if _llm_backend is None:
+        from app.secrets_admin import get_effective_secret
+
         settings = get_settings()
-        if settings.uses_chatgpt_oauth:
+        auth_mode = get_effective_secret(db, "chat_auth_mode") or settings.LLM_AUTH_MODE
+        if auth_mode == "chatgpt_oauth":
             auth_path = Path(settings.codex_oauth_auth_path)
             _llm_backend = CodexOAuthLLM(
                 auth_path=auth_path,
@@ -226,8 +231,9 @@ def get_llm() -> LLMBackend:
                 model=settings.CHAT_MODEL,
             )
         else:
+            key = get_effective_secret(db, "chat_api_key") or settings.OPENAI_API_KEY
             _llm_backend = OpenAILLM(
-                api_key=settings.OPENAI_API_KEY,
+                api_key=key,
                 base_url=settings.OPENAI_BASE_URL,
                 model=settings.CHAT_MODEL,
             )
@@ -237,6 +243,47 @@ def get_llm() -> LLMBackend:
 def set_llm(backend: LLMBackend | None) -> None:
     global _llm_backend
     _llm_backend = backend
+
+
+def get_similarity_llm(db: Session | None = None) -> LLMBackend:
+    global _similarity_backend
+    if _similarity_backend is None:
+        from app.secrets_admin import get_effective_secret
+
+        settings = get_settings()
+        mode = get_effective_secret(db, "similarity_mode") or "same_as_chat"
+        if mode == "same_as_chat":
+            _similarity_backend = get_llm(db=db)
+            return _similarity_backend
+        sim_auth = (
+            get_effective_secret(db, "similarity_auth_mode")
+            or get_effective_secret(db, "chat_auth_mode")
+            or settings.LLM_AUTH_MODE
+        )
+        if sim_auth == "chatgpt_oauth":
+            auth_path = Path(settings.codex_oauth_auth_path)
+            _similarity_backend = CodexOAuthLLM(
+                auth_path=auth_path,
+                base_url=settings.CODEX_BASE_URL,
+                model=settings.CHAT_MODEL,
+            )
+        else:
+            key = (
+                get_effective_secret(db, "similarity_api_key")
+                or get_effective_secret(db, "chat_api_key")
+                or settings.OPENAI_API_KEY
+            )
+            _similarity_backend = OpenAILLM(
+                api_key=key,
+                base_url=settings.OPENAI_BASE_URL,
+                model=settings.CHAT_MODEL,
+            )
+    return _similarity_backend
+
+
+def set_similarity_llm(backend: LLMBackend | None) -> None:
+    global _similarity_backend
+    _similarity_backend = backend
 
 
 _vision_transcriber_override: Callable[[bytes, str, str], str] | None = None
@@ -340,9 +387,10 @@ def _transcribe_image_oauth(image_data: bytes, mime_type: str, prompt: str) -> s
     return text
 
 
-def _transcribe_image_api_key(image_data: bytes, mime_type: str, prompt: str) -> str:
+def _transcribe_image_api_key(image_data: bytes, mime_type: str, prompt: str, *, api_key: str | None = None) -> str:
     settings = get_settings()
-    client = OpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL)
+    key = api_key or settings.OPENAI_API_KEY
+    client = OpenAI(api_key=key, base_url=settings.OPENAI_BASE_URL)
     try:
         response = client.chat.completions.create(
             model=settings.VISION_MODEL,
@@ -375,7 +423,11 @@ def transcribe_image(image_data: bytes, mime_type: str, *, prompt: str) -> str:
     if _vision_transcriber_override is not None:
         return _vision_transcriber_override(image_data, mime_type, prompt)
 
+    from app.secrets_admin import get_effective_secret
+
     settings = get_settings()
-    if settings.uses_chatgpt_oauth:
+    auth_mode = get_effective_secret(None, "chat_auth_mode") or settings.LLM_AUTH_MODE
+    if auth_mode == "chatgpt_oauth":
         return _transcribe_image_oauth(image_data, mime_type, prompt)
-    return _transcribe_image_api_key(image_data, mime_type, prompt)
+    key = get_effective_secret(None, "chat_api_key") or settings.OPENAI_API_KEY
+    return _transcribe_image_api_key(image_data, mime_type, prompt, api_key=key)

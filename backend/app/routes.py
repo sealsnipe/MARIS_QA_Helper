@@ -94,6 +94,12 @@ from app.roles_admin import (
     role_to_dict,
     update_admin_role,
 )
+from app.secrets_admin import (
+    SecretsAdminError,
+    get_effective_secret,
+    get_keys_status,
+    update_secret,
+)
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
@@ -160,6 +166,25 @@ class AdminRoleUpdateRequest(BaseModel):
     auto_add_new_customers: bool | None = None
 
 
+class AdminKeysChatUpdate(BaseModel):
+    auth_mode: str | None = None
+    api_key: str | None = None
+
+
+class AdminKeysEmbeddingUpdate(BaseModel):
+    api_key: str | None = None
+
+
+class AdminKeysSimilarityUpdate(BaseModel):
+    mode: str | None = None
+    auth_mode: str | None = None
+    api_key: str | None = None
+
+
+class AdminKeysIntegrationUpdate(BaseModel):
+    api_key: str | None = None
+
+
 class DocumentUpdateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     text: str = Field(min_length=1)
@@ -207,6 +232,22 @@ def _admin_page_redirect(user: User) -> RedirectResponse | None:
     return None
 
 
+# Sidebar customer dropdown: scoped (chat/kb), admin_scoped (KB/prompts admin), global (no page effect).
+CUSTOMER_NAV_SCOPED_PAGES = frozenset({"chat", "kb", "tools_bild_zu_text"})
+CUSTOMER_NAV_ADMIN_SCOPED_PAGES = frozenset({"admin_knowledge", "admin_prompts"})
+CUSTOMER_NAV_GLOBAL_PAGES = frozenset({"customers", "admin_users", "admin_roles", "admin_keys"})
+
+
+def customer_nav_mode(active_page: str) -> str:
+    if active_page in CUSTOMER_NAV_GLOBAL_PAGES:
+        return "global"
+    if active_page in CUSTOMER_NAV_ADMIN_SCOPED_PAGES:
+        return "admin_scoped"
+    if active_page in CUSTOMER_NAV_SCOPED_PAGES:
+        return "scoped"
+    return "scoped"
+
+
 def _page_context(
     request: Request,
     user: User,
@@ -214,10 +255,11 @@ def _page_context(
     *,
     active_page: str,
 ) -> dict:
-    customers = list_customers_for_nav(db, user.id)
+    customers = list_customers_for_nav(db, user)
     active_customer_id = request.session.get("customer_id")
     active_customer = get_customer(db, active_customer_id) if active_customer_id else None
     admin_customers = list_tenant_customers(db)
+    nav_mode = customer_nav_mode(active_page)
     return {
         "user": user,
         "customers": customers,
@@ -225,6 +267,7 @@ def _page_context(
         "active_customer": active_customer,
         "is_admin": bool(user.is_admin),
         "active_page": active_page,
+        "customer_nav_mode": nav_mode,
         "global_customer_id": GLOBAL_CUSTOMER_ID,
         "customer_labels": {customer.id: customer.name for customer in customers},
     }
@@ -466,13 +509,28 @@ def admin_roles_page(
     )
 
 
+@router.get("/admin/keys", response_class=HTMLResponse)
+def admin_keys_page(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    if redirect := _admin_page_redirect(user):
+        return redirect
+    return templates.TemplateResponse(
+        request,
+        "admin_keys.html",
+        _page_context(request, user, db, active_page="admin_keys"),
+    )
+
+
 @router.get("/api/customers")
 def api_list_customers(
     request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    customers = list_customers_for_nav(db, user.id)
+    customers = list_customers_for_nav(db, user)
     return {
         "customers": [{"id": customer.id, "name": customer.name} for customer in customers],
         "active": request.session.get("customer_id"),
@@ -1460,6 +1518,116 @@ def api_admin_delete_role(
 ) -> dict:
     delete_admin_role(db, role_id)
     return {"deleted": True, "id": role_id}
+
+
+@router.get("/api/admin/keys")
+def api_admin_get_keys(
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    return get_keys_status(db)
+
+
+@router.patch("/api/admin/keys/chat")
+def api_admin_update_keys_chat(
+    payload: AdminKeysChatUpdate,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    if payload.auth_mode is not None:
+        update_secret(db, "chat_auth_mode", payload.auth_mode, _admin.email)
+    if payload.api_key is not None:
+        update_secret(db, "chat_api_key", payload.api_key, _admin.email)
+    return get_keys_status(db)
+
+
+@router.patch("/api/admin/keys/embedding")
+def api_admin_update_keys_embedding(
+    payload: AdminKeysEmbeddingUpdate,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    if payload.api_key is not None:
+        update_secret(db, "embedding_api_key", payload.api_key, _admin.email)
+    return get_keys_status(db)
+
+
+@router.patch("/api/admin/keys/similarity")
+def api_admin_update_keys_similarity(
+    payload: AdminKeysSimilarityUpdate,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    if payload.mode is not None:
+        update_secret(db, "similarity_mode", payload.mode, _admin.email)
+    if payload.auth_mode is not None:
+        update_secret(db, "similarity_auth_mode", payload.auth_mode, _admin.email)
+    if payload.api_key is not None:
+        update_secret(db, "similarity_api_key", payload.api_key, _admin.email)
+    return get_keys_status(db)
+
+
+@router.patch("/api/admin/keys/integration")
+def api_admin_update_keys_integration(
+    payload: AdminKeysIntegrationUpdate,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    if payload.api_key is not None:
+        update_secret(db, "integration_api_token", payload.api_key, _admin.email)
+    return get_keys_status(db)
+
+
+@router.post("/api/admin/keys/oauth/start")
+def api_admin_oauth_start(
+    _admin: User = Depends(get_admin_user),
+) -> dict:
+    from app.oauth_device_flow import start_device_flow
+
+    try:
+        info = start_device_flow()
+        return info
+    except Exception as exc:
+        raise SecretsAdminError("oauth_start_failed", status_code=502, detail=str(exc)) from exc
+
+
+@router.post("/api/admin/keys/oauth/poll")
+def api_admin_oauth_poll(
+    device_auth_id: str,
+    user_code: str,
+    interval: int = 5,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    from app.oauth_device_flow import (
+        exchange_and_save,
+        get_oauth_target_path,
+        poll_device_completion,
+    )
+
+    try:
+        res = poll_device_completion(device_auth_id, user_code, interval, max_seconds=20)
+        if res.get("status") != "complete":
+            return {"status": res.get("status", "pending")}
+        # complete: exchange + save file + set modes
+        target = get_oauth_target_path()
+        acc = exchange_and_save(
+            res["authorization_code"],
+            res["code_verifier"],
+            target,
+        )
+        # ensure chat uses oauth
+        update_secret(db, "chat_auth_mode", "chatgpt_oauth", _admin.email)
+        # if similarity is in custom, also point it to oauth (reuses same file)
+        if (get_effective_secret(db, "similarity_mode") or "same_as_chat") == "custom":
+            update_secret(db, "similarity_auth_mode", "chatgpt_oauth", _admin.email)
+        status = get_keys_status(db)
+        status["oauth_account_id"] = acc.get("account_id")
+        return {"status": "complete", "keys": status}
+    except SecretsAdminError:
+        raise
+    except Exception as exc:
+        raise SecretsAdminError("oauth_poll_failed", status_code=502, detail=str(exc)) from exc
 
 
 @router.post("/api/admin/users")

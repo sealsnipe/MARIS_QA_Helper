@@ -1,6 +1,6 @@
 # 08 — UI/UX-Design
 
-**Stand:** 2026-06-03 · **Status:** verbindlich (Sidebar + Admin-Seiten)
+**Stand:** 2026-06-05 · **Status:** verbindlich (Sidebar + Admin-Seiten)
 
 > UI-Karte: [`system/07_ui_map.md`](../system/07_ui_map.md)
 
@@ -12,10 +12,22 @@ Datei-Upload neben der Text-Eingabe.
 
 ## 1. Design-Prinzipien
 1. **Vertrauen durch Belege:** jede Antwort zeigt ihre Quellen.
-2. **Kunde immer sichtbar:** der aktive Kunde steht jederzeit im Header.
+2. **Kunde immer sichtbar:** der aktive Kunde steht in der Sidebar — wirkt aber **seitenabhängig** (siehe §1.1).
 3. **Zustände sind sichtbar:** leer, lädt, Upload läuft, Extraktion fehlgeschlagen, kein Treffer, Fehler.
 4. **Eine Sache pro Seite:** Login / Arbeiten.
 5. **Destruktives bestätigen:** Löschen mit `confirm()`.
+
+### 1.1 Sidebar-Kunde (`customer_nav_mode`)
+
+| Modus | Seiten | Regel |
+|---|---|---|
+| **scoped** | Chat, KB, Tools | Kunde Pflicht; Banner + Reload bei Wechsel |
+| **admin_scoped** | Admin KB, Admin Systemprompts | Sidebar steuert Mandanten-Scope der Seite |
+| **global** | Admin Kunden, User, Rollen, Keys | Kein Mandanten-Bezug; Dropdown optional, ändert Seite nicht |
+
+Admins ohne Mandantenzuordnung: Sidebar zeigt mindestens **Global** (kein „Kein Kunde zugeordnet“ auf reinen Admin-Seiten). **Admins** sehen zusätzlich **alle aktiven Mandanten** in der Sidebar — auch ohne Einträge in `user_customers`.
+
+Technik: `routes.customer_nav_mode` → `APP_BOOT.customerNavMode` → `app.js`.
 
 ## 2. Seitenkarte (Ist)
 ```text
@@ -26,6 +38,8 @@ Datei-Upload neben der Text-Eingabe.
 /admin/knowledge          → KB global oder pro Mandant (Admin)
 /admin/prompts            → Systemprompts (Admin)
 /admin/users              → Benutzer + Mandantenzuordnung (Admin)
+/admin/roles              → Rollen-Presets (Admin)
+/admin/keys               → API-Keys & OAuth (Admin, global)
 /                         → Redirect /chat
 /kb (Admin)               → Redirect /admin/knowledge
 /admin                    → Redirect /admin/customers

@@ -1,6 +1,6 @@
 # 06 — Admin-Flows
 
-**Stand:** 2026-06-03
+**Stand:** 2026-06-05
 
 ---
 
@@ -12,12 +12,29 @@ Einstellungen
       Kunden           → /admin/customers
       Wissensdatenbanken → /admin/knowledge
       Systemprompts    → /admin/prompts
-      User             → /admin/users
+      User
+        Benutzer       → /admin/users
+        Rollen         → /admin/roles
+      Keys             → /admin/keys
 ```
 
 `/admin` → Redirect `/admin/customers`. Nicht-Admins → `/chat`.
 
 Spiegel: `templates/layout.md`, `static/app.md` (`initAdminNav`)
+
+---
+
+## Sidebar-Kunde auf Admin-Seiten
+
+| Seite | Mandanten-Bezug |
+|---|---|
+| Kunden, User, Rollen, Keys | **Global** — Sidebar-Kunde hat keine Auswirkung auf Seiteninhalt |
+| Wissensdatenbanken, Systemprompts | **Ja** — Sidebar sync mit Scope-Dropdown (global vs. Mandant) |
+| Chat, KB (Nutzer) | **Ja** — Kunde Pflicht |
+
+**Admins** sehen in der Sidebar **Global + alle aktiven Mandanten** (unabhängig von direkten `user_customers`-Zeilen). Normale Nutzer nur zugewiesene Mandanten.
+
+Details: [`07_ui_map.md`](./07_ui_map.md#sidebar-kunde-customer_nav_mode)
 
 ---
 

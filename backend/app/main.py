@@ -23,6 +23,7 @@ from app.routes import router
 from app.tenant import CustomerNotFoundError, ForbiddenCustomerError
 from app.customers import ensure_global_customer, CustomerAdminError
 from app.roles_admin import RoleAdminError
+from app.secrets_admin import SecretsAdminError
 from app.users_admin import UserAdminError
 from app.system_prompts import ensure_default_global_prompt
 from app.upload import UploadError
@@ -122,6 +123,14 @@ async def user_admin_error_handler(_request: Request, exc: UserAdminError):
 
 @app.exception_handler(RoleAdminError)
 async def role_admin_error_handler(_request: Request, exc: RoleAdminError):
+    body: dict[str, str] = {"error": exc.code}
+    if exc.detail:
+        body["detail"] = exc.detail
+    return JSONResponse(body, status_code=exc.status_code)
+
+
+@app.exception_handler(SecretsAdminError)
+async def secrets_admin_error_handler(_request: Request, exc: SecretsAdminError):
     body: dict[str, str] = {"error": exc.code}
     if exc.detail:
         body["detail"] = exc.detail

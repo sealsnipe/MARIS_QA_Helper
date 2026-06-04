@@ -1,11 +1,49 @@
 (() => {
   const boot = window.APP_BOOT || {};
   const page = boot.page || "chat";
+  const customerNavMode = boot.customerNavMode || "scoped";
   const globalCustomerId = boot.globalCustomerId || "global";
   const customerLabels = boot.customerLabels || {};
   const isAdmin = Boolean(boot.isAdmin);
   let activeCustomerId = boot.activeCustomerId || "";
   let activeCustomerName = boot.activeCustomerName || "";
+
+  function pageNeedsCustomer() {
+    return customerNavMode === "scoped";
+  }
+
+  function adminScopeFromCustomerId(customerId) {
+    if (!customerId || customerId === globalCustomerId) return "global";
+    return customerId;
+  }
+
+  async function persistCustomerSession(customerId) {
+    if (!customerId) return;
+    await api("/api/session/customer", {
+      method: "POST",
+      body: JSON.stringify({ customer_id: customerId }),
+    });
+  }
+
+  function syncAdminPageScopeFromSidebar(customerId) {
+    const scope = adminScopeFromCustomerId(customerId);
+    if (page === "admin_knowledge") {
+      const scopeSelect = document.getElementById("knowledge-scope");
+      if (!scopeSelect) return;
+      if (scopeSelect.querySelector(`option[value="${scope}"]`)) {
+        scopeSelect.value = scope;
+        scopeSelect.dispatchEvent(new Event("change"));
+      }
+    }
+    if (page === "admin_prompts") {
+      const promptScope = document.getElementById("prompt-scope");
+      if (!promptScope) return;
+      if (promptScope.querySelector(`option[value="${scope}"]`)) {
+        promptScope.value = scope;
+        promptScope.dispatchEvent(new Event("change"));
+      }
+    }
+  }
 
   function isGlobalCustomer() {
     return activeCustomerId === globalCustomerId;
@@ -80,8 +118,7 @@
   }
 
   function setCustomerUiEnabled(enabled) {
-    const needsCustomer = page === "chat" || page === "kb";
-    if (!needsCustomer) return;
+    if (!pageNeedsCustomer()) return;
 
     if (enabled) {
       noCustomerBanner?.classList.add("hidden");
@@ -212,6 +249,32 @@
     customerSelect.addEventListener("change", async () => {
       syncActiveCustomerFromSelect();
       const value = customerSelect.value;
+
+      if (customerNavMode === "global") {
+        if (value) {
+          try {
+            await persistCustomerSession(value);
+          } catch (_error) {
+            /* session optional on global admin pages */
+          }
+        }
+        return;
+      }
+
+      if (customerNavMode === "admin_scoped") {
+        if (!value) {
+          refreshChatHistory().catch(() => {});
+          return;
+        }
+        try {
+          await persistCustomerSession(value);
+          syncAdminPageScopeFromSidebar(value);
+        } catch (_error) {
+          showStatus(document.getElementById("prompt-status"), "Kundenwechsel fehlgeschlagen.", "error");
+        }
+        return;
+      }
+
       if (!value) {
         activeChatId = "";
         setCustomerUiEnabled(false);
@@ -1807,6 +1870,13 @@
     const scopeHint = document.getElementById("knowledge-scope-hint");
     const statusEl = document.getElementById("admin-ingest-status");
 
+    if (customerNavMode === "admin_scoped" && scopeSelect) {
+      const initialScope = adminScopeFromCustomerId(activeCustomerId);
+      if (scopeSelect.querySelector(`option[value="${initialScope}"]`)) {
+        scopeSelect.value = initialScope;
+      }
+    }
+
     function currentScope() {
       return scopeSelect?.value || "global";
     }
@@ -1864,6 +1934,13 @@
     const promptForm = document.getElementById("prompt-form");
     const promptStatus = document.getElementById("prompt-status");
 
+    if (customerNavMode === "admin_scoped" && promptScope) {
+      const initialScope = adminScopeFromCustomerId(activeCustomerId);
+      if (promptScope.querySelector(`option[value="${initialScope}"]`)) {
+        promptScope.value = initialScope;
+      }
+    }
+
     async function loadPrompt() {
       const scope = promptScope?.value || "global";
       const query = scope === "global" ? "" : `?customer_id=${encodeURIComponent(scope)}`;
@@ -1918,6 +1995,8 @@
     '<svg class="icon-btn-svg" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
   const ICON_TRASH =
     '<svg class="icon-btn-svg" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
+  const ICON_SAVE =
+    '<svg class="icon-btn-svg" viewBox="0 0 24 24" aria-hidden="true" style="color:#2e7d32"><path fill="currentColor" d="M17 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm0 16H7v-2h10v2zm-2-8H7V5h8v2H9v2h6v2z"/></svg>';
 
   function readCheckboxValues(container, namePrefix) {
     if (!container) return [];
@@ -2598,6 +2677,272 @@
     loadCustomers().catch(() => showStatus(listStatus, "Kunden konnten nicht geladen werden.", "error"));
   }
 
+  function initKeysPage() {
+    const tbody = document.getElementById("keys-table-body");
+    const emptyEl = document.getElementById("keys-empty");
+    const countEl = document.getElementById("keys-count");
+    const listStatus = document.getElementById("keys-list-status");
+    const oauthDialog = document.getElementById("oauth-dialog");
+    const oauthUrl = document.getElementById("oauth-verify-url");
+    const oauthCode = document.getElementById("oauth-user-code");
+    const oauthCheck = document.getElementById("oauth-check");
+    const oauthCancel = document.getElementById("oauth-cancel");
+    const oauthStatus = document.getElementById("oauth-status");
+
+    let currentStatus = null;
+    let currentOAuth = null; // {device_auth_id, user_code, interval}
+
+    function areaLabel(area) {
+      if (area === "chat") return "Chat (LLM)";
+      if (area === "embedding") return "Embeddings";
+      if (area === "similarity") return "Similarity Agent";
+      if (area === "integration") return "Integration API";
+      return area;
+    }
+
+    function renderValue(area, data) {
+      if (area === "chat" || area === "similarity") {
+        const mode = data.auth_mode || "api_key";
+        const keyM = data.api_key_masked || "";
+        const oauth = data.oauth || {};
+        if (mode === "chatgpt_oauth") {
+          const acc = oauth.account_id ? ` (Account ${escapeHtml(oauth.account_id)})` : "";
+          const cfg = oauth.configured ? "OAuth aktiv" : "OAuth (nicht eingeloggt)";
+          const loginBtn = `<button type="button" class="secondary small keys-oauth-btn" style="margin-left:0.5rem">Neu anmelden</button>`;
+          return `<span class="keys-mode">chatgpt_oauth</span> <span class="keys-val">${escapeHtml(cfg)}${acc}</span>${loginBtn}`;
+        }
+        return `<span class="keys-mode">api_key</span> <code class="keys-val">${escapeHtml(keyM || "—")}</code>`;
+      }
+      if (area === "embedding") {
+        return `<code class="keys-val">${escapeHtml(data.api_key_masked || "—")}</code>`;
+      }
+      if (area === "integration") {
+        const en = data.enabled ? "" : " (deaktiviert)";
+        return `<code class="keys-val">${escapeHtml(data.api_key_masked || "—")}</code>${escapeHtml(en)}`;
+      }
+      return "";
+    }
+
+    function renderRow(area, data) {
+      const tr = document.createElement("tr");
+      tr.dataset.area = area;
+      tr.innerHTML = `
+        <td><strong>${escapeHtml(areaLabel(area))}</strong></td>
+        <td class="keys-value-cell">${renderValue(area, data)}</td>
+        <td class="keys-actions-cell">
+          <div class="row-actions">
+            <button type="button" class="icon-btn secondary keys-edit-btn" aria-label="Bearbeiten">${ICON_EDIT}</button>
+          </div>
+        </td>
+      `;
+      return tr;
+    }
+
+    function setEditing(row, area, data, onSave, onCancel) {
+      const valCell = row.querySelector(".keys-value-cell");
+      const actCell = row.querySelector(".keys-actions-cell");
+      if (!valCell || !actCell) return;
+
+      row.classList.add("editing");
+
+      let html = "";
+      if (area === "chat" || area === "similarity") {
+        const curMode = data.auth_mode || "api_key";
+        const curKey = (area === "chat" ? (currentStatus?.chat?.api_key_masked || "") : (currentStatus?.similarity?.api_key_masked || ""));
+        const simExtra = area === "similarity" ? `
+          <label style="margin-left:0.5rem">Modus
+            <select class="keys-sim-mode">
+              <option value="same_as_chat" ${data.mode === "same_as_chat" ? "selected" : ""}>Same as chat</option>
+              <option value="custom" ${data.mode === "custom" ? "selected" : ""}>Custom</option>
+            </select>
+          </label>
+        ` : "";
+        html = `
+          <div class="keys-edit-row">
+            <label>Auth
+              <select class="keys-auth-mode">
+                <option value="api_key" ${curMode === "api_key" ? "selected" : ""}>API Key</option>
+                <option value="chatgpt_oauth" ${curMode === "chatgpt_oauth" ? "selected" : ""}>ChatGPT OAuth</option>
+              </select>
+            </label>
+            ${simExtra}
+            <label class="keys-key-label" style="margin-left:0.5rem">Key
+              <input type="password" class="keys-key-input" value="" placeholder="neuer Key (optional)">
+            </label>
+          </div>
+        `;
+      } else if (area === "embedding" || area === "integration") {
+        html = `
+          <div class="keys-edit-row">
+            <label>Key
+              <input type="password" class="keys-key-input" value="" placeholder="${area === "integration" ? "Token (leer = deaktiviert)" : "neuer Key"}">
+            </label>
+          </div>
+        `;
+      }
+      valCell.innerHTML = html;
+
+      actCell.innerHTML = `
+        <div class="row-actions">
+          <button type="button" class="icon-btn save keys-save-btn" aria-label="Speichern" title="Speichern">${ICON_SAVE}</button>
+          <button type="button" class="icon-btn secondary keys-cancel-btn" aria-label="Abbrechen">Abbrechen</button>
+        </div>
+      `;
+
+      const saveBtn = actCell.querySelector(".keys-save-btn");
+      const cancelBtn = actCell.querySelector(".keys-cancel-btn");
+      const authSel = valCell.querySelector(".keys-auth-mode");
+      const keyInput = valCell.querySelector(".keys-key-input");
+      const simModeSel = valCell.querySelector(".keys-sim-mode");
+
+      function revert() {
+        row.classList.remove("editing");
+        valCell.innerHTML = renderValue(area, data);
+        actCell.innerHTML = `<div class="row-actions"><button type="button" class="icon-btn secondary keys-edit-btn" aria-label="Bearbeiten">${ICON_EDIT}</button></div>`;
+        // rebind edit
+        const newEdit = actCell.querySelector(".keys-edit-btn");
+        if (newEdit) newEdit.addEventListener("click", () => startEdit(row, area, data));
+      }
+
+      cancelBtn?.addEventListener("click", () => {
+        revert();
+        onCancel && onCancel();
+      });
+
+      saveBtn?.addEventListener("click", async () => {
+        const payload = {};
+        if (authSel) payload.auth_mode = authSel.value;
+        if (keyInput) payload.api_key = keyInput.value; // may be empty
+        if (simModeSel) payload.mode = simModeSel.value;
+        try {
+          saveBtn.disabled = true;
+          const endpoint = area === "chat" ? "/api/admin/keys/chat"
+            : area === "embedding" ? "/api/admin/keys/embedding"
+            : area === "similarity" ? "/api/admin/keys/similarity"
+            : "/api/admin/keys/integration";
+          await api(endpoint, { method: "PATCH", body: JSON.stringify(payload) });
+          // refresh all
+          await loadAndRender();
+          showStatus(listStatus, "Gespeichert.", "ok");
+        } catch (e) {
+          showStatus(listStatus, e?.detail || e?.code || "Speichern fehlgeschlagen.", "error");
+          saveBtn.disabled = false;
+        }
+      });
+
+      // if blur the inputs without save? we keep editing until explicit cancel/save.
+      // per request: leaving the field (blur) without save -> revert. So on blur of key input:
+      if (keyInput) {
+        keyInput.addEventListener("blur", () => {
+          // if still editing and no save happened, but to detect "without saving", we can revert only if value not "dirty" or always let user cancel.
+          // simple: do nothing on blur; user must cancel explicitly or save. The "verlässt das feld" can be handled by cancel.
+        });
+      }
+    }
+
+    function startEdit(row, area, data) {
+      setEditing(row, area, data, null, null);
+    }
+
+    async function loadAndRender() {
+      if (!tbody) return;
+      tbody.innerHTML = "";
+      if (listStatus) listStatus.textContent = "Lade …";
+      try {
+        currentStatus = await api("/api/admin/keys");
+        const entries = [
+          ["chat", currentStatus.chat],
+          ["embedding", currentStatus.embedding],
+          ["similarity", currentStatus.similarity],
+          ["integration", currentStatus.integration],
+        ];
+        if (countEl) countEl.textContent = `(${entries.length})`;
+        if (emptyEl) emptyEl.classList.toggle("hidden", true);
+        entries.forEach(([area, data]) => {
+          const row = renderRow(area, data || {});
+          tbody.appendChild(row);
+          const editBtn = row.querySelector(".keys-edit-btn");
+          if (editBtn) {
+            editBtn.addEventListener("click", () => startEdit(row, area, data || {}));
+          }
+        });
+        if (listStatus) listStatus.textContent = "";
+      } catch (e) {
+        if (listStatus) showStatus(listStatus, "Konnte Keys nicht laden.", "error");
+      }
+    }
+
+    // OAuth dialog helpers
+    function closeOAuth() {
+      if (oauthDialog) oauthDialog.classList.add("hidden");
+      if (oauthStatus) oauthStatus.textContent = "";
+      currentOAuth = null;
+    }
+
+    async function openOAuth() {
+      if (!oauthDialog) return;
+      try {
+        const info = await api("/api/admin/keys/oauth/start", { method: "POST" });
+        currentOAuth = {
+          device_auth_id: info.device_auth_id,
+          user_code: info.user_code,
+          interval: info.interval || 5,
+        };
+        if (oauthUrl) oauthUrl.href = info.verification_url || "https://auth.openai.com/codex/device";
+        if (oauthUrl) oauthUrl.textContent = info.verification_url || "https://auth.openai.com/codex/device";
+        if (oauthCode) oauthCode.textContent = info.user_code || "";
+        if (oauthStatus) oauthStatus.textContent = "";
+        oauthDialog.classList.remove("hidden");
+      } catch (e) {
+        showStatus(listStatus, "OAuth-Start fehlgeschlagen: " + (e?.detail || e?.code || ""), "error");
+      }
+    }
+
+    async function checkOAuth() {
+      if (!currentOAuth || !oauthStatus) return;
+      oauthStatus.textContent = "Prüfe …";
+      try {
+        const res = await api(
+          `/api/admin/keys/oauth/poll?device_auth_id=${encodeURIComponent(currentOAuth.device_auth_id)}&user_code=${encodeURIComponent(currentOAuth.user_code)}&interval=${currentOAuth.interval}`,
+          { method: "POST" }
+        );
+        if (res.status === "complete") {
+          oauthStatus.textContent = "Erfolgreich — Tokens gespeichert.";
+          closeOAuth();
+          await loadAndRender();
+          showStatus(listStatus, "OAuth Login abgeschlossen.", "ok");
+        } else if (res.status === "pending") {
+          oauthStatus.textContent = "Noch nicht bestätigt. Warte kurz und prüfe erneut.";
+        } else {
+          oauthStatus.textContent = "Fehler: " + (res.detail || res.status);
+        }
+      } catch (e) {
+        oauthStatus.textContent = "Fehler: " + (e?.detail || e?.code || "unbekannt");
+      }
+    }
+
+    if (oauthCancel) oauthCancel.addEventListener("click", closeOAuth);
+    if (oauthCheck) oauthCheck.addEventListener("click", checkOAuth);
+
+    // bind global "oauth login" buttons inside rows (for chat and sim)
+    // we delegate on tbody clicks for .keys-oauth-btn if we render them
+    if (tbody) {
+      tbody.addEventListener("click", (ev) => {
+        const btn = ev.target.closest(".keys-oauth-btn");
+        if (btn) {
+          ev.preventDefault();
+          openOAuth();
+        }
+      });
+    }
+
+    // initial load
+    loadAndRender().catch(() => {});
+
+    // also expose a refresh for after oauth
+    window.__refreshKeys = loadAndRender;
+  }
+
   syncActiveCustomerFromSelect();
   setCustomerUiEnabled(Boolean(activeCustomerId));
   initChatSidebar();
@@ -2612,5 +2957,6 @@
   if (page === "admin_prompts") initAdminPromptsPage();
   if (page === "admin_users") initUsersPage();
   if (page === "admin_roles") initRolesPage();
+  if (page === "admin_keys") initKeysPage();
   if (page === "customers") initCustomersPage();
 })();

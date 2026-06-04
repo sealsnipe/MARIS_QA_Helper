@@ -1,6 +1,6 @@
 # 07 — UI-Karte (Seite → Code → API)
 
-**Stand:** 2026-06-03
+**Stand:** 2026-06-05
 
 ---
 
@@ -15,9 +15,27 @@
 | `/admin/knowledge` | `admin_knowledge.html` | `admin_knowledge` | `initAdminKnowledgePage` | Admin |
 | `/admin/prompts` | `admin_prompts.html` | `admin_prompts` | `initAdminPromptsPage` | Admin |
 | `/admin/users` | `admin_users.html` | `admin_users` | `initUsersPage` | Admin |
+| `/admin/roles` | `admin_roles.html` | `admin_roles` | `initRolesPage` | Admin |
+| `/admin/keys` | `admin_keys.html` | `admin_keys` | `initKeysPage` | Admin |
 | `/` | — | — | Redirect `/chat` | — |
 
 Basis: `layout.html` (Sidebar, Kunde, Chat-Historie, Admin-Nav).
+
+---
+
+## Sidebar-Kunde (`customer_nav_mode`)
+
+Das Dropdown **Kunde** in der Sidebar gilt sitzungsweit, wirkt aber **seitenabhängig**:
+
+| Modus | Seiten | Verhalten |
+|---|---|---|
+| **`scoped`** | `/chat`, `/kb`, Tools | Kunde **Pflicht**; Wechsel → Session + Seiten-Reload; `#no-customer-banner` wenn leer |
+| **`admin_scoped`** | `/admin/knowledge`, `/admin/prompts` | Sidebar steuert den Mandanten-Kontext (sync mit Scope-Dropdown auf der Seite); kein Full-Reload |
+| **`global`** | `/admin/customers`, `/admin/users`, `/admin/roles`, `/admin/keys` | Kein Mandanten-Bezug; Wechsel nur Session (optional), **keine Auswirkung** auf Seiteninhalt; Hinweis „Gilt nicht für diese Seite“ |
+
+Admins ohne direkte `user_customers`-Zeilen sehen **Global + alle aktiven Mandanten** in der Sidebar (nicht nur Global).
+
+Implementierung: `routes.customer_nav_mode`, `APP_BOOT.customerNavMode`, `app.js` (`pageNeedsCustomer`, `syncAdminPageScopeFromSidebar`).
 
 ---
 
@@ -46,8 +64,9 @@ Zentraler Client: `app.js` — `api()`, `showStatus()`, Markdown via `marked` + 
 
 | Zustand | UI |
 |---|---|
-| Kein Kunde gewählt | `#no-customer-banner`, `.page-content.disabled` |
+| Kein Kunde gewählt (nur `scoped`) | `#no-customer-banner`, `.page-content.disabled` |
 | Global-Modus | Read-only Hinweis auf `/kb` |
+| Admin global (Keys/User/Rollen/Kunden) | Sidebar-Hinweis „Gilt nicht für diese Seite“ |
 | Upload/Fehler | `.status.error`, Badge `failed` |
 | Leerer Chat | Platzhalter in `#chat-log` |
 
