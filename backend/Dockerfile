@@ -13,7 +13,9 @@ RUN pip install --no-cache-dir \
     "openai>=1.55" \
     "argon2-cffi>=23.1" \
     "pypdf>=5.0" \
+    "pillow>=10.0" \
     "python-docx>=1.1" \
+    "oauth-codex>=0.1" \
     "pytest>=8.0" \
     "httpx>=0.27" \
     "pydantic-settings>=2.0" \
