@@ -9,6 +9,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.chunking import chunk_text, validate_ingest_text
+from app.content_hash import content_sha256_from_text
+from app.document_fingerprints import upsert_document_fingerprint
 from app.embeddings import EmbeddingsBackend, get_embeddings_backend
 from app.models import Chunk, Document, utc_now_iso
 from app.qdrant_store import VectorStore, get_vector_store
@@ -180,12 +182,21 @@ def _index_document_chunks(
 
     document.title = title
     document.source_text = normalized_text
+    document.content_sha256 = content_sha256_from_text(normalized_text)
     document.source_type = effective_source_type
     document.chunk_count = len(chunk_rows)
     document.status = "indexed"
     document.error_message = None
     document.updated_at = now
     db.add_all(chunk_rows)
+    upsert_document_fingerprint(
+        customer_id=document.customer_id,
+        document_id=document.id,
+        title=title,
+        normalized_text=normalized_text,
+        embeddings=embeddings,
+        vector_store=vector_store,
+    )
     return document
 
 
@@ -235,6 +246,7 @@ def ingest_text(
         mime_type=mime_type,
         storage_path=storage_path,
         source_text=normalized,
+        content_sha256=content_sha256_from_text(normalized),
         extraction_meta=extraction_meta,
         chunk_count=0,
         status="indexed",

@@ -35,7 +35,9 @@ def test_ingest_success_writes_sqlite_and_qdrant(db_session, fake_vector_store, 
     assert docs[0]["title"] == "BG Ludwigshafen FAQ"
 
     bucket = fake_vector_store.collections[collection_name("bg-ludwigshafen")]
-    assert len(bucket) == result.document.chunk_count
+    chunk_points = [payload for _, payload in bucket.values() if payload.get("kind") != "document_fingerprint"]
+    assert len(chunk_points) == result.document.chunk_count
+    assert any(payload.get("kind") == "document_fingerprint" for _, payload in bucket.values())
 
 
 def test_ingest_rejects_empty_text(db_session, fake_vector_store, fake_embeddings):
@@ -142,7 +144,9 @@ def test_update_document_content_reindexes(db_session, fake_vector_store, fake_e
     assert result.document.source_text == updated_text
     assert result.document.status == "indexed"
     bucket = fake_vector_store.collections[collection_name("bg-ludwigshafen")]
-    assert len(bucket) == result.document.chunk_count
+    chunk_points = [payload for _, payload in bucket.values() if payload.get("kind") != "document_fingerprint"]
+    assert len(chunk_points) == result.document.chunk_count
+    assert any(payload.get("kind") == "document_fingerprint" for _, payload in bucket.values())
 
 
 def test_update_document_wrong_customer_raises_not_found(db_session, fake_vector_store, fake_embeddings):

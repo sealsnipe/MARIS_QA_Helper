@@ -151,4 +151,4 @@ delete document → kb_acme Points weg; documents.deleted_at gesetzt
 ## 5. Spätere Erweiterungen (vgl. `12`)
 - `users.role` / feingranulare Rechte; `customers`-Admin-UI.
 - `documents` Unique-Constraint `(customer_id, source_type, external_id)` für Jira-Dedup.
-- `text_sha256` für Duplikaterkennung; Versionierung.
+- `text_sha256` / `content_sha256` für **exakte** Duplikaterkennung (implementiert); Versionierung offen.

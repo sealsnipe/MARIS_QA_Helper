@@ -1,0 +1,27 @@
+Hybride Zusammenarbeit — Leitfaden Support & IT
+
+Dieses Dokument bündelt Regeln für Rufbereitschaft, Homeoffice und neue Absprachen im hybriden Betrieb. Es ersetzt keine vollständigen Einzelrichtlinien, sondern ergänzt sie für Teams mit Wechsel zwischen Remote und Vor-Ort-Einsatz.
+
+Rufbereitschaft — Erreichbarkeit (aus Regelwerk 01)
+
+Während der Rufbereitschaft muss der/die Bereitschaftsdienstliche innerhalb von 15 Minuten telefonisch erreichbar sein und innerhalb von 30 Minuten remote am System arbeiten können. Die private Mobilnummer ist im internen Kalender hinterlegt und darf nicht weitergegeben werden.
+
+Vergütung: Für jede angefangene Stunde Rufbereitschaft werden 25 Euro Bereitschaftspauschale gezahlt. Zusätzliche Einsatzstunden werden mit dem Stundenlohn plus 50 Prozent Zuschlag vergütet. Einsätze unter 30 Minuten gelten als halbe Stunde.
+
+Homeoffice — Kommunikation (aus Rahmen Homeoffice 03)
+
+Tägliche Stand-ups finden um 09:30 Uhr per Videokonferenz statt. Abwesenheiten über zwei Stunden sind im Team-Kalender als „Away“ zu markieren. Reaktionszeiten auf Chat-Nachrichten: innerhalb von 60 Minuten während der Kernarbeitszeit.
+
+Präsenzpflicht: Mindestens zwei Tage pro Woche sind am Standort Ludwigshafen anwesend zu sein, in der Regel Dienstag und Donnerstag. Ausnahmen bedürfen der Genehmigung durch die Abteilungsleitung.
+
+Neu: Abstimmung Bereitschaft und Homeoffice
+
+Steht ein Mitarbeitender an einem Homeoffice-Tag in der Rufbereitschaft, muss die Erreichbarkeit unverändert gewährleistet sein. VPN und Laptop müssen betriebsbereit sein, bevor die Bereitschaft beginnt. Konflikte zwischen geplantem Homeoffice und Bereitschaftswoche sind mindestens zwei Wochen vorher mit dem Schichtplaner zu klären.
+
+Neu: Übergabe Remote ↔ Büro
+
+Bei Wechsel zwischen Homeoffice-Tagen und Bürotagen sind offene Tickets mit Stand-Notiz im System zu übergeben. P1-Tickets dürfen nicht ausschließlich „mitgenommen“ werden ohne dokumentierte Übergabe an die jeweils erreichbare Schicht.
+
+Neu: Review-Termin
+
+Quartalsweise findet ein Review hybrid statt (Präsenz oder Video), in dem Rufbereitschaftsstatistik, Homeoffice-Auslastung und Eskalationsqualität gemeinsam ausgewertet werden.

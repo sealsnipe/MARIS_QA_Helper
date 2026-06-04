@@ -38,6 +38,13 @@ class Settings(BaseSettings):
     SESSION_COOKIE_SECURE: bool = False
     TOP_K_DEFAULT: int = 4
     MIN_SCORE_DEFAULT: float = 0.25
+    DUPLICATE_SIMILAR_MIN_SCORE: float = 0.92
+    DUPLICATE_SIMILAR_TOP_K: int = 3
+    MERGE_BLOCK_MIN_SCORE: float = 0.85
+    MERGE_UNCHANGED_SCORE: float = 0.98
+    MERGE_LLM_ENABLED: bool = True
+    MERGE_LLM_MIN_CONFIDENCE: float = 0.65
+    MERGE_LLM_MAX_CHARS: int = 24000
     MAX_TOOL_ROUNDS: int = 4
     MAX_UPLOAD_MB: int = 30
     ALLOWED_EXTENSIONS: str = ".txt,.md,.pdf,.docx,.png,.jpg,.jpeg,.webp,.gif"

@@ -1,0 +1,31 @@
+Rufbereitschaft — Aktualisierung und Betriebszusammenhang 2026
+
+Hinweis: Dieses Dokument aktualisiert das Regelwerk Rufbereitschaft und verknüpft es mit Urlaubsplanung und Schichtbetrieb. Ziel ist ein konsolidierter Stand für Support-Teams ab Q2/2026.
+
+Geltungsbereich: Dieses Regelwerk gilt für alle Mitarbeitenden im First- und Second-Level-Support, die in den Rufbereitschaftskalender eingetragen sind. Ausgenommen sind reine Verwaltungskräfte ohne Störungsbearbeitung.
+
+Einsatzzeiten: Die Rufbereitschaft beginnt werktags um 18:00 Uhr und endet am Folgetag um 08:00 Uhr. An Wochenenden und gesetzlichen Feiertagen gilt durchgehend Rufbereitschaft von Freitag 18:00 Uhr bis Montag 08:00 Uhr.
+
+Erreichbarkeit: Während der Rufbereitschaft muss der/die Bereitschaftsdienstliche innerhalb von 15 Minuten telefonisch erreichbar sein und innerhalb von 30 Minuten remote am System arbeiten können. Die private Mobilnummer ist im internen Kalender hinterlegt und darf nicht weitergegeben werden.
+
+Vergütung: Für jede angefangene Stunde Rufbereitschaft werden 25 Euro Bereitschaftspauschale gezahlt. Zusätzliche Einsatzstunden werden mit dem Stundenlohn plus 50 Prozent Zuschlag vergütet. Einsätze unter 30 Minuten gelten als halbe Stunde.
+
+Eskalation: Kritische Störungen (Priority 1) sind unverzüglich an den Second-Level-Leiter und parallel an die IT-Leitung zu melden. Für Priority-2-Tickets genügt die Eintragung im Ticketsystem mit Tag „Bereitschaft“.
+
+Urlaub und Schichtplan (Bezug Urlaubsregelung)
+
+Vor genehmigtem Urlaub muss eine schriftliche Vertretungsregelung im Team abgestimmt und im Intranet hinterlegt werden. Für Support-Mitarbeitende ist zusätzlich der Schichtplan im Kalender zu aktualisieren. Rufbereitschaftswochen und Urlaub dürfen sich nicht widersprechen; der Schichtplaner prüft das vor HR-Freigabe.
+
+Antragstellung Urlaub: Urlaubsanträge sind mindestens vier Wochen im Voraus über das HR-Portal einzureichen. Der direkte Vorgesetzte genehmigt oder lehnt innerhalb von fünf Werktagen ab.
+
+Neu ab 2026 — Pauschale und Zuschläge
+
+Ab 1. April 2026 steigt die Bereitschaftspauschale auf 28 Euro pro angefangene Stunde. Einsätze an gesetzlichen Feiertagen erhalten zusätzlich einen Feiertagszuschlag von 100 Prozent auf den Stundenlohn (zusätzlich zur Bereitschaftspauschale).
+
+Neu ab 2026 — Dokumentation und Audit
+
+Jeder Einsatz ist weiterhin im Ticketsystem zu dokumentieren. Neu ist das Pflichtfeld „Maßnahme abgeschlossen (ja/nein)“. Monatlich zieht die IT-Leitung eine Stichprobe von fünf Bereitschaftseinsätzen zur Qualitätskontrolle.
+
+Neu ab 2026 — Ersatz bei Krankheit
+
+Krankheitsbedingte Ausfälle während der eigenen Bereitschaftswoche sind unverzüglich im Schichtplan-Channel zu melden. Der Ersatz übernimmt die laufende Woche vollständig; eine Rückvergütung der Pauschale erfolgt anteilig nach HR-Vorgabe.

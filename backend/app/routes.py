@@ -47,6 +47,7 @@ from app.document_assets import image_payloads, resolve_document_image_path
 from app.llm import LLMError, transcribe_image
 from app.loaders.image_inspect import MIN_IMAGE_BYTES
 from app.loaders.vision_ocr import OCR_PROMPT
+from app.chunking import normalize_text
 from app.config import get_settings
 from app.ingestion import (
     IngestionError,
@@ -67,7 +68,15 @@ from app.tenant import (
 from app.system_prompts import get_system_prompt, set_system_prompt
 from app.retrieval import filter_sources_by_answer_citations
 
-from app.upload import UploadError, ingest_combined, inspect_upload, parse_form_bool
+from app.upload import (
+    UploadError,
+    ingest_combined,
+    inspect_text_content,
+    inspect_upload,
+    parse_form_bool,
+    resolve_upload_source_text,
+)
+from app.document_merge import MergeError, apply_document_merge, merge_preview_for_documents
 from app.users_admin import (
     UserAdminError,
     create_admin_user,
@@ -130,6 +139,42 @@ class AdminUserUpdateRequest(BaseModel):
 class DocumentUpdateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     text: str = Field(min_length=1)
+
+
+def _merge_error_response(exc: MergeError) -> JSONResponse:
+    if exc.code == "not_found":
+        status_code = 404
+    elif exc.code in {"llm_failed", "llm_invalid_response", "llm_empty_response", "llm_disabled"}:
+        status_code = 422
+    else:
+        status_code = 400
+    payload: dict = {"error": exc.code}
+    if exc.detail:
+        payload["detail"] = exc.detail
+    return JSONResponse(payload, status_code=status_code)
+
+
+async def _read_merge_source_text(
+    *,
+    prefix_text: str | None,
+    file: UploadFile | None,
+) -> tuple[str | None, JSONResponse | None]:
+    content: bytes | None = None
+    filename: str | None = None
+    if file is not None and file.filename:
+        content = await file.read()
+        filename = file.filename
+    try:
+        combined = resolve_upload_source_text(
+            prefix_text=prefix_text,
+            filename=filename,
+            content=content,
+        )
+    except UploadError as exc:
+        return None, JSONResponse({"error": exc.code}, status_code=400)
+    if len(normalize_text(combined)) < 20:
+        return None, JSONResponse({"error": "empty_text"}, status_code=400)
+    return combined, None
 
 
 def _admin_page_redirect(user: User) -> RedirectResponse | None:
@@ -493,7 +538,9 @@ def api_create_text_document(
 @router.post("/api/documents/inspect")
 async def api_inspect_document(
     customer: Customer = Depends(get_current_customer),
+    db: Session = Depends(get_db),
     file: UploadFile = File(...),
+    text: str | None = Form(default=None),
 ) -> dict:
     if blocked := _reject_global_write(customer):
         return blocked
@@ -501,7 +548,7 @@ async def api_inspect_document(
         return JSONResponse({"error": "unsupported_file_type"}, status_code=400)
     content = await file.read()
     try:
-        return inspect_upload(content, file.filename)
+        return inspect_upload(db, customer.id, content, file.filename, prefix_text=text)
     except UploadError as exc:
         return JSONResponse({"error": exc.code}, status_code=400 if exc.code != "inspection_failed" else 422)
 
@@ -515,6 +562,7 @@ async def api_upload_document(
     file: UploadFile | None = File(default=None),
     process_images: str | None = Form(default=None),
     transcribe_image_ids: str | None = Form(default=None),
+    allow_duplicate: str | None = Form(default=None),
 ) -> dict:
     if blocked := _reject_global_write(customer):
         return blocked
@@ -535,10 +583,87 @@ async def api_upload_document(
             mime_type=file.content_type if file else None,
             process_images=parse_form_bool(process_images),
             transcribe_image_ids_raw=transcribe_image_ids,
+            allow_duplicate=parse_form_bool(allow_duplicate),
         )
     except UploadError:
         raise
     return {"document": _document_payload(document)}
+
+
+@router.post("/api/documents/inspect-text")
+async def api_inspect_document_text(
+    customer: Customer = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+    text: str = Form(...),
+) -> dict:
+    if blocked := _reject_global_write(customer):
+        return blocked
+    return inspect_text_content(db, customer.id, text)
+
+
+@router.post("/api/documents/merge-preview")
+async def api_merge_preview_document(
+    customer: Customer = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+    target_document_id: str = Form(...),
+    text: str | None = Form(default=None),
+    file: UploadFile | None = File(default=None),
+    use_llm: str | None = Form(default=None),
+) -> dict:
+    if blocked := _reject_global_write(customer):
+        return blocked
+    combined, error = await _read_merge_source_text(prefix_text=text, file=file)
+    if error is not None:
+        return error
+    assert combined is not None
+    try:
+        return merge_preview_for_documents(
+            db,
+            customer.id,
+            target_document_id,
+            combined,
+            use_llm=parse_form_bool(use_llm),
+        )
+    except MergeError as exc:
+        return _merge_error_response(exc)
+
+
+@router.post("/api/documents/{document_id}/merge")
+async def api_merge_document(
+    document_id: str,
+    customer: Customer = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+    blocks: str = Form(...),
+    text: str | None = Form(default=None),
+    file: UploadFile | None = File(default=None),
+    title: str | None = Form(default=None),
+    merged_text: str | None = Form(default=None),
+) -> dict:
+    if blocked := _reject_global_write(customer):
+        return blocked
+    combined, error = await _read_merge_source_text(prefix_text=text, file=file)
+    if error is not None:
+        return error
+    assert combined is not None
+    try:
+        parsed_blocks = json.loads(blocks)
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "invalid_blocks"}, status_code=400)
+    if not isinstance(parsed_blocks, list):
+        return JSONResponse({"error": "invalid_blocks"}, status_code=400)
+    try:
+        result = apply_document_merge(
+            db,
+            customer.id,
+            document_id,
+            combined,
+            parsed_blocks,
+            title=title,
+            merged_text_override=merged_text,
+        )
+    except MergeError as exc:
+        return _merge_error_response(exc)
+    return {"document": _document_payload(result["document"]), "stats": result["stats"]}
 
 
 @router.post("/api/tools/transcribe")
@@ -824,15 +949,87 @@ def api_admin_list_documents(
 @router.post("/api/admin/documents/inspect")
 async def api_admin_inspect_document(
     _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
     file: UploadFile = File(...),
+    text: str | None = Form(default=None),
 ) -> dict:
     if not file.filename:
         return JSONResponse({"error": "unsupported_file_type"}, status_code=400)
     content = await file.read()
     try:
-        return inspect_upload(content, file.filename)
+        return inspect_upload(db, GLOBAL_CUSTOMER_ID, content, file.filename, prefix_text=text)
     except UploadError as exc:
         return JSONResponse({"error": exc.code}, status_code=400 if exc.code != "inspection_failed" else 422)
+
+
+@router.post("/api/admin/documents/inspect-text")
+async def api_admin_inspect_document_text(
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+    text: str = Form(...),
+) -> dict:
+    return inspect_text_content(db, GLOBAL_CUSTOMER_ID, text)
+
+
+@router.post("/api/admin/documents/merge-preview")
+async def api_admin_merge_preview_document(
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+    target_document_id: str = Form(...),
+    text: str | None = Form(default=None),
+    file: UploadFile | None = File(default=None),
+    use_llm: str | None = Form(default=None),
+) -> dict:
+    combined, error = await _read_merge_source_text(prefix_text=text, file=file)
+    if error is not None:
+        return error
+    assert combined is not None
+    try:
+        return merge_preview_for_documents(
+            db,
+            GLOBAL_CUSTOMER_ID,
+            target_document_id,
+            combined,
+            use_llm=parse_form_bool(use_llm),
+        )
+    except MergeError as exc:
+        return _merge_error_response(exc)
+
+
+@router.post("/api/admin/documents/{document_id}/merge")
+async def api_admin_merge_document(
+    document_id: str,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+    blocks: str = Form(...),
+    text: str | None = Form(default=None),
+    file: UploadFile | None = File(default=None),
+    title: str | None = Form(default=None),
+    merged_text: str | None = Form(default=None),
+) -> dict:
+    combined, error = await _read_merge_source_text(prefix_text=text, file=file)
+    if error is not None:
+        return error
+    assert combined is not None
+    try:
+        parsed_blocks = json.loads(blocks)
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "invalid_blocks"}, status_code=400)
+    if not isinstance(parsed_blocks, list):
+        return JSONResponse({"error": "invalid_blocks"}, status_code=400)
+    try:
+        result = apply_document_merge(
+            db,
+            GLOBAL_CUSTOMER_ID,
+            document_id,
+            combined,
+            parsed_blocks,
+            title=title,
+            merged_text_override=merged_text,
+        )
+    except MergeError as exc:
+        return _merge_error_response(exc)
+    return {"document": _document_payload(result["document"]), "stats": result["stats"]}
 
 
 @router.post("/api/admin/documents")
@@ -844,6 +1041,7 @@ async def api_admin_upload_document(
     file: UploadFile | None = File(default=None),
     process_images: str | None = Form(default=None),
     transcribe_image_ids: str | None = Form(default=None),
+    allow_duplicate: str | None = Form(default=None),
 ) -> dict:
     content: bytes | None = None
     filename: str | None = None
@@ -862,6 +1060,7 @@ async def api_admin_upload_document(
             mime_type=file.content_type if file else None,
             process_images=parse_form_bool(process_images),
             transcribe_image_ids_raw=transcribe_image_ids,
+            allow_duplicate=parse_form_bool(allow_duplicate),
         )
     except UploadError:
         raise
@@ -960,15 +1159,92 @@ async def api_admin_inspect_customer_document(
     _admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
     file: UploadFile = File(...),
+    text: str | None = Form(default=None),
 ) -> dict:
     _admin_tenant_customer(db, customer_id)
     if not file.filename:
         return JSONResponse({"error": "unsupported_file_type"}, status_code=400)
     content = await file.read()
     try:
-        return inspect_upload(content, file.filename)
+        return inspect_upload(db, customer_id, content, file.filename, prefix_text=text)
     except UploadError as exc:
         return JSONResponse({"error": exc.code}, status_code=400 if exc.code != "inspection_failed" else 422)
+
+
+@router.post("/api/admin/customers/{customer_id}/documents/inspect-text")
+async def api_admin_inspect_customer_document_text(
+    customer_id: str,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+    text: str = Form(...),
+) -> dict:
+    _admin_tenant_customer(db, customer_id)
+    return inspect_text_content(db, customer_id, text)
+
+
+@router.post("/api/admin/customers/{customer_id}/documents/merge-preview")
+async def api_admin_merge_preview_customer_document(
+    customer_id: str,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+    target_document_id: str = Form(...),
+    text: str | None = Form(default=None),
+    file: UploadFile | None = File(default=None),
+    use_llm: str | None = Form(default=None),
+) -> dict:
+    _admin_tenant_customer(db, customer_id)
+    combined, error = await _read_merge_source_text(prefix_text=text, file=file)
+    if error is not None:
+        return error
+    assert combined is not None
+    try:
+        return merge_preview_for_documents(
+            db,
+            customer_id,
+            target_document_id,
+            combined,
+            use_llm=parse_form_bool(use_llm),
+        )
+    except MergeError as exc:
+        return _merge_error_response(exc)
+
+
+@router.post("/api/admin/customers/{customer_id}/documents/{document_id}/merge")
+async def api_admin_merge_customer_document(
+    customer_id: str,
+    document_id: str,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+    blocks: str = Form(...),
+    text: str | None = Form(default=None),
+    file: UploadFile | None = File(default=None),
+    title: str | None = Form(default=None),
+    merged_text: str | None = Form(default=None),
+) -> dict:
+    _admin_tenant_customer(db, customer_id)
+    combined, error = await _read_merge_source_text(prefix_text=text, file=file)
+    if error is not None:
+        return error
+    assert combined is not None
+    try:
+        parsed_blocks = json.loads(blocks)
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "invalid_blocks"}, status_code=400)
+    if not isinstance(parsed_blocks, list):
+        return JSONResponse({"error": "invalid_blocks"}, status_code=400)
+    try:
+        result = apply_document_merge(
+            db,
+            customer_id,
+            document_id,
+            combined,
+            parsed_blocks,
+            title=title,
+            merged_text_override=merged_text,
+        )
+    except MergeError as exc:
+        return _merge_error_response(exc)
+    return {"document": _document_payload(result["document"]), "stats": result["stats"]}
 
 
 @router.post("/api/admin/customers/{customer_id}/documents")
@@ -981,6 +1257,7 @@ async def api_admin_upload_customer_document(
     file: UploadFile | None = File(default=None),
     process_images: str | None = Form(default=None),
     transcribe_image_ids: str | None = Form(default=None),
+    allow_duplicate: str | None = Form(default=None),
 ) -> dict:
     customer = _admin_tenant_customer(db, customer_id)
     content: bytes | None = None
@@ -1000,6 +1277,7 @@ async def api_admin_upload_customer_document(
             mime_type=file.content_type if file else None,
             process_images=parse_form_bool(process_images),
             transcribe_image_ids_raw=transcribe_image_ids,
+            allow_duplicate=parse_form_bool(allow_duplicate),
         )
     except UploadError:
         raise

@@ -131,6 +131,7 @@ async def upload_error_handler(_request: Request, exc: UploadError):
         "inspection_failed": 422,
         "images_only_requires_vision": 422,
         "vision_failed": 502,
+        "duplicate_document": 409,
     }
     status_code = status_by_code.get(exc.code, 400)
     body: dict[str, str] = {"error": exc.code}

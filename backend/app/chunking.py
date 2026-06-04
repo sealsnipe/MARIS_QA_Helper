@@ -18,6 +18,13 @@ def _split_paragraphs(text: str) -> list[str]:
     return [part.strip() for part in parts if part.strip()]
 
 
+def split_paragraph_blocks(text: str) -> list[str]:
+    normalized = normalize_text(text)
+    if not normalized:
+        return []
+    return _split_paragraphs(normalized)
+
+
 def chunk_text(text: str, *, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
     normalized = normalize_text(text)
     if not normalized:

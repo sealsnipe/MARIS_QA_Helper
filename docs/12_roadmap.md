@@ -25,7 +25,7 @@ Phasen sind additiv; vorbereitete Haken sind genannt.
 ## Phase 3 — Erweiterte Ingestion
 - Mehrfach-Datei-Upload, Drag&Drop mehrerer Dateien.
 - Confluence-Sync; scheduled Re-Index; Background-Jobs für große Uploads (asynchrone Indexierung).
-- Duplikaterkennung via `text_sha256`, Dokument-Versionierung.
+- Duplikaterkennung via `text_sha256` (**Stufe 1:** exakter Hash) und **Document-Fingerprint** in Qdrant (**Stufe 2:** Similarity ≥ 0.92); Stufe 3 Merge-Modus offen.
 - Tabellen-/Bildextraktion aus PDF/DOCX: **teilweise** (Text + eingebettete Bilder, selektive Vision-OCR, inline DOCX) — siehe `15_implementation_status.md`.
 
 ## Phase 4 — Auth & Compliance

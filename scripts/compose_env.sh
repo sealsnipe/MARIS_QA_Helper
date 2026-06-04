@@ -56,5 +56,11 @@ compose_env() {
       oauth_path="${oauth_path/#\~/$HOME}"
       export OAUTH_AUTH_HOST_PATH="${oauth_path:-$HOME/.oauth_codex/auth.json}"
     fi
+    if [[ ! -f "$OAUTH_AUTH_HOST_PATH" ]]; then
+      echo "✗ OAuth-Datei fehlt: $OAUTH_AUTH_HOST_PATH" >&2
+      echo "  ChatGPT-OAuth einrichten oder in .env LLM_AUTH_MODE=api_key setzen." >&2
+      exit 1
+    fi
+    export OAUTH_AUTH_HOST_PATH
   fi
 }

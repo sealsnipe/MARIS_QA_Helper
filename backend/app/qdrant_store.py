@@ -27,6 +27,10 @@ class VectorStore(Protocol):
 
     def search(self, customer_id: str, query_vector: list[float], top_k: int) -> list[SearchHit]: ...
 
+    def search_fingerprints(
+        self, customer_id: str, query_vector: list[float], top_k: int
+    ) -> list[SearchHit]: ...
+
     def delete_document(self, customer_id: str, document_id: str) -> None: ...
 
     def copy_collection(self, old_customer_id: str, new_customer_id: str) -> None: ...
@@ -80,6 +84,33 @@ class QdrantVectorStore:
             collection_name=name,
             query=query_vector,
             limit=top_k,
+            with_payload=True,
+        ).points
+        hits: list[SearchHit] = []
+        for item in results:
+            payload = dict(item.payload or {})
+            hits.append(SearchHit(score=float(item.score or 0.0), payload=payload))
+        return hits
+
+    def search_fingerprints(
+        self, customer_id: str, query_vector: list[float], top_k: int
+    ) -> list[SearchHit]:
+        name = self._name(customer_id)
+        if not self._client.collection_exists(name):
+            return []
+
+        results = self._client.query_points(
+            collection_name=name,
+            query=query_vector,
+            limit=top_k,
+            query_filter=qmodels.Filter(
+                must=[
+                    qmodels.FieldCondition(
+                        key="kind",
+                        match=qmodels.MatchValue(value="document_fingerprint"),
+                    )
+                ]
+            ),
             with_payload=True,
         ).points
         hits: list[SearchHit] = []
@@ -198,6 +229,29 @@ class InMemoryVectorStore:
         scored = [
             SearchHit(score=cosine(query_vector, vector), payload=payload)
             for vector, payload in bucket.values()
+        ]
+        scored.sort(key=lambda hit: hit.score, reverse=True)
+        return scored[:top_k]
+
+    def search_fingerprints(
+        self, customer_id: str, query_vector: list[float], top_k: int
+    ) -> list[SearchHit]:
+        bucket = self.collections.get(collection_name(customer_id), {})
+        if not bucket:
+            return []
+
+        def cosine(a: list[float], b: list[float]) -> float:
+            dot = sum(x * y for x, y in zip(a, b, strict=True))
+            norm_a = sum(x * x for x in a) ** 0.5
+            norm_b = sum(y * y for y in b) ** 0.5
+            if norm_a == 0 or norm_b == 0:
+                return 0.0
+            return dot / (norm_a * norm_b)
+
+        scored = [
+            SearchHit(score=cosine(query_vector, vector), payload=payload)
+            for vector, payload in bucket.values()
+            if payload.get("kind") == "document_fingerprint"
         ]
         scored.sort(key=lambda hit: hit.score, reverse=True)
         return scored[:top_k]

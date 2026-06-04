@@ -37,7 +37,9 @@ Abgleich zwischen **Planungsdocs** (`docs/01–14`, Stand teils 2026-06-02) und 
 | **Admin KB bearbeiten** | — | ✅ GET/PUT Admin-Dokument, Re-Index, `source_text` |
 | **Slug-Rename Migration** | Entscheidungsvorlage `14` | ✅ SQLite + Qdrant + Uploads |
 | **Vision-OCR / Bilder** | Roadmap | ✅ Inspect, selektive OCR, inline DOCX, Thumbnails, Strg+V |
-|| **UI Tools-Sektion** | — | ✅ Sidebar "Tools" (zwischen Chats und Einstellungen) mit erstem Tool "Bild zu Text" (Strg+V, Vision-OCR, Text-Output + Kopieren) |
+| **UI Tools-Sektion** | — | ✅ Sidebar "Tools" mit erstem Tool "Bild zu Text" |
+| **Duplikat-Erkennung (Stufe 1)** | Phase 3 | ✅ Exakter `content_sha256`, Inspect-Warnung, Upload mit Bestätigung |
+| **Duplikat-Erkennung (Stufe 2)** | Phase 3 | ✅ Document-Fingerprint in Qdrant, `similar[]` im Inspect, UI-Warnung |
 
 ---
 

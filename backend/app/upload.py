@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -9,6 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.chunking import normalize_text
 from app.config import get_settings
+from app.document_fingerprints import inspect_similarity_payload
+from app.duplicates import duplicate_document_payload, find_duplicate_document
 from app.ingestion import IngestionError, ingest_text
 from app.loaders import LoaderError, load_document, source_type_for_extension
 from app.document_assets import IMAGE_ID_PATTERN, SavedDocumentImage, build_image_preview_data_url, format_image_placeholder
@@ -99,6 +102,39 @@ def _combine_text(prefix_text: str, file_text: str) -> str:
     return "\n\n".join(parts)
 
 
+def resolve_upload_source_text(
+    *,
+    prefix_text: str | None = None,
+    filename: str | None = None,
+    content: bytes | None = None,
+) -> str:
+    prefix = (prefix_text or "").strip()
+    if content is None or not filename:
+        return prefix
+
+    safe_name, extension = _validate_upload_file(content, filename)
+    if extension in {".txt", ".md", ".pdf", ".docx"}:
+        try:
+            file_text = _extract_upload_text(content, extension)
+        except LoaderError:
+            return prefix
+        return _combine_text(prefix, file_text)
+    return prefix
+
+
+def inspect_text_content(
+    db: Session,
+    customer_id: str,
+    text: str,
+) -> dict:
+    duplicate, similar, digest = _duplicate_payload_for_text(db, customer_id, text)
+    return {
+        "duplicate": duplicate,
+        "similar": similar,
+        "content_sha256": digest,
+    }
+
+
 def _resolve_title(title: str | None, filename: str | None) -> str:
     cleaned = (title or "").strip()
     if cleaned:
@@ -154,10 +190,44 @@ def _inspect_images_payload(content: bytes, extension: str) -> list[dict]:
     return images
 
 
-def inspect_upload(content: bytes, filename: str) -> dict:
+def _extract_upload_text(content: bytes, extension: str) -> str:
+    """Best-effort text extraction for duplicate checks (no Vision-OCR)."""
+    ext = extension.lower()
+    if ext in {".txt", ".md"}:
+        for encoding in ("utf-8", "latin-1"):
+            try:
+                return content.decode(encoding)
+            except UnicodeDecodeError:
+                continue
+        return content.decode("utf-8", errors="replace")
+
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=True) as tmp:
+        tmp.write(content)
+        tmp.flush()
+        return load_document(Path(tmp.name), ext)
+
+
+def _duplicate_payload_for_text(
+    db: Session,
+    customer_id: str,
+    text: str,
+) -> tuple[dict | None, list[dict], str | None]:
+    return inspect_similarity_payload(db, customer_id, text)
+
+
+def inspect_upload(
+    db: Session,
+    customer_id: str,
+    content: bytes,
+    filename: str,
+    *,
+    prefix_text: str | None = None,
+) -> dict:
     safe_name, extension = _validate_upload_file(content, filename)
+    prefix = (prefix_text or "").strip()
+
     if extension not in {".pdf", ".docx", *IMAGE_FILE_EXTENSIONS}:
-        return {
+        payload = {
             "has_images": False,
             "image_count": 0,
             "file_type": extension.lstrip(".") or "file",
@@ -167,15 +237,28 @@ def inspect_upload(content: bytes, filename: str) -> dict:
             "filename": safe_name,
             "images": [],
         }
+    else:
+        try:
+            result = inspect_document_bytes(content, extension)
+        except LoaderError as exc:
+            raise UploadError("inspection_failed") from exc
 
-    try:
-        result = inspect_document_bytes(content, extension)
-    except LoaderError as exc:
-        raise UploadError("inspection_failed") from exc
+        payload = inspect_result_to_dict(result)
+        payload["filename"] = safe_name
+        payload["images"] = _inspect_images_payload(content, extension)
 
-    payload = inspect_result_to_dict(result)
-    payload["filename"] = safe_name
-    payload["images"] = _inspect_images_payload(content, extension)
+    combined_for_hash = prefix
+    if extension in {".txt", ".md", ".pdf", ".docx"}:
+        try:
+            file_text = _extract_upload_text(content, extension)
+            combined_for_hash = _combine_text(prefix, file_text)
+        except LoaderError:
+            combined_for_hash = prefix
+
+    duplicate, similar, digest = _duplicate_payload_for_text(db, customer_id, combined_for_hash)
+    payload["duplicate"] = duplicate
+    payload["similar"] = similar
+    payload["content_sha256"] = digest
     return payload
 
 
@@ -190,6 +273,7 @@ def ingest_combined(
     mime_type: str | None = None,
     process_images: bool = False,
     transcribe_image_ids_raw: str | None = None,
+    allow_duplicate: bool = False,
 ) -> Document:
     settings = get_settings()
     prefix = (prefix_text or "").strip()
@@ -304,6 +388,15 @@ def ingest_combined(
     if len(normalize_text(combined)) < 20:
         _discard_stored_upload(stored_path)
         raise UploadError("empty_text")
+
+    if not allow_duplicate:
+        duplicate = find_duplicate_document(db, customer_id, combined)
+        if duplicate is not None:
+            _discard_stored_upload(stored_path)
+            raise UploadError(
+                "duplicate_document",
+                detail=json.dumps(duplicate_document_payload(duplicate)),
+            )
 
     doc_title = _resolve_title(title, safe_name)
     source_type = file_source_type if file_text else "manual"

@@ -463,7 +463,7 @@
     });
   }
 
-  const INSPECTABLE_FILE_PATTERN = /\.(pdf|docx|png|jpe?g|webp|gif)$/i;
+  const INSPECTABLE_FILE_PATTERN = /\.(txt|md|pdf|docx|png|jpe?g|webp|gif)$/i;
 
   function fileFromClipboard(clipboardData) {
     const items = clipboardData?.items;
@@ -549,6 +549,89 @@
   function resolveInspectPath(apiPath) {
     const uploadPath = typeof apiPath === "function" ? apiPath() : apiPath;
     return `${uploadPath}/inspect`;
+  }
+
+  function resolveInspectTextPath(apiPath) {
+    const uploadPath = typeof apiPath === "function" ? apiPath() : apiPath;
+    return `${uploadPath}/inspect-text`;
+  }
+
+  function resolveMergePaths(apiPath, targetDocumentId) {
+    const uploadPath = typeof apiPath === "function" ? apiPath() : apiPath;
+    return {
+      preview: `${uploadPath}/merge-preview`,
+      apply: `${uploadPath}/${encodeURIComponent(targetDocumentId)}/merge`,
+    };
+  }
+
+  function parseDuplicateDetail(detail) {
+    if (!detail) return null;
+    try {
+      const parsed = JSON.parse(detail);
+      if (parsed && parsed.title) return parsed;
+    } catch (_error) {
+      return null;
+    }
+    return null;
+  }
+
+  function applyInspectWarnings(inspection, warningEl, mergeActionsEl) {
+    if (!warningEl) return;
+    const parts = [];
+    if (inspection?.duplicate?.title) {
+      parts.push(`Identischer Inhalt bereits vorhanden: „${inspection.duplicate.title}"`);
+    } else if (Array.isArray(inspection?.similar) && inspection.similar.length) {
+      const labels = inspection.similar.map((item) => {
+        const pct = Math.round((item.score || 0) * 100);
+        return `„${item.title}" (${pct} %)`;
+      });
+      parts.push(`Sehr ähnlich zu: ${labels.join(", ")}`);
+    }
+    if (inspection?.has_images) {
+      const count = inspection.image_count || 0;
+      if (inspection.image_only) {
+        parts.push(`${count} Bild(er), kein extrahierbarer Text — Vision-OCR erforderlich.`);
+      } else {
+        parts.push(`${count} Bild(er) erkannt — ohne Vision-OCR fehlt ggf. Inhalt.`);
+      }
+    }
+    if (parts.length) {
+      warningEl.textContent = parts.join(" · ");
+      warningEl.classList.remove("hidden");
+    } else {
+      warningEl.textContent = "";
+      warningEl.classList.add("hidden");
+    }
+
+    if (!mergeActionsEl) return;
+    mergeActionsEl.innerHTML = "";
+    if (!inspection?.duplicate && Array.isArray(inspection?.similar) && inspection.similar.length) {
+      const top = inspection.similar[0];
+      const pct = Math.round((top.score || 0) * 100);
+      mergeActionsEl.className = "merge-actions";
+      mergeActionsEl.innerHTML = `
+        <div class="merge-suggestion-card">
+          <div class="merge-suggestion-copy">
+            <strong>Ähnlicher Eintrag (${pct}&nbsp;%)</strong>
+            <p>„${escapeHtml(top.title)}" — statt einen Duplikat-Eintrag anzulegen, kannst du deine Änderungen direkt einarbeiten.</p>
+          </div>
+          <button type="button" class="merge-into-btn">Änderungen einarbeiten</button>
+        </div>
+      `;
+      const btn = mergeActionsEl.querySelector(".merge-into-btn");
+      if (btn) {
+        btn.dataset.targetId = top.document_id;
+        btn.dataset.targetTitle = top.title;
+        btn.dataset.targetScore = String(top.score || 0);
+      }
+    } else {
+      mergeActionsEl.className = "merge-actions hidden";
+    }
+  }
+
+  async function askDuplicateProceed(duplicate) {
+    const title = duplicate?.title || "Bestehendes Dokument";
+    return window.confirm(`Identischer Inhalt existiert bereits als „${title}". Trotzdem einpflegen?`);
   }
 
   function ensureImageLightbox() {
@@ -709,6 +792,403 @@
     });
   }
 
+  function mergeBlockLabel(kind) {
+    const labels = {
+      unchanged: "Unverändert",
+      modified: "Geändert",
+      added: "Neu",
+      removed: "Entfernt",
+    };
+    return labels[kind] || kind;
+  }
+
+  function mergeBlockCheckboxLabel(kind) {
+    if (kind === "modified") return "Neue Version übernehmen";
+    if (kind === "added") return "Einfügen";
+    if (kind === "removed") return "Abschnitt entfernen";
+    return "";
+  }
+
+  function setMergeWizardStep(modal, step) {
+    modal.dataset.mergeStep = String(step);
+    modal.querySelectorAll(".merge-step").forEach((el) => {
+      const active = el.dataset.step === String(step);
+      el.classList.toggle("merge-step-active", active);
+      el.classList.toggle("merge-step-done", Number(el.dataset.step) < step);
+    });
+    modal.querySelector('[data-panel="review"]')?.classList.toggle("hidden", step !== 1);
+    modal.querySelector('[data-panel="confirm"]')?.classList.toggle("hidden", step !== 2);
+    const backBtn = modal.querySelector(".modal-merge-back");
+    const nextBtn = modal.querySelector(".modal-merge-next");
+    const applyBtn = modal.querySelector(".modal-merge-apply");
+    if (backBtn) backBtn.classList.toggle("hidden", step === 1);
+    if (nextBtn) nextBtn.classList.toggle("hidden", step !== 1);
+    if (applyBtn) applyBtn.classList.toggle("hidden", step !== 2);
+  }
+
+  function renderMergeGuidance(modal, preview) {
+    const guidanceEl = modal.querySelector(".document-merge-guidance");
+    if (!guidanceEl) return;
+
+    const needsLlm = Boolean(preview?.needs_llm_assist);
+    const isLlm = preview?.source === "llm";
+    let tone = "info";
+    if (needsLlm && !isLlm) tone = "warn";
+    if (isLlm) tone = "success";
+
+    const summary = preview?.llm_summary
+      ? `<p class="document-merge-llm-summary">${escapeHtml(preview.llm_summary)}</p>`
+      : "";
+
+    guidanceEl.className = `document-merge-guidance merge-guidance-${tone}`;
+    guidanceEl.innerHTML = `
+      <p class="document-merge-guidance-text">${escapeHtml(preview?.guidance || "")}</p>
+      ${summary}
+    `;
+    guidanceEl.classList.remove("hidden");
+
+    const llmBtn = modal.querySelector(".modal-merge-llm");
+    const resetBtn = modal.querySelector(".modal-merge-reset");
+    if (llmBtn) {
+      llmBtn.classList.toggle("hidden", !preview?.llm_available || isLlm);
+      llmBtn.disabled = false;
+    }
+    if (resetBtn) {
+      resetBtn.classList.toggle("hidden", !isLlm);
+    }
+  }
+
+  function ensureDocumentMergeModal() {
+    let modal = document.getElementById("document-merge-modal");
+    if (modal) return modal;
+
+    modal = document.createElement("div");
+    modal.id = "document-merge-modal";
+    modal.className = "document-merge-modal hidden";
+    modal.innerHTML = `
+      <div class="document-merge-dialog" role="dialog" aria-modal="true" aria-labelledby="document-merge-title">
+        <div class="document-merge-header">
+          <div class="document-merge-steps" aria-label="Fortschritt">
+            <span class="merge-step merge-step-active" data-step="1">1 · Abschnitte prüfen</span>
+            <span class="merge-step-sep" aria-hidden="true">→</span>
+            <span class="merge-step" data-step="2">2 · Vorschau &amp; Übernehmen</span>
+          </div>
+          <h3 id="document-merge-title">In bestehendes Dokument einarbeiten</h3>
+          <p class="document-merge-subtitle"></p>
+        </div>
+        <div class="document-merge-guidance hidden"></div>
+        <div class="document-merge-panel" data-panel="review">
+          <div class="document-merge-toolbar">
+            <button type="button" class="secondary small modal-merge-select-all">Alle Änderungen übernehmen</button>
+            <button type="button" class="secondary small modal-merge-select-none">Alle abweisen</button>
+          </div>
+          <p class="document-merge-stats"></p>
+          <div class="document-merge-blocks" aria-label="Abschnittsvergleich"></div>
+          <div class="document-merge-assist-actions">
+            <button type="button" class="modal-merge-llm">KI-Vorschlag laden</button>
+            <button type="button" class="secondary modal-merge-reset hidden">Automatischen Vergleich wiederherstellen</button>
+          </div>
+        </div>
+        <div class="document-merge-panel hidden" data-panel="confirm">
+          <p class="document-merge-confirm-lead">So sieht der Eintrag nach der Zusammenführung aus. Du kannst den Text noch anpassen.</p>
+          <label class="document-merge-preview-label" for="document-merge-preview-field">Finale Vorschau</label>
+          <textarea id="document-merge-preview-field" class="document-merge-preview" rows="10"></textarea>
+        </div>
+        <div class="document-merge-actions">
+          <button type="button" class="secondary modal-merge-back hidden">Zurück</button>
+          <button type="button" class="modal-merge-next">Weiter zur Vorschau</button>
+          <button type="button" class="modal-merge-apply hidden">Übernehmen &amp; Re-Index</button>
+          <button type="button" class="secondary modal-merge-cancel">Abbrechen</button>
+        </div>
+        <p class="document-merge-status" role="status"></p>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    return modal;
+  }
+
+  function collectMergePreviewText(modal, preview) {
+    const parts = [];
+    for (const block of preview?.blocks || []) {
+      const item = modal.querySelector(`[data-block-id="${block.id}"]`);
+      const checkbox = item?.querySelector('input[type="checkbox"]');
+      const include = block.kind === "unchanged" ? true : Boolean(checkbox?.checked);
+      if (block.kind === "unchanged" && block.old_text) {
+        parts.push(block.old_text);
+      } else if (block.kind === "modified") {
+        parts.push(include ? block.new_text : block.old_text);
+      } else if (block.kind === "added" && include && block.new_text) {
+        parts.push(block.new_text);
+      } else if (block.kind === "removed" && !include && block.old_text) {
+        parts.push(block.old_text);
+      }
+    }
+    return parts.filter(Boolean).join("\n\n");
+  }
+
+  function collectMergeBlockPayload(modal, preview) {
+    return (preview?.blocks || []).map((block) => {
+      const item = modal.querySelector(`[data-block-id="${block.id}"]`);
+      const checkbox = item?.querySelector('input[type="checkbox"]');
+      const include = block.kind === "unchanged" ? null : Boolean(checkbox?.checked);
+      return {
+        id: block.id,
+        kind: block.kind,
+        old_text: block.old_text ?? null,
+        new_text: block.new_text ?? null,
+        include,
+        hint: block.hint ?? null,
+        source: block.source ?? preview?.source ?? null,
+      };
+    });
+  }
+
+  function renderMergeBlocks(modal, preview) {
+    const blocksEl = modal.querySelector(".document-merge-blocks");
+    const statsEl = modal.querySelector(".document-merge-stats");
+    if (!blocksEl) return;
+
+    const stats = preview.stats || {};
+    if (statsEl) {
+      const sourceLabel = preview.source === "llm" ? " · KI-Vorschlag" : "";
+      statsEl.textContent = [
+        stats.modified ? `${stats.modified} geändert` : null,
+        stats.added ? `${stats.added} neu` : null,
+        stats.removed ? `${stats.removed} entfernt` : null,
+        stats.unchanged ? `${stats.unchanged} unverändert` : null,
+        sourceLabel,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    }
+
+    blocksEl.innerHTML = (preview.blocks || [])
+      .map((block) => {
+        const kind = block.kind || "unchanged";
+        const label = mergeBlockLabel(kind);
+        const checkboxLabel = mergeBlockCheckboxLabel(kind);
+        const score =
+          typeof block.score === "number" ? ` · ${Math.round(block.score * 100)} % Ähnlichkeit` : "";
+        const defaultInclude = block.include === true;
+        const hint = block.hint
+          ? `<p class="merge-block-hint">${escapeHtml(block.hint)}</p>`
+          : "";
+        const checkbox =
+          kind === "unchanged"
+            ? `<span class="merge-block-note">wird beibehalten</span>`
+            : `<label class="merge-block-toggle">
+                <input type="checkbox" ${defaultInclude ? "checked" : ""}>
+                ${escapeHtml(checkboxLabel)}
+              </label>`;
+
+        const oldPart = block.old_text
+          ? `<div class="merge-block-old"><span class="merge-block-side-label">Bestehend</span><pre>${escapeHtml(block.old_text)}</pre></div>`
+          : "";
+        const newPart = block.new_text
+          ? `<div class="merge-block-new"><span class="merge-block-side-label">Neu</span><pre>${escapeHtml(block.new_text)}</pre></div>`
+          : "";
+
+        return `
+          <article class="merge-block-item merge-block-${kind}" data-block-id="${escapeHtml(block.id)}" data-block-kind="${kind}" data-default-include="${defaultInclude}">
+            <header class="merge-block-header">
+              <span class="merge-block-kind">${escapeHtml(label)}${score}</span>
+              ${checkbox}
+            </header>
+            ${hint}
+            <div class="merge-block-body">${oldPart}${newPart}</div>
+          </article>
+        `;
+      })
+      .join("");
+
+    blocksEl.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+      input.addEventListener("change", () => {
+        const previewEl = modal.querySelector(".document-merge-preview");
+        if (previewEl && modal.dataset.mergeStep === "2") {
+          previewEl.value = collectMergePreviewText(modal, modal._mergePreview);
+        }
+      });
+    });
+
+    renderMergeGuidance(modal, preview);
+  }
+
+  async function loadMergePreview(modal, { paths, getSourcePayload, useLlm = false, statusEl }) {
+    const mergeStatus = modal.querySelector(".document-merge-status");
+    if (mergeStatus) {
+      mergeStatus.textContent = useLlm
+        ? "KI analysiert die Texte…"
+        : "Automatischer Vergleich wird geladen…";
+    }
+
+    const formData = getSourcePayload();
+    if (useLlm) formData.append("use_llm", "true");
+
+    try {
+      const preview = await api(paths.preview, { method: "POST", body: formData });
+      modal._mergePreview = preview;
+      renderMergeBlocks(modal, preview);
+      if (mergeStatus) mergeStatus.textContent = "";
+      return preview;
+    } catch (_error) {
+      if (mergeStatus) {
+        mergeStatus.textContent = useLlm
+          ? "KI-Vorschlag fehlgeschlagen — automatischer Vergleich bleibt aktiv."
+          : "Vergleich konnte nicht geladen werden.";
+      }
+      if (statusEl && !useLlm) showStatus(statusEl, "Merge-Vorschau fehlgeschlagen.", "error");
+      throw _error;
+    }
+  }
+
+  async function openDocumentMergeModal({
+    targetDocumentId,
+    targetTitle,
+    targetScore,
+    apiPath,
+    getSourcePayload,
+    onSuccess,
+    statusEl,
+  }) {
+    const modal = ensureDocumentMergeModal();
+    const subtitle = modal.querySelector(".document-merge-subtitle");
+    const mergeStatus = modal.querySelector(".document-merge-status");
+    const applyBtn = modal.querySelector(".modal-merge-apply");
+    const cancelBtn = modal.querySelector(".modal-merge-cancel");
+    const nextBtn = modal.querySelector(".modal-merge-next");
+    const backBtn = modal.querySelector(".modal-merge-back");
+    const llmBtn = modal.querySelector(".modal-merge-llm");
+    const resetBtn = modal.querySelector(".modal-merge-reset");
+    const selectAllBtn = modal.querySelector(".modal-merge-select-all");
+    const selectNoneBtn = modal.querySelector(".modal-merge-select-none");
+    const previewField = modal.querySelector(".document-merge-preview");
+
+    const scorePct = targetScore ? Math.round(Number(targetScore) * 100) : null;
+    if (subtitle) {
+      const scorePart = scorePct ? ` (${scorePct} % ähnlich)` : "";
+      subtitle.textContent = `Ziel: „${targetTitle || "Bestehendes Dokument"}"${scorePart}`;
+    }
+
+    setMergeWizardStep(modal, 1);
+    modal.classList.remove("hidden");
+
+    const paths = resolveMergePaths(apiPath, targetDocumentId);
+    modal._getSourcePayload = getSourcePayload;
+
+    try {
+      await loadMergePreview(modal, { paths, getSourcePayload, useLlm: false, statusEl });
+    } catch (_error) {
+      modal.classList.add("hidden");
+      return;
+    }
+
+    if (applyBtn) applyBtn.disabled = false;
+
+    return new Promise((resolve) => {
+      const controller = new AbortController();
+      const { signal } = controller;
+
+      const finish = (result) => {
+        controller.abort();
+        modal.classList.add("hidden");
+        modal._mergePreview = null;
+        modal._getSourcePayload = null;
+        resolve(result);
+      };
+
+      const goToConfirm = () => {
+        const preview = modal._mergePreview;
+        if (previewField) {
+          previewField.value = collectMergePreviewText(modal, preview);
+          previewField.readOnly = false;
+        }
+        setMergeWizardStep(modal, 2);
+      };
+
+      cancelBtn?.addEventListener("click", () => finish({ action: "cancel" }), { signal });
+
+      backBtn?.addEventListener("click", () => setMergeWizardStep(modal, 1), { signal });
+
+      nextBtn?.addEventListener("click", goToConfirm, { signal });
+
+      selectAllBtn?.addEventListener(
+        "click",
+        () => {
+          modal.querySelectorAll('.merge-block-item input[type="checkbox"]').forEach((cb) => {
+            cb.checked = true;
+          });
+        },
+        { signal },
+      );
+
+      selectNoneBtn?.addEventListener(
+        "click",
+        () => {
+          modal.querySelectorAll('.merge-block-item input[type="checkbox"]').forEach((cb) => {
+            cb.checked = false;
+          });
+        },
+        { signal },
+      );
+
+      llmBtn?.addEventListener(
+        "click",
+        async () => {
+          if (llmBtn.disabled) return;
+          llmBtn.disabled = true;
+          try {
+            await loadMergePreview(modal, { paths, getSourcePayload, useLlm: true, statusEl });
+          } catch (_error) {
+            llmBtn.disabled = false;
+          }
+        },
+        { signal },
+      );
+
+      resetBtn?.addEventListener(
+        "click",
+        async () => {
+          if (resetBtn.disabled) return;
+          resetBtn.disabled = true;
+          try {
+            await loadMergePreview(modal, { paths, getSourcePayload, useLlm: false, statusEl });
+          } finally {
+            resetBtn.disabled = false;
+          }
+        },
+        { signal },
+      );
+
+      applyBtn?.addEventListener(
+        "click",
+        async () => {
+          if (applyBtn.disabled) return;
+          applyBtn.disabled = true;
+          if (mergeStatus) mergeStatus.textContent = "Wird zusammengeführt und neu indexiert…";
+
+          const preview = modal._mergePreview;
+          const blockPayload = collectMergeBlockPayload(modal, preview);
+          const formData = getSourcePayload();
+          formData.append("blocks", JSON.stringify(blockPayload));
+          const editedPreview = previewField?.value?.trim();
+          if (editedPreview) formData.append("merged_text", editedPreview);
+
+          try {
+            await api(paths.apply, { method: "POST", body: formData });
+            if (statusEl) showStatus(statusEl, `In „${targetTitle}" eingearbeitet und neu indexiert.`, "ok");
+            await onSuccess?.();
+            finish({ action: "applied" });
+          } catch (_error) {
+            if (mergeStatus) mergeStatus.textContent = "Zusammenführung fehlgeschlagen.";
+            if (statusEl) showStatus(statusEl, "Zusammenführung fehlgeschlagen.", "error");
+            applyBtn.disabled = false;
+          }
+        },
+        { signal },
+      );
+    });
+  }
+
   function bindIngestForm({
     form,
     titleInput,
@@ -727,17 +1207,52 @@
     const warningEl = document.createElement("p");
     warningEl.className = "image-warning-banner hidden";
     warningEl.setAttribute("role", "status");
+
+    const mergeActionsEl = document.createElement("div");
+    mergeActionsEl.className = "merge-actions hidden";
+
     if (submitBtn?.parentNode === form) {
       form.insertBefore(warningEl, submitBtn);
+      form.insertBefore(mergeActionsEl, submitBtn);
     } else if (form) {
       form.appendChild(warningEl);
+      form.appendChild(mergeActionsEl);
     }
+
+    let textInspectTimer = null;
+
+    const runTextInspect = async (prefixText) => {
+      if (selectedFile || !prefixText || prefixText.length < 20) {
+        if (!selectedFile && !prefixText) {
+          fileInspection = null;
+          applyInspectWarnings(null, warningEl, mergeActionsEl);
+        }
+        return;
+      }
+      try {
+        const inspectTextPath = resolveInspectTextPath(apiPath);
+        const textInspection = await api(inspectTextPath, {
+          method: "POST",
+          body: (() => {
+            const fd = new FormData();
+            fd.append("text", prefixText);
+            return fd;
+          })(),
+        });
+        fileInspection = { ...(fileInspection || {}), ...textInspection };
+        applyInspectWarnings(fileInspection, warningEl, mergeActionsEl);
+      } catch (_error) {
+        /* ignore debounced text inspect errors */
+      }
+    };
 
     const setFile = async (file) => {
       selectedFile = file;
       fileInspection = null;
       warningEl.textContent = "";
       warningEl.classList.add("hidden");
+      mergeActionsEl.innerHTML = "";
+      mergeActionsEl.classList.add("hidden");
 
       if (fileLabel) {
         fileLabel.textContent = file
@@ -754,20 +1269,14 @@
 
       const formData = new FormData();
       formData.append("file", file);
+      const prefixForInspect = textInput?.value.trim() || "";
+      if (prefixForInspect) formData.append("text", prefixForInspect);
       try {
         const inspectPath = resolveInspectPath(apiPath);
         fileInspection = await api(inspectPath, { method: "POST", body: formData });
-        if (fileInspection?.has_images) {
-          const count = fileInspection.image_count || 0;
-          if (fileInspection.image_only) {
-            warningEl.textContent = `${count} Bild(er), kein extrahierbarer Text — Vision-OCR erforderlich.`;
-          } else {
-            warningEl.textContent = `${count} Bild(er) erkannt — ohne Vision-OCR fehlt ggf. Inhalt.`;
-          }
-          warningEl.classList.remove("hidden");
-        }
+        applyInspectWarnings(fileInspection, warningEl, mergeActionsEl);
       } catch (_error) {
-        warningEl.textContent = "Bilder konnten nicht geprüft werden.";
+        warningEl.textContent = "Datei konnte nicht geprüft werden.";
         warningEl.classList.remove("hidden");
       }
     };
@@ -775,6 +1284,47 @@
     setupDropzone(dropzone, fileInput, fileLabel, (file) => {
       setFile(file).catch(() => {});
     }, () => Boolean(selectedFile));
+
+    textInput?.addEventListener("input", () => {
+      if (textInspectTimer) window.clearTimeout(textInspectTimer);
+      textInspectTimer = window.setTimeout(() => {
+        runTextInspect(textInput.value.trim()).catch(() => {});
+      }, 450);
+    });
+
+    mergeActionsEl.addEventListener("click", async (event) => {
+      const button = event.target.closest(".merge-into-btn");
+      if (!button) return;
+      const targetDocumentId = button.dataset.targetId;
+      const targetTitle = button.dataset.targetTitle || "Bestehendes Dokument";
+      const prefixText = textInput?.value.trim() || "";
+      if (!prefixText && !selectedFile) {
+        showStatus(statusEl, "Bitte Text und/oder Datei für den Merge angeben.", "error");
+        return;
+      }
+
+      await openDocumentMergeModal({
+        targetDocumentId,
+        targetTitle,
+        targetScore: button.dataset.targetScore,
+        apiPath,
+        getSourcePayload: () => {
+          const formData = new FormData();
+          formData.append("target_document_id", targetDocumentId);
+          if (prefixText) formData.append("text", prefixText);
+          if (selectedFile) formData.append("file", selectedFile);
+          return formData;
+        },
+        onSuccess: async () => {
+          if (titleInput) titleInput.value = "";
+          if (textInput) textInput.value = "";
+          if (fileInput) fileInput.value = "";
+          await setFile(null);
+          await onSuccess();
+        },
+        statusEl,
+      });
+    });
 
     form?.addEventListener("paste", (event) => {
       const file = fileFromClipboard(event.clipboardData);
@@ -816,18 +1366,33 @@
           : "Wird indexiert…",
       );
 
-      const formData = new FormData();
-      if (titleInput?.value.trim()) formData.append("title", titleInput.value.trim());
-      if (prefixText) formData.append("text", prefixText);
-      if (selectedFile) formData.append("file", selectedFile);
-      if (processImages) {
-        formData.append("process_images", "true");
-        formData.append("transcribe_image_ids", JSON.stringify(transcribeImageIds));
-      }
-
-      try {
+      const submitIngest = async (allowDuplicate = false) => {
+        const formData = new FormData();
+        if (titleInput?.value.trim()) formData.append("title", titleInput.value.trim());
+        if (prefixText) formData.append("text", prefixText);
+        if (selectedFile) formData.append("file", selectedFile);
+        if (processImages) {
+          formData.append("process_images", "true");
+          formData.append("transcribe_image_ids", JSON.stringify(transcribeImageIds));
+        }
+        if (allowDuplicate) formData.append("allow_duplicate", "true");
         const resolvedPath = typeof apiPath === "function" ? apiPath() : apiPath;
         await api(resolvedPath, { method: "POST", body: formData });
+      };
+
+      try {
+        try {
+          await submitIngest(false);
+        } catch (error) {
+          if (error.code !== "duplicate_document") throw error;
+          const duplicate =
+            parseDuplicateDetail(error.detail) || fileInspection?.duplicate || null;
+          if (!(await askDuplicateProceed(duplicate))) {
+            showStatus(statusEl, "Einpflegen abgebrochen — Duplikat.", "error");
+            return;
+          }
+          await submitIngest(true);
+        }
         showStatus(statusEl, "Wissen erfolgreich indexiert.", "ok");
         if (titleInput) titleInput.value = "";
         if (textInput) textInput.value = "";
@@ -843,6 +1408,7 @@
           inspection_failed: "Datei konnte nicht auf Bilder geprüft werden.",
           images_only_requires_vision: "Enthält nur Bilder — Vision-OCR wählen oder Begleittext ergänzen.",
           vision_failed: "Vision-OCR fehlgeschlagen — bitte erneut versuchen oder API/Token prüfen.",
+          duplicate_document: "Identischer Inhalt existiert bereits in der Wissensdatenbank.",
           forbidden: "Keine Berechtigung.",
         };
         showStatus(statusEl, messages[error.code] || "Einpflegen fehlgeschlagen.", "error");

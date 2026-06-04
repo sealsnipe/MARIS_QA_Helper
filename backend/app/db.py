@@ -56,6 +56,15 @@ def _migrate_schema(engine) -> None:
         if "extraction_meta" not in columns:
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE documents ADD COLUMN extraction_meta TEXT"))
+        if "content_sha256" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE documents ADD COLUMN content_sha256 VARCHAR(64)"))
+                conn.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_documents_content_sha256 "
+                        "ON documents (customer_id, content_sha256)"
+                    )
+                )
 
 
 def init_db() -> None:

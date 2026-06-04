@@ -9,6 +9,7 @@ from PIL import Image
 
 from app.loaders.vision_ocr import run_vision_ocr, save_embedded_images
 from app.upload import inspect_upload, parse_transcribe_image_ids
+from app.tests.conftest import create_customer
 
 
 def _png_bytes(width: int = 200, height: int = 200) -> bytes:
@@ -35,9 +36,10 @@ def _make_docx_with_two_images(tmp_path: Path) -> bytes:
     return path.read_bytes()
 
 
-def test_inspect_upload_returns_image_previews(tmp_path: Path) -> None:
+def test_inspect_upload_returns_image_previews(db_session, tmp_path: Path) -> None:
+    create_customer(db_session, "vision-test", "Vision Test")
     content = _make_docx_with_two_images(tmp_path)
-    payload = inspect_upload(content, "mixed.docx")
+    payload = inspect_upload(db_session, "vision-test", content, "mixed.docx")
     assert payload["image_count"] == 2
     assert len(payload["images"]) == 2
     assert payload["images"][0]["id"] == "img_001"

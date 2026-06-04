@@ -116,13 +116,17 @@ Lesereihenfolge: Exception `UploadError` → öffentliche Hilfsfunktion `sanitiz
 
 **Aufrufer / Aufgerufene:** `routes.api_upload_document` und weitere Routen; ruft `get_settings`, `sanitize_filename`, `load_document`, `ingest_text`, `normalize_text` auf.
 
-**Fehlercodes (`UploadError.code`):** `empty_text`, `unsupported_file_type`, `file_too_large`, `extraction_failed`, `inspection_failed`, `images_only_requires_vision`, `vision_failed` (siehe `main.py` Status-Mapping).
+**Fehlercodes (`UploadError.code`):** `empty_text`, `unsupported_file_type`, `file_too_large`, `extraction_failed`, `inspection_failed`, `images_only_requires_vision`, `vision_failed`, `duplicate_document` (409).
+
+Inspect liefert zusätzlich **`similar[]`** (Stufe 2): `{ document_id, title, created_at, score, match: "similar" }` — Warnung only, kein Upload-Block.
 
 ---
 
-### `inspect_upload(content, filename) -> dict`
+### `inspect_upload(db, customer_id, content, filename, *, prefix_text=None) -> dict`
 
-**Beschreibung:** Pre-Upload-Inspect für PDF, DOCX und standalone Bilder; liefert `images[]` mit `preview_data_url` für UI-Modal.
+**Beschreibung:** Pre-Upload-Inspect für PDF, DOCX, Bilder und Textdateien; liefert `images[]` mit `preview_data_url` sowie **Duplikat-Hinweis** (`duplicate: { document_id, title, created_at } | null`, `content_sha256`).
+
+Optionaler Form-Parameter `text` (Prefix) fließt in die Hash-Prüfung ein.
 
 ---
 
@@ -132,7 +136,7 @@ Lesereihenfolge: Exception `UploadError` → öffentliche Hilfsfunktion `sanitiz
 
 ---
 
-### `ingest_combined(…, process_images=False, transcribe_image_ids_raw=None) -> Document`
+### `ingest_combined(…, process_images=False, transcribe_image_ids_raw=None, allow_duplicate=False) -> Document`
 
 **Erweiterungen (2026-06-03):**
 
@@ -141,4 +145,9 @@ Lesereihenfolge: Exception `UploadError` → öffentliche Hilfsfunktion `sanitiz
 - Setzt `extraction_meta` mit `transcribed` pro Bild
 - Unterstützt standalone Bilddateien (`.png`, …) — OCR oder Prefix-Text erforderlich
 
-**Aufrufer:** `routes.py` — `process_images`, `transcribe_image_ids` Form-Felder.
+**Erweiterungen (2026-06-04):**
+
+- Speichert `content_sha256` (exakter Duplikat-Hash) über `ingest_text`
+- Blockiert Upload bei identischem Inhalt im Mandanten (`duplicate_document`), außer `allow_duplicate=true`
+
+**Aufrufer:** `routes.py` — `process_images`, `transcribe_image_ids`, `allow_duplicate` Form-Felder.

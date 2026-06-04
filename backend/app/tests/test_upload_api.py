@@ -244,7 +244,7 @@ def test_inspect_endpoint(client, db_session, monkeypatch):
 
     monkeypatch.setattr(
         "app.routes.inspect_upload",
-        lambda _content, _filename: {
+        lambda _db, _customer_id, _content, _filename, prefix_text=None: {
             "has_images": True,
             "image_count": 4,
             "file_type": "docx",
@@ -252,6 +252,9 @@ def test_inspect_endpoint(client, db_session, monkeypatch):
             "text_extractable": True,
             "image_only": False,
             "filename": "guide.docx",
+            "duplicate": None,
+            "similar": [],
+            "content_sha256": None,
         },
     )
 

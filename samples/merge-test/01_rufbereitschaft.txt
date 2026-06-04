@@ -1,0 +1,13 @@
+Rufbereitschaft — Regelwerk für Support-Mitarbeitende
+
+Geltungsbereich: Dieses Regelwerk gilt für alle Mitarbeitenden im First- und Second-Level-Support, die in den Rufbereitschaftskalender eingetragen sind. Ausgenommen sind reine Verwaltungskräfte ohne Störungsbearbeitung.
+
+Einsatzzeiten: Die Rufbereitschaft beginnt werktags um 18:00 Uhr und endet am Folgetag um 08:00 Uhr. An Wochenenden und gesetzlichen Feiertagen gilt durchgehend Rufbereitschaft von Freitag 18:00 Uhr bis Montag 08:00 Uhr.
+
+Erreichbarkeit: Während der Rufbereitschaft muss der/die Bereitschaftsdienstliche innerhalb von 15 Minuten telefonisch erreichbar sein und innerhalb von 30 Minuten remote am System arbeiten können. Die private Mobilnummer ist im internen Kalender hinterlegt und darf nicht weitergegeben werden.
+
+Vergütung: Für jede angefangene Stunde Rufbereitschaft werden 25 Euro Bereitschaftspauschale gezahlt. Zusätzliche Einsatzstunden werden mit dem Stundenlohn plus 50 Prozent Zuschlag vergütet. Einsätze unter 30 Minuten gelten als halbe Stunde.
+
+Eskalation: Kritische Störungen (Priority 1) sind unverzüglich an den Second-Level-Leiter und parallel an die IT-Leitung zu melden. Für Priority-2-Tickets genügt die Eintragung im Ticketsystem mit Tag „Bereitschaft“.
+
+Dokumentation: Jeder Einsatz ist im Ticketsystem mit Start- und Endzeit, Kurzbeschreibung und durchgeführten Maßnahmen zu dokumentieren. Fehlende Dokumentation kann zu Nachzahlungskorrekturen führen.
