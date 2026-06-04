@@ -171,6 +171,20 @@ body {
   padding-left: 0.75rem;
 }
 
+.nav-group-nested {
+  margin-top: 0.05rem;
+}
+
+.nav-group-nested > .nav-group-toggle {
+  padding: 0.45rem 0.65rem 0.45rem 0.75rem;
+  font-size: 0.92rem;
+}
+
+.nav-submenu-nested {
+  padding-left: 0.2rem;
+  margin-left: 0.85rem;
+}
+
 .nav-button {
   width: 100%;
   text-align: left;
@@ -888,6 +902,11 @@ select:focus-visible,
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   text-transform: none;
   letter-spacing: 0;
+}
+
+.user-role-badge {
+  background: rgba(88, 166, 255, 0.16);
+  color: #9fd0ff;
 }
 
 .user-actions-cell {

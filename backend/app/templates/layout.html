@@ -48,7 +48,8 @@
         <div class="nav-section">
           <div class="nav-heading">Einstellungen</div>
           {% if is_admin %}
-          {% set admin_nav_pages = ['customers', 'admin_knowledge', 'admin_prompts', 'admin_users'] %}
+          {% set admin_nav_pages = ['customers', 'admin_knowledge', 'admin_prompts', 'admin_users', 'admin_roles'] %}
+          {% set user_nav_pages = ['admin_users', 'admin_roles'] %}
           <div class="nav-group {% if active_page in admin_nav_pages %}expanded{% endif %}" id="admin-nav-group">
             <button type="button" class="nav-group-toggle" id="admin-nav-toggle" aria-expanded="{% if active_page in admin_nav_pages %}true{% else %}false{% endif %}">
               Administration
@@ -57,7 +58,15 @@
               <a href="/admin/customers" class="nav-link nav-sublink {% if active_page == 'customers' %}active{% endif %}">Kunden</a>
               <a href="/admin/knowledge" class="nav-link nav-sublink {% if active_page == 'admin_knowledge' %}active{% endif %}">Wissensdatenbanken</a>
               <a href="/admin/prompts" class="nav-link nav-sublink {% if active_page == 'admin_prompts' %}active{% endif %}">Systemprompts</a>
-              <a href="/admin/users" class="nav-link nav-sublink {% if active_page == 'admin_users' %}active{% endif %}">User</a>
+              <div class="nav-group nav-group-nested {% if active_page in user_nav_pages %}expanded{% endif %}" id="user-nav-group">
+                <button type="button" class="nav-group-toggle nav-sublink" id="user-nav-toggle" aria-expanded="{% if active_page in user_nav_pages %}true{% else %}false{% endif %}">
+                  User
+                </button>
+                <div class="nav-submenu nav-submenu-nested">
+                  <a href="/admin/users" class="nav-link nav-sublink {% if active_page == 'admin_users' %}active{% endif %}">Benutzer</a>
+                  <a href="/admin/roles" class="nav-link nav-sublink {% if active_page == 'admin_roles' %}active{% endif %}">Rollen</a>
+                </div>
+              </div>
             </div>
           </div>
           {% endif %}

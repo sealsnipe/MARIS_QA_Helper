@@ -86,6 +86,14 @@ from app.users_admin import (
     update_admin_user,
     user_to_dict,
 )
+from app.roles_admin import (
+    RoleAdminError,
+    create_admin_role,
+    delete_admin_role,
+    list_admin_roles,
+    role_to_dict,
+    update_admin_role,
+)
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
@@ -125,6 +133,7 @@ class AdminUserCreateRequest(BaseModel):
     email: str = Field(min_length=3, max_length=200)
     password: str = Field(min_length=8, max_length=200)
     customer_ids: list[str] = Field(default_factory=list)
+    role_ids: list[str] = Field(default_factory=list)
     is_admin: bool = False
 
 
@@ -132,8 +141,23 @@ class AdminUserUpdateRequest(BaseModel):
     email: str | None = Field(default=None, min_length=3, max_length=200)
     password: str | None = Field(default=None, min_length=8, max_length=200)
     customer_ids: list[str] | None = None
+    role_ids: list[str] | None = None
     is_admin: bool | None = None
     is_active: bool | None = None
+
+
+class AdminRoleCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    customer_ids: list[str] = Field(default_factory=list)
+    is_admin: bool = False
+    auto_add_new_customers: bool = False
+
+
+class AdminRoleUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    customer_ids: list[str] | None = None
+    is_admin: bool | None = None
+    auto_add_new_customers: bool | None = None
 
 
 class DocumentUpdateRequest(BaseModel):
@@ -424,6 +448,21 @@ def admin_users_page(
         request,
         "admin_users.html",
         _page_context(request, user, db, active_page="admin_users"),
+    )
+
+
+@router.get("/admin/roles", response_class=HTMLResponse)
+def admin_roles_page(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    if redirect := _admin_page_redirect(user):
+        return redirect
+    return templates.TemplateResponse(
+        request,
+        "admin_roles.html",
+        _page_context(request, user, db, active_page="admin_roles"),
     )
 
 
@@ -1364,7 +1403,63 @@ def api_admin_list_users(
     return {
         "users": list_admin_users(db),
         "customers": list_assignable_customers(db),
+        "roles": list_admin_roles(db),
     }
+
+
+@router.get("/api/admin/roles")
+def api_admin_list_roles(
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    return {
+        "roles": list_admin_roles(db),
+        "customers": list_assignable_customers(db),
+    }
+
+
+@router.post("/api/admin/roles")
+def api_admin_create_role(
+    payload: AdminRoleCreateRequest,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    role = create_admin_role(
+        db,
+        payload.name,
+        payload.customer_ids,
+        is_admin=payload.is_admin,
+        auto_add_new_customers=payload.auto_add_new_customers,
+    )
+    return {"role": role_to_dict(db, role)}
+
+
+@router.patch("/api/admin/roles/{role_id}")
+def api_admin_update_role(
+    role_id: str,
+    payload: AdminRoleUpdateRequest,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    role = update_admin_role(
+        db,
+        role_id,
+        name=payload.name,
+        customer_ids=payload.customer_ids,
+        is_admin=payload.is_admin,
+        auto_add_new_customers=payload.auto_add_new_customers,
+    )
+    return {"role": role_to_dict(db, role)}
+
+
+@router.delete("/api/admin/roles/{role_id}")
+def api_admin_delete_role(
+    role_id: str,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    delete_admin_role(db, role_id)
+    return {"deleted": True, "id": role_id}
 
 
 @router.post("/api/admin/users")
@@ -1379,6 +1474,7 @@ def api_admin_create_user(
         payload.password,
         payload.customer_ids,
         is_admin=payload.is_admin,
+        role_ids=payload.role_ids,
     )
     return {"user": user_to_dict(db, user)}
 
@@ -1397,6 +1493,7 @@ def api_admin_update_user(
         email=payload.email,
         password=payload.password,
         customer_ids=payload.customer_ids,
+        role_ids=payload.role_ids,
         is_admin=payload.is_admin,
         is_active=payload.is_active,
     )

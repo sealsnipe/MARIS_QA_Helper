@@ -129,6 +129,9 @@ def create_tenant_customer(db: Session, customer_id: str, name: str) -> Customer
         link = db.get(UserCustomer, {"user_id": admin.id, "customer_id": slug})
         if link is None:
             db.add(UserCustomer(user_id=admin.id, customer_id=slug))
+    from app.roles_admin import assign_new_customer_to_auto_roles
+
+    assign_new_customer_to_auto_roles(db, slug)
     db.commit()
     db.refresh(row)
     return row

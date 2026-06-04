@@ -5,7 +5,7 @@
 
 {% block content %}
 <section class="panel customer-admin-panel">
-  <p class="muted">Benutzer anlegen, Kunden zuordnen, Admin-Rechte vergeben oder Benutzer deaktivieren.</p>
+  <p class="muted">Benutzer anlegen, Rollen zuweisen, Kunden zuordnen, Admin-Rechte vergeben oder Benutzer deaktivieren.</p>
 
   <form id="user-create-form" class="ingest-form customer-create-form">
     <h2>Neuer Benutzer</h2>
@@ -24,6 +24,10 @@
       </label>
     </div>
     <fieldset class="user-customers-fieldset">
+      <legend>Rollen (Preset anwenden)</legend>
+      <div id="user-create-roles" class="user-customer-checkboxes"></div>
+    </fieldset>
+    <fieldset class="user-customers-fieldset">
       <legend>Kunden</legend>
       <div id="user-create-customers" class="user-customer-checkboxes"></div>
     </fieldset>
@@ -37,8 +41,9 @@
       <thead>
         <tr>
           <th>E-Mail</th>
+          <th>Rollen</th>
           <th>Kunden</th>
-          <th>Rolle</th>
+          <th>Admin</th>
           <th>Status</th>
           <th>Aktionen</th>
         </tr>

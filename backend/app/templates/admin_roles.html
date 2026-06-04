@@ -1,0 +1,53 @@
+{% extends "layout.html" %}
+
+{% block title %}Rollen · MARIS - Q/A Helper{% endblock %}
+{% block page_title %}Rollen{% endblock %}
+
+{% block content %}
+<section class="panel customer-admin-panel">
+  <p class="muted">Rollen sind Presets für Admin-Rechte und Kundenzuordnung. Mit „Neue Kunden auto-hinzufügen“ erhalten zugewiesene Benutzer neue Mandanten automatisch.</p>
+
+  <form id="role-create-form" class="ingest-form customer-create-form">
+    <h2>Neue Rolle</h2>
+    <div class="customer-form-row user-form-row">
+      <label>
+        Name
+        <input type="text" id="role-create-name" maxlength="120" placeholder="z. B. Support BG Frankfurt" required>
+      </label>
+      <label class="user-admin-checkbox">
+        <input type="checkbox" id="role-create-admin">
+        Administrator
+      </label>
+      <label class="user-admin-checkbox">
+        <input type="checkbox" id="role-create-auto-customers">
+        Neue Kunden auto-hinzufügen
+      </label>
+    </div>
+    <fieldset class="user-customers-fieldset">
+      <legend>Kunden (Preset)</legend>
+      <div id="role-create-customers" class="user-customer-checkboxes"></div>
+    </fieldset>
+    <button type="submit" id="role-create-submit">Rolle anlegen</button>
+    <p id="role-create-status" class="status" aria-live="polite"></p>
+  </form>
+
+  <div class="customer-list-wrap">
+    <h2>Rollen <span id="role-count" class="muted">(0)</span></h2>
+    <table class="customer-table" id="role-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Kunden</th>
+          <th>Admin</th>
+          <th>Auto-Kunden</th>
+          <th>Aktionen</th>
+        </tr>
+      </thead>
+      <tbody id="role-table-body"></tbody>
+    </table>
+    <p id="role-empty" class="muted">Noch keine Rollen.</p>
+  </div>
+
+  <p id="role-list-status" class="status" aria-live="polite"></p>
+</section>
+{% endblock %}

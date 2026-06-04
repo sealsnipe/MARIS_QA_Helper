@@ -48,6 +48,30 @@ class UserCustomer(Base):
     customer_id: Mapped[str] = mapped_column(String, ForeignKey("customers.id"), primary_key=True)
 
 
+class Role(Base):
+    __tablename__ = "roles"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    is_admin: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    auto_add_new_customers: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class RoleCustomer(Base):
+    __tablename__ = "role_customers"
+
+    role_id: Mapped[str] = mapped_column(String, ForeignKey("roles.id"), primary_key=True)
+    customer_id: Mapped[str] = mapped_column(String, ForeignKey("customers.id"), primary_key=True)
+
+
+class UserRole(Base):
+    __tablename__ = "user_roles"
+
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), primary_key=True)
+    role_id: Mapped[str] = mapped_column(String, ForeignKey("roles.id"), primary_key=True)
+
+
 class SystemPrompt(Base):
     __tablename__ = "system_prompts"
 

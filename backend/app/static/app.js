@@ -453,13 +453,14 @@
   }
 
   function initAdminNav() {
-    const group = document.getElementById("admin-nav-group");
-    const toggle = document.getElementById("admin-nav-toggle");
-    if (!group || !toggle) return;
-
-    toggle.addEventListener("click", () => {
-      group.classList.toggle("expanded");
-      toggle.setAttribute("aria-expanded", group.classList.contains("expanded") ? "true" : "false");
+    document.querySelectorAll(".nav-group-toggle").forEach((toggle) => {
+      const group = toggle.closest(".nav-group");
+      if (!group) return;
+      toggle.addEventListener("click", (event) => {
+        event.stopPropagation();
+        group.classList.toggle("expanded");
+        toggle.setAttribute("aria-expanded", group.classList.contains("expanded") ? "true" : "false");
+      });
     });
   }
 
@@ -1918,11 +1919,234 @@
   const ICON_TRASH =
     '<svg class="icon-btn-svg" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
 
-  function readCustomerCheckboxValues(container, namePrefix) {
+  function readCheckboxValues(container, namePrefix) {
     if (!container) return [];
     return Array.from(container.querySelectorAll(`input[name="${namePrefix}"]:checked`)).map(
       (el) => el.value,
     );
+  }
+
+  function readCustomerCheckboxValues(container, namePrefix) {
+    return readCheckboxValues(container, namePrefix);
+  }
+
+  function renderRoleCheckboxes(container, roles, selectedIds, namePrefix, onChange) {
+    if (!container) return;
+    const selected = new Set(selectedIds || []);
+    container.innerHTML = "";
+    (roles || []).forEach((role) => {
+      const row = document.createElement("label");
+      row.className = "user-customer-row";
+      row.innerHTML = `
+        <input type="checkbox" name="${escapeHtml(namePrefix)}" value="${escapeHtml(role.id)}" ${selected.has(role.id) ? "checked" : ""}>
+        <span class="user-customer-row-body">
+          <span class="user-customer-name">${escapeHtml(role.name)}</span>
+          <span class="muted">${role.is_admin ? "Admin" : "Benutzer"}${role.auto_add_new_customers ? " · Auto-Kunden" : ""}</span>
+        </span>
+      `;
+      const input = row.querySelector("input");
+      input?.addEventListener("change", () => onChange?.());
+      container.appendChild(row);
+    });
+  }
+
+  function initRolesPage() {
+    const roleTbody = document.getElementById("role-table-body");
+    const roleEmptyEl = document.getElementById("role-empty");
+    const roleCountEl = document.getElementById("role-count");
+    const roleListStatus = document.getElementById("role-list-status");
+    const roleCreateForm = document.getElementById("role-create-form");
+    const roleCreateName = document.getElementById("role-create-name");
+    const roleCreateAdmin = document.getElementById("role-create-admin");
+    const roleCreateAutoCustomers = document.getElementById("role-create-auto-customers");
+    const roleCreateCustomers = document.getElementById("role-create-customers");
+    const roleCreateStatus = document.getElementById("role-create-status");
+    let assignableCustomers = [];
+    let customerNameById = {};
+
+    function customerBadges(ids) {
+      const slugs = ids || [];
+      if (!slugs.length) return '<span class="muted">—</span>';
+      return `<span class="user-badge-list">${slugs
+        .map((slug) => {
+          const title = customerNameById[slug] || slug;
+          return `<span class="badge user-slug-badge" title="${escapeHtml(title)}">${escapeHtml(slug)}</span>`;
+        })
+        .join("")}</span>`;
+    }
+
+    function renderRoles(roles) {
+      if (!roleTbody) return;
+      roleTbody.innerHTML = "";
+      const rows = roles || [];
+      if (roleCountEl) roleCountEl.textContent = `(${rows.length})`;
+      if (roleEmptyEl) roleEmptyEl.classList.toggle("hidden", rows.length > 0);
+
+      rows.forEach((role) => {
+        const row = document.createElement("tr");
+        row.dataset.roleId = role.id;
+        row.innerHTML = `
+          <td><span class="role-name-display">${escapeHtml(role.name)}</span></td>
+          <td class="user-customers-cell">${customerBadges(role.customer_ids)}</td>
+          <td>${role.is_admin ? "Ja" : "Nein"}</td>
+          <td>${role.auto_add_new_customers ? "Ja" : "Nein"}</td>
+          <td class="user-actions-cell">
+            <div class="row-actions">
+              <button type="button" class="icon-btn secondary role-edit-btn" aria-label="Bearbeiten">${ICON_EDIT}</button>
+              <button type="button" class="icon-btn danger role-delete-btn" aria-label="Entfernen">${ICON_TRASH}</button>
+            </div>
+          </td>
+        `;
+        roleTbody.appendChild(row);
+
+        const editRow = document.createElement("tr");
+        editRow.className = "role-edit-row hidden";
+        editRow.dataset.roleId = role.id;
+        editRow.innerHTML = `
+          <td colspan="5">
+            <div class="ingest-form">
+              <div class="customer-form-row user-form-row">
+                <label>Name<input type="text" class="role-edit-name" value="${escapeHtml(role.name)}" maxlength="120"></label>
+                <label class="user-admin-checkbox"><input type="checkbox" class="role-edit-admin" ${role.is_admin ? "checked" : ""}> Administrator</label>
+                <label class="user-admin-checkbox"><input type="checkbox" class="role-edit-auto-customers" ${role.auto_add_new_customers ? "checked" : ""}> Neue Kunden auto-hinzufügen</label>
+              </div>
+              <fieldset class="user-customers-fieldset">
+                <legend>Kunden (Preset)</legend>
+                <div class="role-edit-customers user-customer-checkboxes"></div>
+              </fieldset>
+              <div class="customer-actions">
+                <button type="button" class="secondary small role-save-btn">Speichern</button>
+                <button type="button" class="secondary small role-cancel-btn">Abbrechen</button>
+              </div>
+            </div>
+          </td>
+        `;
+        roleTbody.appendChild(editRow);
+        renderCustomerCheckboxes(
+          editRow.querySelector(".role-edit-customers"),
+          assignableCustomers,
+          role.customer_ids,
+          `role-edit-${role.id}`,
+        );
+      });
+    }
+
+    async function loadRoles() {
+      const data = await api("/api/admin/roles");
+      assignableCustomers = data.customers || [];
+      customerNameById = Object.fromEntries(assignableCustomers.map((c) => [c.id, c.name]));
+      renderCustomerCheckboxes(roleCreateCustomers, assignableCustomers, [], "role-create");
+      renderRoles(data.roles || []);
+    }
+
+    roleTbody?.addEventListener("click", async (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+
+      if (target.closest(".role-edit-btn")) {
+        const row = target.closest("tr:not(.role-edit-row)");
+        if (!row) return;
+        const roleId = row.dataset.roleId;
+        const editRow = roleTbody.querySelector(`tr.role-edit-row[data-role-id="${roleId}"]`);
+        roleTbody.querySelectorAll(".role-edit-row").forEach((el) => el.classList.add("hidden"));
+        editRow?.classList.remove("hidden");
+        return;
+      }
+
+      if (target.closest(".role-cancel-btn")) {
+        target.closest("tr.role-edit-row")?.classList.add("hidden");
+        return;
+      }
+
+      if (target.closest(".role-save-btn")) {
+        const editRow = target.closest("tr.role-edit-row");
+        if (!editRow) return;
+        const roleId = editRow.dataset.roleId;
+        const name = editRow.querySelector(".role-edit-name")?.value.trim() || "";
+        const isAdmin = Boolean(editRow.querySelector(".role-edit-admin")?.checked);
+        const autoCustomers = Boolean(editRow.querySelector(".role-edit-auto-customers")?.checked);
+        const customerIds = readCustomerCheckboxValues(
+          editRow.querySelector(".role-edit-customers"),
+          `role-edit-${roleId}`,
+        );
+        if (!name) {
+          showStatus(roleListStatus, "Rollenname ist Pflicht.", "error");
+          return;
+        }
+        showStatus(roleListStatus, "Speichern…");
+        try {
+          await api(`/api/admin/roles/${encodeURIComponent(roleId)}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              name,
+              customer_ids: customerIds,
+              is_admin: isAdmin,
+              auto_add_new_customers: autoCustomers,
+            }),
+          });
+          editRow.classList.add("hidden");
+          await loadRoles();
+          showStatus(roleListStatus, "Rolle gespeichert.", "ok");
+        } catch (err) {
+          const msg = err?.code === "role_exists" ? "Rollenname existiert bereits." : "Speichern fehlgeschlagen.";
+          showStatus(roleListStatus, msg, "error");
+        }
+        return;
+      }
+
+      if (target.closest(".role-delete-btn")) {
+        const row = target.closest("tr:not(.role-edit-row)");
+        if (!row) return;
+        const roleId = row.dataset.roleId;
+        const name = row.querySelector(".role-name-display")?.textContent || roleId;
+        if (!window.confirm(`Rolle „${name}“ wirklich löschen?`)) return;
+        showStatus(roleListStatus, "Entfernen…");
+        try {
+          await api(`/api/admin/roles/${encodeURIComponent(roleId)}`, { method: "DELETE" });
+          await loadRoles();
+          showStatus(roleListStatus, "Rolle gelöscht.", "ok");
+        } catch {
+          showStatus(roleListStatus, "Entfernen fehlgeschlagen.", "error");
+        }
+      }
+    });
+
+    roleCreateForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const name = (roleCreateName?.value || "").trim();
+      const isAdmin = Boolean(roleCreateAdmin?.checked);
+      const autoCustomers = Boolean(roleCreateAutoCustomers?.checked);
+      const customerIds = readCustomerCheckboxValues(roleCreateCustomers, "role-create");
+      if (!name) {
+        showStatus(roleCreateStatus, "Rollenname ist Pflicht.", "error");
+        return;
+      }
+      showStatus(roleCreateStatus, "Anlegen…");
+      try {
+        await api("/api/admin/roles", {
+          method: "POST",
+          body: JSON.stringify({
+            name,
+            customer_ids: customerIds,
+            is_admin: isAdmin,
+            auto_add_new_customers: autoCustomers,
+          }),
+        });
+        if (roleCreateName) roleCreateName.value = "";
+        if (roleCreateAdmin) roleCreateAdmin.checked = false;
+        if (roleCreateAutoCustomers) roleCreateAutoCustomers.checked = false;
+        roleCreateCustomers?.querySelectorAll("input[type=checkbox]").forEach((el) => {
+          el.checked = false;
+        });
+        showStatus(roleCreateStatus, "Rolle angelegt.", "ok");
+        await loadRoles();
+      } catch (err) {
+        const msg = err?.code === "role_exists" ? "Rollenname existiert bereits." : "Anlegen fehlgeschlagen.";
+        showStatus(roleCreateStatus, msg, "error");
+      }
+    });
+
+    loadRoles().catch(() => showStatus(roleListStatus, "Rollen konnten nicht geladen werden.", "error"));
   }
 
   function initUsersPage() {
@@ -1934,10 +2158,27 @@
     const createEmail = document.getElementById("user-create-email");
     const createPassword = document.getElementById("user-create-password");
     const createAdmin = document.getElementById("user-create-admin");
+    const createRoles = document.getElementById("user-create-roles");
     const createCustomers = document.getElementById("user-create-customers");
     const createStatus = document.getElementById("user-create-status");
     let assignableCustomers = [];
+    let assignableRoles = [];
     let customerNameById = {};
+    let roleNameById = {};
+
+    function applyRolePreset(rolesContainer, rolePrefix, adminEl, customersEl, customerPrefix) {
+      const selectedRoleIds = readCheckboxValues(rolesContainer, rolePrefix);
+      let isAdmin = false;
+      const customerSet = new Set();
+      selectedRoleIds.forEach((roleId) => {
+        const role = assignableRoles.find((item) => item.id === roleId);
+        if (!role) return;
+        if (role.is_admin) isAdmin = true;
+        (role.customer_ids || []).forEach((customerId) => customerSet.add(customerId));
+      });
+      if (adminEl) adminEl.checked = isAdmin;
+      renderCustomerCheckboxes(customersEl, assignableCustomers, Array.from(customerSet), customerPrefix);
+    }
 
     function customerBadges(ids) {
       const slugs = ids || [];
@@ -1946,6 +2187,17 @@
         .map((slug) => {
           const title = customerNameById[slug] || slug;
           return `<span class="badge user-slug-badge" title="${escapeHtml(title)}">${escapeHtml(slug)}</span>`;
+        })
+        .join("")}</span>`;
+    }
+
+    function roleBadges(ids) {
+      const roleIds = ids || [];
+      if (!roleIds.length) return '<span class="muted">—</span>';
+      return `<span class="user-badge-list">${roleIds
+        .map((roleId) => {
+          const title = roleNameById[roleId] || roleId;
+          return `<span class="badge user-role-badge" title="${escapeHtml(title)}">${escapeHtml(title)}</span>`;
         })
         .join("")}</span>`;
     }
@@ -1962,6 +2214,7 @@
         row.dataset.userId = user.id;
         row.innerHTML = `
           <td><span class="user-email-display">${escapeHtml(user.email)}</span></td>
+          <td class="user-customers-cell">${roleBadges(user.role_ids)}</td>
           <td class="user-customers-cell">${customerBadges(user.customer_ids)}</td>
           <td>${user.is_admin ? "Admin" : "Benutzer"}</td>
           <td>${user.is_active ? "Aktiv" : "Inaktiv"}</td>
@@ -1978,7 +2231,7 @@
         editRow.className = "user-edit-row hidden";
         editRow.dataset.userId = user.id;
         editRow.innerHTML = `
-          <td colspan="5">
+          <td colspan="6">
             <div class="ingest-form">
               <div class="customer-form-row user-form-row">
                 <label>E-Mail<input type="email" class="user-edit-email" value="${escapeHtml(user.email)}" maxlength="200"></label>
@@ -1986,6 +2239,10 @@
                 <label class="user-admin-checkbox"><input type="checkbox" class="user-edit-admin" ${user.is_admin ? "checked" : ""}> Administrator</label>
                 <label class="user-admin-checkbox"><input type="checkbox" class="user-edit-active" ${user.is_active ? "checked" : ""}> Aktiv</label>
               </div>
+              <fieldset class="user-customers-fieldset">
+                <legend>Rollen (Preset anwenden)</legend>
+                <div class="user-edit-roles user-customer-checkboxes"></div>
+              </fieldset>
               <fieldset class="user-customers-fieldset">
                 <legend>Kunden</legend>
                 <div class="user-edit-customers user-customer-checkboxes"></div>
@@ -1998,19 +2255,25 @@
           </td>
         `;
         tbody.appendChild(editRow);
-        renderCustomerCheckboxes(
-          editRow.querySelector(".user-edit-customers"),
-          assignableCustomers,
-          user.customer_ids,
-          `edit-${user.id}`,
+        const rolesEl = editRow.querySelector(".user-edit-roles");
+        const customersEl = editRow.querySelector(".user-edit-customers");
+        const adminEl = editRow.querySelector(".user-edit-admin");
+        renderRoleCheckboxes(rolesEl, assignableRoles, user.role_ids, `user-roles-${user.id}`, () =>
+          applyRolePreset(rolesEl, `user-roles-${user.id}`, adminEl, customersEl, `edit-${user.id}`),
         );
+        renderCustomerCheckboxes(customersEl, assignableCustomers, user.customer_ids, `edit-${user.id}`);
       });
     }
 
     async function loadUsers() {
       const data = await api("/api/admin/users");
       assignableCustomers = data.customers || [];
+      assignableRoles = data.roles || [];
       customerNameById = Object.fromEntries(assignableCustomers.map((c) => [c.id, c.name]));
+      roleNameById = Object.fromEntries(assignableRoles.map((r) => [r.id, r.name]));
+      renderRoleCheckboxes(createRoles, assignableRoles, [], "user-create-roles", () =>
+        applyRolePreset(createRoles, "user-create-roles", createAdmin, createCustomers, "create"),
+      );
       renderCustomerCheckboxes(createCustomers, assignableCustomers, [], "create");
       renderUsers(data.users || []);
     }
@@ -2043,6 +2306,7 @@
         const password = editRow?.querySelector(".user-edit-password")?.value || "";
         const isAdmin = Boolean(editRow?.querySelector(".user-edit-admin")?.checked);
         const isActive = Boolean(editRow?.querySelector(".user-edit-active")?.checked);
+        const roleIds = readCheckboxValues(editRow?.querySelector(".user-edit-roles"), `user-roles-${userId}`);
         const customerIds = readCustomerCheckboxValues(editRow?.querySelector(".user-edit-customers"), `edit-${userId}`);
         if (!email) {
           showStatus(listStatus, "E-Mail ist Pflicht.", "error");
@@ -2050,7 +2314,13 @@
         }
         showStatus(listStatus, "Speichern…");
         try {
-          const body = { email, customer_ids: customerIds, is_admin: isAdmin, is_active: isActive };
+          const body = {
+            email,
+            customer_ids: customerIds,
+            role_ids: roleIds,
+            is_admin: isAdmin,
+            is_active: isActive,
+          };
           if (password) body.password = password;
           await api(`/api/admin/users/${encodeURIComponent(userId)}`, {
             method: "PATCH",
@@ -2096,6 +2366,7 @@
       const email = (createEmail?.value || "").trim();
       const password = createPassword?.value || "";
       const isAdmin = Boolean(createAdmin?.checked);
+      const roleIds = readCheckboxValues(createRoles, "user-create-roles");
       const customerIds = readCustomerCheckboxValues(createCustomers, "create");
       if (!email || !password) {
         showStatus(createStatus, "E-Mail und Passwort sind Pflicht.", "error");
@@ -2105,11 +2376,20 @@
       try {
         await api("/api/admin/users", {
           method: "POST",
-          body: JSON.stringify({ email, password, customer_ids: customerIds, is_admin: isAdmin }),
+          body: JSON.stringify({
+            email,
+            password,
+            customer_ids: customerIds,
+            role_ids: roleIds,
+            is_admin: isAdmin,
+          }),
         });
         if (createEmail) createEmail.value = "";
         if (createPassword) createPassword.value = "";
         if (createAdmin) createAdmin.checked = false;
+        createRoles?.querySelectorAll("input[type=checkbox]").forEach((el) => {
+          el.checked = false;
+        });
         createCustomers?.querySelectorAll("input[type=checkbox]").forEach((el) => {
           el.checked = false;
         });
@@ -2331,5 +2611,6 @@
   if (page === "admin_knowledge") initAdminKnowledgePage();
   if (page === "admin_prompts") initAdminPromptsPage();
   if (page === "admin_users") initUsersPage();
+  if (page === "admin_roles") initRolesPage();
   if (page === "customers") initCustomersPage();
 })();

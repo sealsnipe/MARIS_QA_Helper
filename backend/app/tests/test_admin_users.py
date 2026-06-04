@@ -55,6 +55,16 @@ def test_admin_users_crud(client, db_session):
     assert self_delete.status_code == 403
 
 
+def test_admin_roles_page_redirects_for_non_admin(client, db_session):
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen",))
+    login(client, "sven@example.com", "secret123")
+
+    response = client.get("/admin/roles", follow_redirects=False)
+    assert response.status_code == 302
+    assert response.headers["location"] == "/chat"
+
+
 def test_admin_kb_redirects_for_admin(client, db_session):
     create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
     create_user(db_session, "admin@example.com", "secret123", ("bg-ludwigshafen",), is_admin=True)
