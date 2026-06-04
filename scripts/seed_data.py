@@ -18,6 +18,8 @@ ADMIN_EMAILS: frozenset[str] = frozenset(
     }
 )
 
+INTEGRATION_USER_EMAIL = "integration@internal"
+
 DEFAULT_PASSWORD = "GeheimesPW!"
 
 DEFAULT_USERS: tuple[dict, ...] = (
@@ -26,5 +28,11 @@ DEFAULT_USERS: tuple[dict, ...] = (
         "password": DEFAULT_PASSWORD,
         "customers": tuple(slug for slug, _ in PRODUCTION_CUSTOMERS),
         "is_admin": True,
+    },
+    {
+        "email": INTEGRATION_USER_EMAIL,
+        "password": DEFAULT_PASSWORD,
+        "customers": tuple(slug for slug, _ in PRODUCTION_CUSTOMERS),
+        "is_admin": False,
     },
 )

@@ -13,6 +13,12 @@ from app.config import get_settings
 from app.db import init_db
 from app import db as db_module
 from app.ingestion import IngestionError
+from app.integration_auth import (
+    IntegrationDisabledError,
+    IntegrationUserNotFoundError,
+    InvalidIntegrationTokenError,
+)
+from app.integration_routes import router as integration_router
 from app.routes import router
 from app.tenant import CustomerNotFoundError, ForbiddenCustomerError
 from app.customers import ensure_global_customer, CustomerAdminError
@@ -44,9 +50,25 @@ app.add_middleware(
     https_only=settings.SESSION_COOKIE_SECURE,
 )
 app.include_router(router)
+app.include_router(integration_router)
 
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+
+@app.exception_handler(InvalidIntegrationTokenError)
+async def invalid_integration_token_handler(_request: Request, _exc: InvalidIntegrationTokenError):
+    return JSONResponse({"error": "invalid_token"}, status_code=401)
+
+
+@app.exception_handler(IntegrationDisabledError)
+async def integration_disabled_handler(_request: Request, _exc: IntegrationDisabledError):
+    return JSONResponse({"error": "integration_disabled"}, status_code=503)
+
+
+@app.exception_handler(IntegrationUserNotFoundError)
+async def integration_user_not_found_handler(_request: Request, _exc: IntegrationUserNotFoundError):
+    return JSONResponse({"error": "integration_user_missing"}, status_code=503)
 
 
 @app.exception_handler(NotAuthenticatedError)

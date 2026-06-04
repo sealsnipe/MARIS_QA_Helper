@@ -35,6 +35,7 @@
 | POST | `/api/documents` | Multipart | ✅ | ✅ | **Datei-Upload** (+ optional Vision-OCR) |
 | DELETE | `/api/documents/{id}` | JSON | ✅ | ✅ | Dokument löschen |
 | POST | `/api/chat` | JSON | ✅ | ✅ | Frage stellen (Agent); optional `chat_id` |
+| POST | `/api/v1/ask` | JSON | Bearer | Body | **Integration:** Frage stellen (externe Agenten) |
 | GET | `/chat` | HTML | ✅ | ✅ | Chat (Sidebar-Historie) |
 | GET | `/kb` | HTML | ✅ | ✅ | Wissensbasis (Nutzer) |
 | GET | `/admin/customers` | HTML | ✅ Admin | — | Kunden-Admin |
@@ -162,18 +163,52 @@ Erfolg `200`:
 ### 3.11 `GET /api/health`
 `{ "ok": true }` — ohne Auth.
 
+### 3.12 `POST /api/v1/ask` (Integration)
+
+Maschinen-API für externe Agenten (Cursor, n8n, eigene Scripts). Details: [`system/12_integration_api.md`](../system/12_integration_api.md).
+
+**Auth:** `Authorization: Bearer <INTEGRATION_API_TOKEN>` (`.env`; leer = Endpoint `503 integration_disabled`).
+
+Request:
+```json
+{
+  "question": "Wie richte ich VPN ein?",
+  "customer_id": "bg-frankfurt",
+  "chat_id": "uuid-optional",
+  "top_k": 4
+}
+```
+
+Erfolg `200`:
+```json
+{
+  "answer": "… [1] …",
+  "sources": [
+    { "n": 1, "document_id": "uuid", "title": "VPN Runbook", "chunk_index": 4, "score": 0.82 }
+  ],
+  "no_context": false,
+  "chat_id": "uuid",
+  "customer_id": "bg-frankfurt"
+}
+```
+
+- `customer_id` im Body (nur bei gültigem Bearer-Token); Kunde muss existieren und aktiv sein.
+- `chat_id` optional — ohne ID neuer Chat; gleiche ID für Follow-ups (Persistenz unter Integration-Service-User).
+- Fehler: `401 invalid_token`, `400 empty_question`, `403 forbidden_customer`, `404 not_found`, `503 integration_disabled` / `integration_user_missing`, `502 llm_failed`.
+
 ## 4. Statuscodes
 | Code | Bedeutung |
 |---|---|
 | 200 | OK |
 | 302 | Redirect (Login/Logout) |
 | 400 | Validierungsfehler / unsupported_file_type / empty_* |
-| 401 | nicht authentifiziert |
+| 401 | nicht authentifiziert / invalid_token (Integration) |
 | 403 | forbidden_customer (kein Zugriff auf Kunden) |
 | 404 | nicht gefunden |
 | 413 | file_too_large |
 | 422 | extraction_failed / images_only_requires_vision / vision_failed / inspection_failed |
 | 502 | Upstream-Fehler (OpenAI/Qdrant) |
+| 503 | integration_disabled / integration_user_missing |
 
 ## 5. Admin-API (Kurz)
 

@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     MAX_TOOL_ROUNDS: int = 4
     MAX_UPLOAD_MB: int = 30
     ALLOWED_EXTENSIONS: str = ".txt,.md,.pdf,.docx,.png,.jpg,.jpeg,.webp,.gif"
+    INTEGRATION_API_TOKEN: str = ""
+    INTEGRATION_USER_EMAIL: str = "integration@internal"
 
     @field_validator("SESSION_SECRET", "OPENAI_API_KEY")
     @classmethod
@@ -80,6 +82,10 @@ class Settings(BaseSettings):
     @property
     def vision_max_images(self) -> int:
         return max(1, self.VISION_MAX_IMAGES)
+
+    @property
+    def integration_enabled(self) -> bool:
+        return bool(self.INTEGRATION_API_TOKEN.strip())
 
 
 @lru_cache

@@ -38,6 +38,7 @@
 | 09 | [module_dependency_map.md](./09_module_dependency_map.md) | Modul-Schichten und Abhängigkeiten |
 | 10 | [testing_landscape.md](./10_testing_landscape.md) | Tests vs Querschnitte |
 | 11 | [operations_runbook.md](./11_operations_runbook.md) | Install, Dev, Deploy, Update |
+| 12 | [integration_api.md](./12_integration_api.md) | Externe Agenten: POST /api/v1/ask |
 
 **Ist-Stand Plan vs Code:** [`docs/15_implementation_status.md`](../15_implementation_status.md)
 
