@@ -560,8 +560,12 @@ def _print_next_steps(
         if profile == "prod":
             print("\n  Produktion: Reverse-Proxy (Caddy/nginx) vor Port 8088, SESSION_COOKIE_SECURE=true.")
         else:
-            print("\n  Entwicklung: HTTP auf :8088 — optional KB befüllen:")
+            print("\n  Entwicklung: HTTP auf :8088 — optional Demo-Daten:")
+            print("    docker compose exec api python scripts/seed_knowledge_center_demo.py")
             print("    docker compose exec api python scripts/seed_kb.py")
+
+        print("\n  Schema: DB-Migrationen laufen automatisch beim API-Start (init_db).")
+        print("  Integration API: INTEGRATION_API_TOKEN in .env setzen (User integration@internal wird beim Seed angelegt).")
 
         print("  • Updates:      ./scripts/update.sh  (nach git pull)")
     else:

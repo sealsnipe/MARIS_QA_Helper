@@ -50,15 +50,19 @@ def _migrate_schema(engine) -> None:
                 )
     if "documents" in table_names:
         columns = {col["name"] for col in inspector.get_columns("documents")}
-        if "source_text" not in columns:
+        document_migrations = {
+            "source_text": "ALTER TABLE documents ADD COLUMN source_text TEXT",
+            "extraction_meta": "ALTER TABLE documents ADD COLUMN extraction_meta TEXT",
+            "content_sha256": "ALTER TABLE documents ADD COLUMN content_sha256 VARCHAR(64)",
+            "deleted_at": "ALTER TABLE documents ADD COLUMN deleted_at VARCHAR",
+        }
+        for col, sql in document_migrations.items():
+            if col not in columns:
+                with engine.begin() as conn:
+                    conn.execute(text(sql))
+        refreshed = {col["name"] for col in inspect(engine).get_columns("documents")}
+        if "content_sha256" in refreshed:
             with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE documents ADD COLUMN source_text TEXT"))
-        if "extraction_meta" not in columns:
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE documents ADD COLUMN extraction_meta TEXT"))
-        if "content_sha256" not in columns:
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE documents ADD COLUMN content_sha256 VARCHAR(64)"))
                 conn.execute(
                     text(
                         "CREATE INDEX IF NOT EXISTS ix_documents_content_sha256 "
@@ -72,6 +76,10 @@ def _migrate_schema(engine) -> None:
             "revision_json": "ALTER TABLE knowledge_contents ADD COLUMN revision_json TEXT",
             "refine_preset": "ALTER TABLE knowledge_contents ADD COLUMN refine_preset VARCHAR",
             "submitted_by": "ALTER TABLE knowledge_contents ADD COLUMN submitted_by VARCHAR",
+            "adopted_customer_id": "ALTER TABLE knowledge_contents ADD COLUMN adopted_customer_id VARCHAR",
+            "adopted_document_id": "ALTER TABLE knowledge_contents ADD COLUMN adopted_document_id VARCHAR",
+            "reviewed_by": "ALTER TABLE knowledge_contents ADD COLUMN reviewed_by VARCHAR",
+            "reviewed_at": "ALTER TABLE knowledge_contents ADD COLUMN reviewed_at VARCHAR",
         }
         for col, sql in migrations.items():
             if col not in columns:

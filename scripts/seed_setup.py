@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import secrets
 import sys
 from pathlib import Path
 from typing import Literal
@@ -14,11 +15,32 @@ sys.path.insert(0, str(ROOT / "backend"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from seed_customers import seed_customers
-from seed_data import GLOBAL_CUSTOMER, PRODUCTION_CUSTOMERS
+from seed_data import GLOBAL_CUSTOMER, INTEGRATION_USER_EMAIL, PRODUCTION_CUSTOMERS
 from seed_users import seed_user
 
 DEFAULT_ADMIN_EMAIL = "matthias.schindler@maris-healthcare.de"
 DeployProfile = Literal["dev", "prod"]
+
+
+def _ensure_integration_user(customer_ids: tuple[str, ...]) -> None:
+    from sqlalchemy import select
+
+    from app.db import SessionLocal, init_db
+    from app.models import User
+
+    init_db()
+    with SessionLocal() as db:
+        existing = db.scalar(select(User).where(User.email == INTEGRATION_USER_EMAIL))
+        if existing is not None:
+            print(f"Integration user exists: {INTEGRATION_USER_EMAIL}")
+            return
+    seed_user(
+        INTEGRATION_USER_EMAIL,
+        secrets.token_urlsafe(24),
+        customer_ids,
+        is_admin=False,
+    )
+    print(f"Integration user ready: {INTEGRATION_USER_EMAIL} (API token auth, kein Login-Passwort nötig)")
 
 
 def run_seed(*, profile: DeployProfile, email: str, password: str) -> None:
@@ -29,6 +51,7 @@ def run_seed(*, profile: DeployProfile, email: str, password: str) -> None:
 
     seed_customers(customers)
     seed_user(normalized, password, customer_ids, is_admin=True)
+    _ensure_integration_user(customer_ids)
     print(f"Admin-Nutzer bereit: {normalized}")
 
 
