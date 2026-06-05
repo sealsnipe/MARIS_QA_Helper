@@ -62,9 +62,15 @@
     }
 
     if (!response.ok) {
-      const error = new Error(payload?.error || "request_failed");
+      let detail = payload?.detail;
+      if (Array.isArray(detail)) {
+        detail = detail.map((item) => item.msg || item.type || String(item)).join("; ");
+      } else if (detail && typeof detail === "object") {
+        detail = JSON.stringify(detail);
+      }
+      const error = new Error(payload?.error || detail || "request_failed");
       error.code = payload?.error;
-      error.detail = payload?.detail;
+      error.detail = detail;
       error.status = response.status;
       throw error;
     }
@@ -77,6 +83,14 @@
       .replaceAll("<", "&lt;")
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;");
+  }
+
+  function escapeAttr(value) {
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
   }
 
   function showStatus(el, message, kind = "") {
@@ -3259,15 +3273,14 @@
           <button type="button" class="secondary small kc-tab-btn" data-kc-tab="original">Original</button>
           <button type="button" class="secondary small kc-tab-btn" data-kc-tab="changes">Änderungen</button>
         </div>
-        <div class="kc-detail-body" id="kc-detail-body"></div>
-        <div class="kc-detail-body hidden" id="kc-detail-original"></div>
-        <div class="kc-detail-changes hidden" id="kc-detail-changes"></div>
+        <div class="kc-detail-panes">
+          <div class="kc-detail-body" id="kc-detail-body"></div>
+          <div class="kc-detail-body hidden" id="kc-detail-original"></div>
+          <div class="kc-detail-changes hidden" id="kc-detail-changes"></div>
+        </div>
         <p id="kc-detail-status" class="status" aria-live="polite"></p>
         <div class="kc-detail-actions" id="kc-detail-actions">
-          <label class="kc-adopt-customer">
-            Ziel-Mandant für KB
-            <select id="kc-adopt-customer"></select>
-          </label>
+          <p class="kc-adopt-scope muted">KB-Ziel: aktiver Kunde aus der Sidebar (oben links).</p>
           <div class="kc-detail-buttons">
             <button type="button" class="primary" id="kc-adopt-btn">In KB übernehmen</button>
             <button type="button" class="secondary danger" id="kc-reject-btn">Ablehnen</button>
@@ -3312,7 +3325,6 @@
     const detailTabs = modal.querySelector("#kc-detail-tabs");
     const detailStatus = modal.querySelector("#kc-detail-status");
     const detailActions = modal.querySelector("#kc-detail-actions");
-    const adoptCustomer = modal.querySelector("#kc-adopt-customer");
     const adoptBtn = modal.querySelector("#kc-adopt-btn");
     const rejectBtn = modal.querySelector("#kc-reject-btn");
 
@@ -3338,18 +3350,8 @@
       sourceFilter.value = current;
     }
 
-    function renderCustomerOptions(selectedId) {
-      if (!adoptCustomer) return;
-      adoptCustomer.innerHTML = '<option value="">— Mandant wählen —</option>';
-      customers.forEach((customer) => {
-        const opt = document.createElement("option");
-        opt.value = customer.id;
-        opt.textContent = `${customer.name} (${customer.id})`;
-        adoptCustomer.appendChild(opt);
-      });
-      if (selectedId && customers.some((c) => c.id === selectedId)) {
-        adoptCustomer.value = selectedId;
-      }
+    function renderCustomerOptions(_selectedId) {
+      /* KB target comes from sidebar session — no per-modal customer dropdown. */
     }
 
     function renderGrid() {
@@ -3453,8 +3455,28 @@
       setKcDetailTab(btn.dataset.kcTab || "revised");
     });
 
+    function buildKcDetailView(item) {
+      const content = item.content || "";
+      const revision = item.revision;
+      const hasRevision = Boolean(item.has_revision && revision);
+      return {
+        finalContent: content,
+        finalMarkup: hasRevision ? buildRevisionMarkup(content, revision) : "",
+        finalChanges: revision?.changes || [],
+        stages: isKcPipelineRevision(revision)
+          ? (revision.pipeline || []).map((stage) => ({
+              step: stage.step,
+              preset_label: stage.preset_label,
+              content: stage.content || "",
+              revision: stage.revision,
+            }))
+          : [],
+      };
+    }
+
     function openDetail(item) {
       activeContent = item;
+      window.__kcDetailView = buildKcDetailView(item);
       window.__kcActiveRevisionChanges = item.revision?.changes || [];
       if (detailTitle) detailTitle.textContent = item.title;
       if (detailMeta) {
@@ -3462,7 +3484,7 @@
           <span class="badge">${escapeHtml(item.source_name || "")}</span>
           <span class="muted">Host: ${escapeHtml(item.host_code || "")}</span>
           ${item.submitted_by_email ? `<span>Eingereicht von ${escapeHtml(item.submitted_by_email)}</span>` : ""}
-          ${item.source_ref ? `<a href="${escapeHtml(item.source_ref)}" target="_blank" rel="noopener">Referenz</a>` : ""}
+          ${item.source_ref ? `<a href="${escapeAttr(item.source_ref)}" target="_blank" rel="noopener">Referenz</a>` : ""}
           ${item.suggested_customer_name ? `<span>Vorschlag: ${escapeHtml(item.suggested_customer_name)}</span>` : ""}
           ${item.revision?.stats?.change_ratio != null ? `<span>Änderung: ${Math.round(item.revision.stats.change_ratio * 100)}%</span>` : ""}
           <span class="muted">${escapeHtml(formatKcDate(item.received_at))}</span>
@@ -3478,22 +3500,12 @@
         detailSummary.textContent = summary;
         detailSummary.classList.toggle("hidden", !summary);
       }
-      if (detailBody) {
-        if (item.has_revision && item.revision) {
-          detailBody.innerHTML = buildRevisionMarkup(item.content || "", item.revision);
-          bindKcRevisionPopover(detailBody);
-        } else {
-          detailBody.textContent = item.content || "";
-        }
-      }
+      buildKcDetailTabs(item);
       if (detailOriginal) {
         detailOriginal.textContent = item.original_content || item.content || "";
       }
       renderKcChangesList(detailChanges, item.revision);
       setKcDetailTab("revised");
-      if (detailTabs) {
-        detailTabs.classList.toggle("hidden", !item.has_revision);
-      }
       showStatus(detailStatus, "", "");
       renderCustomerOptions(item.suggested_customer_id || "");
 
@@ -3501,7 +3513,6 @@
       if (detailActions) detailActions.classList.toggle("hidden", !isPending);
       if (adoptBtn) adoptBtn.disabled = !isPending;
       if (rejectBtn) rejectBtn.disabled = !isPending;
-      if (adoptCustomer) adoptCustomer.disabled = !isPending;
 
       modal.classList.remove("hidden");
     }
@@ -3552,9 +3563,8 @@
 
     adoptBtn?.addEventListener("click", async () => {
       if (!activeContent) return;
-      const customerId = adoptCustomer?.value || "";
-      if (!customerId) {
-        showStatus(detailStatus, "Bitte Ziel-Mandant wählen.", "error");
+      if (!activeCustomerId) {
+        showStatus(detailStatus, "Bitte zuerst einen Kunden in der Sidebar wählen.", "error");
         return;
       }
       adoptBtn.disabled = true;
@@ -3562,7 +3572,7 @@
       try {
         const result = await api(`/api/tools/knowledge-center/contents/${activeContent.id}/adopt`, {
           method: "POST",
-          body: { customer_id: customerId },
+          body: JSON.stringify({}),
         });
         modal.classList.add("hidden");
         showStatus(listStatus, `In KB übernommen (${result.customer_id}).`, "ok");
@@ -3581,7 +3591,7 @@
       try {
         await api(`/api/tools/knowledge-center/contents/${activeContent.id}/reject`, {
           method: "POST",
-          body: {},
+          body: JSON.stringify({}),
         });
         modal.classList.add("hidden");
         showStatus(listStatus, "Vorschlag abgelehnt.", "ok");
@@ -3598,7 +3608,6 @@
 
   function initKnowledgeCenterSubmitPage() {
     const form = document.getElementById("kc-submit-form");
-    const customerSelect = document.getElementById("kc-submit-customer");
     const titleInput = document.getElementById("kc-submit-title");
     const textInput = document.getElementById("kc-submit-text");
     const useAiToggle = document.getElementById("kc-submit-use-ai");
@@ -3621,17 +3630,6 @@
 
     function saveSelectedPresets() {
       localStorage.setItem("kc-submit-presets", JSON.stringify(selectedPresets));
-    }
-
-    function renderCustomers(customers) {
-      if (!customerSelect) return;
-      customerSelect.innerHTML = '<option value="">— Mandant wählen —</option>';
-      (customers || []).forEach((customer) => {
-        const opt = document.createElement("option");
-        opt.value = customer.id;
-        opt.textContent = `${customer.name} (${customer.id})`;
-        customerSelect.appendChild(opt);
-      });
     }
 
     function renderPipelineOrder() {
@@ -3690,7 +3688,6 @@
       if (!selectedPresets.length && presets.length) {
         selectedPresets = [presets[0].id];
       }
-      renderCustomers(data.customers || []);
       renderPresets();
       syncAiUi();
     }
@@ -3768,10 +3765,13 @@
 
     form?.addEventListener("submit", async (event) => {
       event.preventDefault();
-      const customerId = customerSelect?.value || "";
       const rawText = textInput?.value.trim() || "";
-      if (!customerId || !rawText) {
-        showStatus(submitStatus, "Mandant und Inhalt sind Pflicht.", "error");
+      if (!activeCustomerId) {
+        showStatus(submitStatus, "Bitte zuerst einen Kunden in der Sidebar wählen.", "error");
+        return;
+      }
+      if (!rawText) {
+        showStatus(submitStatus, "Inhalt ist Pflicht.", "error");
         return;
       }
       if (useAiToggle?.checked && !selectedPresets.length) {
@@ -3784,13 +3784,12 @@
       try {
         await api("/api/tools/knowledge-center/submit", {
           method: "POST",
-          body: {
-            customer_id: customerId,
+          body: JSON.stringify({
             raw_text: rawText,
             title: titleInput?.value.trim() || null,
             use_ai: Boolean(useAiToggle?.checked),
             presets: useAiToggle?.checked ? selectedPresets : undefined,
-          },
+          }),
         });
         form.reset();
         if (useAiToggle) useAiToggle.checked = localStorage.getItem("kc-submit-use-ai") === "1";
@@ -3878,7 +3877,7 @@
       try {
         await api("/api/admin/knowledge-sources", {
           method: "POST",
-          body: { name, host_code: hostCode },
+          body: JSON.stringify({ name, host_code: hostCode }),
         });
         createForm.reset();
         showStatus(createStatus, "Quelle angelegt.", "ok");
@@ -3919,7 +3918,7 @@
         try {
           await api(`/api/admin/knowledge-sources/${sourceId}`, {
             method: "PATCH",
-            body: { name, active },
+            body: JSON.stringify({ name, active }),
           });
           editRow.classList.add("hidden");
           showStatus(listStatus, "Quelle gespeichert.", "ok");

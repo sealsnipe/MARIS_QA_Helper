@@ -114,6 +114,11 @@ def user_has_customer(db: Session, user_id: str, customer_id: str) -> bool:
         return False
 
     if is_global_customer(customer_id):
+        global_customer = get_customer(db, GLOBAL_CUSTOMER_ID)
+        if global_customer is None or not is_customer_active(global_customer):
+            return False
+        if user.is_admin:
+            return True
         return bool(list_effective_tenant_customers_for_user(db, user))
 
     if not validate_customer_slug(customer_id):

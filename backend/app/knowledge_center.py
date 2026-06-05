@@ -224,7 +224,12 @@ def delete_knowledge_source(db: Session, source_id: str) -> None:
 
 
 def _visible_customer_ids(db: Session, user: User) -> set[str]:
-    return {customer.id for customer in list_effective_tenant_customers_for_user(db, user)}
+    ids = {customer.id for customer in list_effective_tenant_customers_for_user(db, user)}
+    global_customer = get_customer(db, GLOBAL_CUSTOMER_ID)
+    if global_customer is not None and is_customer_active(global_customer):
+        if user.is_admin or user_has_customer(db, user.id, GLOBAL_CUSTOMER_ID):
+            ids.add(GLOBAL_CUSTOMER_ID)
+    return ids
 
 
 def ensure_builtin_knowledge_sources(db: Session) -> None:
@@ -247,8 +252,6 @@ def _require_admin(user: User) -> None:
 
 def _validate_submit_customer(db: Session, user: User, customer_id: str) -> str:
     slug = customer_id.strip().lower()
-    if is_global_customer(slug):
-        raise KnowledgeCenterError("forbidden_customer", status_code=403)
     if not user_has_customer(db, user.id, slug):
         raise KnowledgeCenterError("forbidden_customer", status_code=403)
     customer = get_customer(db, slug)
@@ -471,10 +474,11 @@ def adopt_knowledge_content(
         raise KnowledgeCenterError("invalid_status", status_code=409)
 
     slug = customer_id.strip().lower()
-    if is_global_customer(slug):
-        raise KnowledgeCenterError("forbidden_customer", status_code=403)
     if not user_has_customer(db, user.id, slug):
         raise KnowledgeCenterError("forbidden_customer", status_code=403)
+    customer = get_customer(db, slug)
+    if customer is None or not is_customer_active(customer):
+        raise KnowledgeCenterError("unknown_customer", status_code=404)
 
     source = db.get(KnowledgeSource, row.source_id)
     host_code = source.host_code if source else "unknown"
@@ -617,6 +621,5 @@ def submit_knowledge_content(
 def get_submit_context(db: Session, user: User) -> dict:
     ensure_builtin_knowledge_sources(db)
     return {
-        "customers": list_adoptable_customers(db, user),
         "presets": list_refine_presets(),
     }

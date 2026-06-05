@@ -5,19 +5,20 @@
 
 {% block content %}
 <section class="panel kc-panel full-page">
-  <p class="muted">Text für die Wissensdatenbank vorschlagen. Optional überarbeitet die KI Meeting-Notizen oder Stichpunkte — ein Admin prüft und übernimmt den Vorschlag ins Knowledge Center.</p>
+  <p class="muted">Text für die Wissensdatenbank vorschlagen. Der Ziel-Mandant ist der <strong>aktive Kunde in der Sidebar</strong> (oben links) — wie bei Chat und Wissensbasis.</p>
+  <p class="kc-scope-hint muted">
+    {% if active_customer %}
+      Aktiver Mandant: <strong>{{ active_customer.name }}</strong> ({{ active_customer.id }})
+    {% else %}
+      Bitte zuerst einen Kunden in der Sidebar wählen.
+    {% endif %}
+  </p>
 
   <form id="kc-submit-form" class="ingest-form kc-submit-form">
-    <div class="customer-form-row">
-      <label>
-        Ziel-Mandant (Vorschlag)
-        <select id="kc-submit-customer" required></select>
-      </label>
-      <label>
-        Titel <span class="muted">(optional)</span>
-        <input type="text" id="kc-submit-title" maxlength="200" placeholder="Wird von der KI ergänzt, falls leer">
-      </label>
-    </div>
+    <label>
+      Titel <span class="muted">(optional)</span>
+      <input type="text" id="kc-submit-title" maxlength="200" placeholder="Wird von der KI ergänzt, falls leer">
+    </label>
 
     <label class="kc-submit-content-label">
       Inhalt

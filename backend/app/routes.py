@@ -213,12 +213,7 @@ class AdminKnowledgeSourceUpdateRequest(BaseModel):
     active: bool | None = None
 
 
-class KnowledgeContentAdoptRequest(BaseModel):
-    customer_id: str = Field(min_length=1, max_length=64)
-
-
 class KnowledgeContentSubmitRequest(BaseModel):
-    customer_id: str = Field(min_length=1, max_length=64)
     raw_text: str = Field(min_length=1)
     title: str | None = Field(default=None, max_length=200)
     use_ai: bool = False
@@ -274,7 +269,12 @@ def _admin_page_redirect(user: User) -> RedirectResponse | None:
 
 
 # Sidebar customer dropdown: scoped (chat/kb), admin_scoped (KB/prompts admin), global (no page effect).
-CUSTOMER_NAV_SCOPED_PAGES = frozenset({"chat", "kb", "tools_bild_zu_text"})
+CUSTOMER_NAV_SCOPED_PAGES = frozenset({
+    "chat",
+    "kb",
+    "tools_bild_zu_text",
+    "tools_kc_submit",
+})
 CUSTOMER_NAV_ADMIN_SCOPED_PAGES = frozenset({"admin_knowledge", "admin_prompts"})
 CUSTOMER_NAV_GLOBAL_PAGES = frozenset({
     "customers",
@@ -282,7 +282,6 @@ CUSTOMER_NAV_GLOBAL_PAGES = frozenset({
     "admin_roles",
     "admin_keys",
     "tools_kc_content",
-    "tools_kc_submit",
     "tools_kc_sources",
 })
 
@@ -1851,12 +1850,13 @@ def api_tools_knowledge_center_submit_context(
 def api_tools_knowledge_center_submit(
     payload: KnowledgeContentSubmitRequest,
     user: User = Depends(get_current_user),
+    customer: Customer = Depends(get_current_customer),
     db: Session = Depends(get_db),
 ) -> dict:
     return submit_knowledge_content(
         db,
         user,
-        customer_id=payload.customer_id,
+        customer_id=customer.id,
         raw_text=payload.raw_text,
         title=payload.title,
         use_ai=payload.use_ai,
@@ -1928,11 +1928,11 @@ def api_tools_knowledge_center_content_detail(
 @router.post("/api/tools/knowledge-center/contents/{content_id}/adopt")
 def api_tools_knowledge_center_adopt(
     content_id: str,
-    payload: KnowledgeContentAdoptRequest,
     user: User = Depends(get_admin_user),
+    customer: Customer = Depends(get_current_customer),
     db: Session = Depends(get_db),
 ) -> dict:
-    return adopt_knowledge_content(db, user, content_id, payload.customer_id)
+    return adopt_knowledge_content(db, user, content_id, customer.id)
 
 
 @router.post("/api/tools/knowledge-center/contents/{content_id}/reject")

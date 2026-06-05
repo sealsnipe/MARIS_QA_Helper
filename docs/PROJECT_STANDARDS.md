@@ -8,8 +8,9 @@
 ## Prioritäten (nicht verhandelbar)
 
 1. **Tenant-Isolation** (oberste Invariante, aus `13` §3)
-   - Aktiver `customer_id` **ausschließlich serverseitig aus Session** (`get_current_customer`).
-   - Niemals aus Client-Input (Body/Query/Path) oder Modell/Tool-Parametern.
+   - Aktiver `customer_id` **ausschließlich serverseitig aus Session** (`get_current_customer`) — **Sidebar „Kunde“ oben links**.
+   - **Kein zweites Mandanten-Dropdown** auf Seiten (Chat, KB, KC Submit, KB-Übernahme). Ausnahme nur bewusst und selten (z. B. Integration-API mit explizitem `customer_id` im Body).
+   - Niemals aus Client-Input (Body/Query/Path) oder Modell/Tool-Parametern — **außer** dokumentierte Integration-Endpunkte.
    - Jede Operation: `user ∈ customer` → sonst `403 forbidden_customer`.
    - Physisch getrennte Qdrant-Collections `kb_{customer_id}` (validiert via `collection_name`).
    - `search_knowledge_base` fest an aktiven Kunden gebunden.

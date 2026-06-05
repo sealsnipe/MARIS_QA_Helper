@@ -12,6 +12,20 @@ from app.knowledge_center import (
 )
 from app.tests.conftest import create_customer, create_user, login
 
+
+def select_customer(client, customer_id: str) -> None:
+    response = client.post("/api/session/customer", json={"customer_id": customer_id})
+    assert response.status_code == 200
+
+
+def _submit_payload(**overrides) -> dict:
+    base = {
+        "raw_text": "Dies ist ein Rohtext mit genügend Länge für die Einreichung.",
+        "use_ai": False,
+    }
+    base.update(overrides)
+    return base
+
 INTEGRATION_TOKEN = "test-integration-token-secret"
 INTEGRATION_USER_EMAIL = "integration@internal"
 
@@ -116,17 +130,13 @@ def test_submit_without_ai(client, db_session):
 
     response = client.post(
         "/api/tools/knowledge-center/submit",
-        json={
-            "customer_id": "bg-frankfurt",
-            "raw_text": "Dies ist ein Rohtext mit genügend Länge für die Einreichung.",
-            "title": "Mein Vorschlag",
-            "use_ai": False,
-        },
+        json=_submit_payload(title="Mein Vorschlag"),
     )
     assert response.status_code == 200
     body = response.json()["content"]
     assert body["host_code"] == HOST_CODE_USER_SUBMIT
     assert body["submitted_by_email"] == "user@example.com"
+    assert body["suggested_customer_id"] == "bg-frankfurt"
     assert body["original_content"] == body["content"]
 
 
@@ -183,12 +193,7 @@ def test_submit_with_ai(mock_refine, client, db_session):
 
     response = client.post(
         "/api/tools/knowledge-center/submit",
-        json={
-            "customer_id": "bg-frankfurt",
-            "raw_text": "Dies ist ein Rohtext mit genügend Länge für die Einreichung.",
-            "use_ai": True,
-            "preset": "clarify",
-        },
+        json=_submit_payload(use_ai=True, preset="clarify"),
     )
     assert response.status_code == 200
     body = response.json()["content"]
@@ -220,12 +225,7 @@ def test_submit_with_presets_list(mock_refine, client, db_session):
 
     response = client.post(
         "/api/tools/knowledge-center/submit",
-        json={
-            "customer_id": "bg-frankfurt",
-            "raw_text": "Dies ist ein Rohtext mit genügend Länge für die Einreichung.",
-            "use_ai": True,
-            "presets": ["expand_notes", "structure"],
-        },
+        json=_submit_payload(use_ai=True, presets=["expand_notes", "structure"]),
     )
     assert response.status_code == 200
     mock_refine.assert_called_once()
@@ -247,14 +247,15 @@ def test_adopt_requires_admin(client, db_session, monkeypatch):
     login(client, "user@example.com", "secret123")
     forbidden = client.post(
         f"/api/tools/knowledge-center/contents/{content_id}/adopt",
-        json={"customer_id": "bg-frankfurt"},
+        json={},
     )
     assert forbidden.status_code == 403
 
     login(client, "admin@example.com", "secret123")
+    select_customer(client, "bg-frankfurt")
     adopt = client.post(
         f"/api/tools/knowledge-center/contents/{content_id}/adopt",
-        json={"customer_id": "bg-frankfurt"},
+        json={},
     )
     assert adopt.status_code == 200
 
@@ -264,11 +265,7 @@ def test_my_contents_only_own(client, db_session):
     login(client, "user@example.com", "secret123")
     client.post(
         "/api/tools/knowledge-center/submit",
-        json={
-            "customer_id": "bg-frankfurt",
-            "raw_text": "Mein eigener Vorschlag mit ausreichend Zeichen.",
-            "use_ai": False,
-        },
+        json=_submit_payload(raw_text="Mein eigener Vorschlag mit ausreichend Zeichen."),
     )
 
     mine = client.get("/api/tools/knowledge-center/my-contents")
@@ -289,19 +286,18 @@ def test_admin_list_contents_without_status_returns_all(client, db_session):
     for index in range(3):
         response = client.post(
             "/api/tools/knowledge-center/submit",
-            json={
-                "customer_id": "bg-frankfurt",
-                "raw_text": f"Dies ist Rohtext Nummer {index} mit genügend Länge für die Einreichung.",
-                "use_ai": False,
-            },
+            json=_submit_payload(
+                raw_text=f"Dies ist Rohtext Nummer {index} mit genügend Länge für die Einreichung.",
+            ),
         )
         assert response.status_code == 200
         content_ids.append(response.json()["content"]["id"])
 
     login(client, "admin@example.com", "secret123")
+    select_customer(client, "bg-frankfurt")
     adopt = client.post(
         f"/api/tools/knowledge-center/contents/{content_ids[0]}/adopt",
-        json={"customer_id": "bg-frankfurt"},
+        json={},
     )
     assert adopt.status_code == 200
     reject = client.post(f"/api/tools/knowledge-center/contents/{content_ids[1]}/reject")
@@ -314,6 +310,74 @@ def test_admin_list_contents_without_status_returns_all(client, db_session):
     all_rows = client.get("/api/tools/knowledge-center/contents")
     assert all_rows.status_code == 200
     assert all_rows.json()["total"] == 3
+
+
+def test_submit_requires_active_session_customer(client, db_session):
+    _seed(db_session)
+    create_user(
+        db_session,
+        "multi@example.com",
+        "secret123",
+        ("bg-frankfurt", "kkrr"),
+        is_admin=False,
+    )
+    login(client, "multi@example.com", "secret123")
+
+    denied = client.post("/api/tools/knowledge-center/submit", json=_submit_payload())
+    assert denied.status_code == 403
+    assert denied.json()["error"] == "forbidden_customer"
+
+    select_customer(client, "kkrr")
+    ok = client.post("/api/tools/knowledge-center/submit", json=_submit_payload())
+    assert ok.status_code == 200
+    assert ok.json()["content"]["suggested_customer_id"] == "kkrr"
+
+
+def test_submit_global_from_sidebar_admin(client, db_session):
+    from app.customers import ensure_global_customer
+
+    _seed(db_session)
+    ensure_global_customer(db_session)
+    login(client, "admin@example.com", "secret123")
+    select_customer(client, "global")
+
+    response = client.post("/api/tools/knowledge-center/submit", json=_submit_payload(title="Globaler Hinweis"))
+    assert response.status_code == 200
+    content_id = response.json()["content"]["id"]
+    assert response.json()["content"]["suggested_customer_id"] == "global"
+
+    listing = client.get("/api/tools/knowledge-center/contents?status=pending")
+    assert listing.status_code == 200
+    listed_ids = {row["id"] for row in listing.json()["contents"]}
+    assert content_id in listed_ids
+
+
+def test_submit_preserves_special_characters_in_content(client, db_session):
+    _seed(db_session)
+    login(client, "admin@example.com", "secret123")
+    select_customer(client, "bg-frankfurt")
+
+    raw_text = (
+        "Einleitung mit Sonderzeichen: <script>alert(1)</script> & \"Anführungszeichen\".\n"
+        "Fortsetzung nach Zeilenumbruch — auch </mark> und <mark> im Fließtext.\n"
+        + ("Langer Absatz für Scroll-Test. " * 80).rstrip()
+    )
+    response = client.post(
+        "/api/tools/knowledge-center/submit",
+        json=_submit_payload(raw_text=raw_text, title="Sonderzeichen-Test"),
+    )
+    assert response.status_code == 200
+    content_id = response.json()["content"]["id"]
+    assert response.json()["content"]["content"] == raw_text
+
+    detail = client.get(f"/api/tools/knowledge-center/contents/{content_id}")
+    assert detail.status_code == 200
+    assert detail.json()["content"]["content"] == raw_text
+
+    listing = client.get("/api/tools/knowledge-center/contents?status=pending")
+    listed = next(row for row in listing.json()["contents"] if row["id"] == content_id)
+    assert listed["content"] == raw_text
+    assert listed["has_revision"] is False
 
 
 def test_ensure_builtin_sources_idempotent(db_session):
@@ -329,6 +393,7 @@ def test_knowledge_center_pages(client, db_session):
     submit_page = client.get("/tools/knowledge-center/submit")
     assert submit_page.status_code == 200
     assert "Content vorschlagen" in submit_page.text
+    assert "Sidebar" in submit_page.text
 
     dashboard_redirect = client.get("/tools/knowledge-center", follow_redirects=False)
     assert dashboard_redirect.status_code == 302
