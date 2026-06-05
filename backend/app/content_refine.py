@@ -46,6 +46,7 @@ REFINE_PRESETS: dict[str, dict[str, str]] = {
 }
 
 DEFAULT_REFINE_PRESET = REFINE_PRESET_EXPAND
+MAX_PIPELINE_STEPS = 4
 MAX_CHANGE_RATIO = 0.45
 VALID_CHANGE_KINDS = frozenset({"replace", "split", "merge", "insert", "delete"})
 
@@ -106,6 +107,77 @@ def list_refine_presets() -> list[dict[str, str]]:
         {"id": preset_id, "label": meta["label"]}
         for preset_id, meta in REFINE_PRESETS.items()
     ]
+
+
+def validate_preset_ids(preset_ids: list[str]) -> list[str]:
+    if not preset_ids:
+        raise ContentRefineError("invalid_presets", "at least one preset required")
+    if len(preset_ids) > MAX_PIPELINE_STEPS:
+        raise ContentRefineError(
+            "invalid_presets",
+            f"max {MAX_PIPELINE_STEPS} presets allowed",
+        )
+    validated: list[str] = []
+    for raw_id in preset_ids:
+        preset_id = str(raw_id).strip().lower()
+        if preset_id not in REFINE_PRESETS:
+            raise ContentRefineError("invalid_presets", f"unknown preset {preset_id!r}")
+        validated.append(preset_id)
+    return validated
+
+
+def parse_refine_presets(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    raw = raw.strip()
+    if not raw:
+        return []
+    if raw.startswith("["):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+        if isinstance(parsed, list):
+            return [str(item).strip().lower() for item in parsed if str(item).strip()]
+        return []
+    return [part.strip().lower() for part in raw.split(",") if part.strip()]
+
+
+def _build_pipeline_revision(
+    user_original: str,
+    final_content: str,
+    preset_ids: list[str],
+    stages: list[dict[str, Any]],
+) -> dict[str, Any]:
+    aggregated_changes: list[dict[str, Any]] = []
+    for stage in stages:
+        step = int(stage["step"])
+        preset = str(stage["preset"])
+        for change in stage["revision"].get("changes") or []:
+            change_id = str(change.get("id", "")).strip() or f"c{len(aggregated_changes) + 1}"
+            aggregated_changes.append(
+                {
+                    **change,
+                    "id": f"s{step}-{change_id}",
+                    "step": step,
+                    "preset": preset,
+                    "preset_label": stage.get("preset_label") or preset,
+                }
+            )
+
+    overall_ratio = _change_ratio(user_original, final_content)
+    return {
+        "version": 2,
+        "granularity": "sentence",
+        "presets": preset_ids,
+        "pipeline": stages,
+        "changes": aggregated_changes,
+        "stats": {
+            "change_ratio": round(overall_ratio, 4),
+            "change_count": len(aggregated_changes),
+            "step_count": len(stages),
+        },
+    }
 
 
 def _parse_json_response(raw: str) -> dict[str, Any]:
@@ -223,23 +295,23 @@ def validate_revision(
     }
 
 
-def refine_content_with_llm(
+def _refine_single_step(
     db: Session,
     *,
-    original_text: str,
-    title_hint: str | None,
+    step_input: str,
     preset_id: str,
+    title_hint: str | None,
     llm: LLMBackend | None = None,
 ) -> ContentRefineResult:
     preset = REFINE_PRESETS.get(preset_id) or REFINE_PRESETS[DEFAULT_REFINE_PRESET]
     try:
-        normalized_original = validate_ingest_text(original_text)
+        normalized_input = validate_ingest_text(step_input)
     except ValueError as exc:
         raise ContentRefineError(str(exc)) from exc
 
     user_parts = [
         f"Aufgabe: {preset['instruction']}",
-        f"ORIGINAL:\n{normalized_original}",
+        f"ORIGINAL:\n{normalized_input}",
     ]
     if title_hint and title_hint.strip():
         user_parts.insert(1, f"Vorgeschlagener Titel: {title_hint.strip()}")
@@ -279,8 +351,8 @@ def refine_content_with_llm(
     except ValueError as exc:
         raise ContentRefineError(str(exc)) from exc
 
-    revision = validate_revision(
-        normalized_original,
+    step_revision = validate_revision(
+        normalized_input,
         normalized_revised,
         {"changes": parsed.get("changes") or []},
     )
@@ -290,7 +362,89 @@ def refine_content_with_llm(
         summary=summary,
         keywords=keywords,
         content=normalized_revised,
-        revision=revision,
+        revision=step_revision,
+    )
+
+
+def refine_pipeline_with_llm(
+    db: Session,
+    *,
+    original_text: str,
+    title_hint: str | None,
+    preset_ids: list[str],
+    llm: LLMBackend | None = None,
+) -> ContentRefineResult:
+    validated_presets = validate_preset_ids(preset_ids)
+    try:
+        user_original = validate_ingest_text(original_text)
+    except ValueError as exc:
+        raise ContentRefineError(str(exc)) from exc
+
+    current = user_original
+    stages: list[dict[str, Any]] = []
+    title = (title_hint or "Wissensbeitrag").strip()[:200]
+    summary = ""
+    keywords: list[str] = []
+
+    for index, preset_id in enumerate(validated_presets):
+        step_number = index + 1
+        step_input = current
+        try:
+            result = _refine_single_step(
+                db,
+                step_input=step_input,
+                preset_id=preset_id,
+                title_hint=title_hint if index == 0 else None,
+                llm=llm,
+            )
+        except ContentRefineError as exc:
+            if exc.code == "change_ratio_exceeded":
+                raise ContentRefineError(
+                    exc.code,
+                    f"step={step_number} preset={preset_id} {exc.detail}".strip(),
+                ) from exc
+            raise ContentRefineError(exc.code, f"step={step_number} {exc.detail}".strip()) from exc
+
+        preset_meta = REFINE_PRESETS[preset_id]
+        stages.append(
+            {
+                "step": step_number,
+                "preset": preset_id,
+                "preset_label": preset_meta["label"],
+                "input_content": step_input,
+                "content": result.content,
+                "revision": result.revision,
+            }
+        )
+        current = result.content
+        title = result.title
+        summary = result.summary
+        keywords = result.keywords
+
+    pipeline_revision = _build_pipeline_revision(user_original, current, validated_presets, stages)
+    return ContentRefineResult(
+        title=title,
+        summary=summary,
+        keywords=keywords,
+        content=current,
+        revision=pipeline_revision,
+    )
+
+
+def refine_content_with_llm(
+    db: Session,
+    *,
+    original_text: str,
+    title_hint: str | None,
+    preset_id: str,
+    llm: LLMBackend | None = None,
+) -> ContentRefineResult:
+    return refine_pipeline_with_llm(
+        db,
+        original_text=original_text,
+        title_hint=title_hint,
+        preset_ids=[preset_id],
+        llm=llm,
     )
 
 

@@ -21,8 +21,10 @@ from app.content_refine import (
     DEFAULT_REFINE_PRESET,
     ContentRefineError,
     list_refine_presets,
-    refine_content_with_llm,
+    parse_refine_presets,
+    refine_pipeline_with_llm,
     revision_from_json,
+    validate_preset_ids,
 )
 from app.ingestion import IngestionError, ingest_text
 from app.models import KnowledgeContent, KnowledgeSource, User, utc_now_iso
@@ -125,6 +127,12 @@ def content_to_dict(db: Session, content: KnowledgeContent) -> dict:
         "original_content": content.original_content,
         "revision": revision,
         "refine_preset": content.refine_preset,
+        "refine_presets": parse_refine_presets(content.refine_preset),
+        "pipeline_step_count": (
+            (revision or {}).get("stats", {}).get("step_count")
+            if isinstance(revision, dict)
+            else None
+        ),
         "submitted_by": content.submitted_by,
         "submitted_by_email": submitter.email if submitter else None,
         "has_revision": bool(
@@ -530,6 +538,7 @@ def submit_knowledge_content(
     title: str | None = None,
     use_ai: bool = False,
     preset: str | None = None,
+    presets: list[str] | None = None,
 ) -> dict:
     ensure_builtin_knowledge_sources(db)
     slug = _validate_submit_customer(db, user, customer_id)
@@ -540,7 +549,12 @@ def submit_knowledge_content(
         raise KnowledgeCenterError(str(exc)) from exc
 
     title_hint = (title or "").strip()
-    preset_id = (preset or DEFAULT_REFINE_PRESET).strip().lower()
+    if presets:
+        preset_ids = validate_preset_ids(presets)
+    elif preset:
+        preset_ids = validate_preset_ids([preset.strip().lower()])
+    else:
+        preset_ids = [DEFAULT_REFINE_PRESET]
 
     original_content = normalized_raw
     revision_json: str | None = None
@@ -553,13 +567,13 @@ def submit_knowledge_content(
 
     if use_ai:
         host_code = HOST_CODE_CHAT_REFINE
-        refine_preset = preset_id
+        refine_preset = json.dumps(preset_ids, ensure_ascii=False)
         try:
-            refined = refine_content_with_llm(
+            refined = refine_pipeline_with_llm(
                 db,
                 original_text=normalized_raw,
                 title_hint=title_hint or None,
-                preset_id=preset_id,
+                preset_ids=preset_ids,
             )
         except ContentRefineError as exc:
             raise KnowledgeCenterError(exc.code, status_code=400, detail=exc.detail) from exc

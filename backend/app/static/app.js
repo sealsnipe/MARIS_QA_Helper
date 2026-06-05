@@ -3074,6 +3074,26 @@
       .join("");
   }
 
+  function renderKcChangeItem(change) {
+    const sources = (change.sources || [])
+      .map((src) => `<li>${escapeHtml(src)}</li>`)
+      .join("");
+    const stageLabel = change.step
+      ? `<span class="badge">Stufe ${escapeHtml(String(change.step))}${change.preset_label ? ` · ${escapeHtml(change.preset_label)}` : ""}</span>`
+      : "";
+    return `
+      <article class="kc-change-item">
+        <div class="kc-change-item-head">
+          <span class="badge kc-rev-badge kc-rev-${escapeHtml(change.kind || "replace")}">${escapeHtml(kcChangeKindLabel(change.kind))}</span>
+          ${stageLabel}
+          ${change.note ? `<span class="muted">${escapeHtml(change.note)}</span>` : ""}
+        </div>
+        ${sources ? `<div><strong>Quelle:</strong><ul class="kc-change-sources">${sources}</ul></div>` : ""}
+        ${change.target ? `<div><strong>Neu:</strong><p>${escapeHtml(change.target)}</p></div>` : ""}
+      </article>
+    `;
+  }
+
   function renderKcChangesList(container, revision) {
     if (!container) return;
     const changes = revision?.changes || [];
@@ -3081,23 +3101,25 @@
       container.innerHTML = '<p class="muted">Keine strukturierten Änderungen — reiner Textvergleich.</p>';
       return;
     }
-    container.innerHTML = changes
-      .map((change) => {
-        const sources = (change.sources || [])
-          .map((src) => `<li>${escapeHtml(src)}</li>`)
-          .join("");
-        return `
-          <article class="kc-change-item">
-            <div class="kc-change-item-head">
-              <span class="badge kc-rev-badge kc-rev-${escapeHtml(change.kind || "replace")}">${escapeHtml(kcChangeKindLabel(change.kind))}</span>
-              ${change.note ? `<span class="muted">${escapeHtml(change.note)}</span>` : ""}
-            </div>
-            ${sources ? `<div><strong>Quelle:</strong><ul class="kc-change-sources">${sources}</ul></div>` : ""}
-            ${change.target ? `<div><strong>Neu:</strong><p>${escapeHtml(change.target)}</p></div>` : ""}
-          </article>
-        `;
-      })
-      .join("");
+    if (revision?.version === 2 && changes.some((row) => row.step)) {
+      const steps = [...new Set(changes.map((row) => row.step))].sort((a, b) => a - b);
+      container.innerHTML = steps
+        .map((step) => {
+          const stepChanges = changes.filter((row) => row.step === step);
+          const label = stepChanges[0]?.preset_label || `Stufe ${step}`;
+          return `
+            <h3 class="kc-change-step-heading">${escapeHtml(label)}</h3>
+            ${stepChanges.map((change) => renderKcChangeItem(change)).join("")}
+          `;
+        })
+        .join("");
+      return;
+    }
+    container.innerHTML = changes.map((change) => renderKcChangeItem(change)).join("");
+  }
+
+  function isKcPipelineRevision(revision) {
+    return revision?.version === 2 && Array.isArray(revision.pipeline) && revision.pipeline.length > 0;
   }
 
   function bindKcRevisionPopover(container) {
@@ -3122,8 +3144,12 @@
       const sources = (item.sources || [])
         .map((src) => `<li>${escapeHtml(src)}</li>`)
         .join("");
+      const stageInfo = item.step
+        ? `<p class="muted">Stufe ${escapeHtml(String(item.step))}${item.preset_label ? ` · ${escapeHtml(item.preset_label)}` : ""}</p>`
+        : "";
       popover.innerHTML = `
         <strong>${escapeHtml(kcChangeKindLabel(item.kind))}</strong>
+        ${stageInfo}
         ${sources ? `<ul>${sources}</ul>` : "<p class='muted'>Neu hinzugefügt</p>"}
         ${item.note ? `<p class="muted">${escapeHtml(item.note)}</p>` : ""}
       `;
@@ -3291,7 +3317,7 @@
             <span class="badge">${escapeHtml(item.source_name || item.host_code || "Quelle")}</span>
             ${item.suggested_customer_name ? `<span class="badge user-slug-badge">${escapeHtml(item.suggested_customer_id)}</span>` : ""}
             ${item.submitted_by_email ? `<span class="muted">${escapeHtml(item.submitted_by_email)}</span>` : ""}
-            ${item.has_revision ? `<span class="badge">KI-Diff</span>` : ""}
+            ${item.has_revision ? `<span class="badge">${item.pipeline_step_count > 1 ? `KI-Pipeline (${item.pipeline_step_count})` : "KI-Diff"}</span>` : ""}
             <span class="muted">${escapeHtml(formatKcDate(item.received_at))}</span>
           </div>
         `;
@@ -3303,9 +3329,64 @@
       detailTabs?.querySelectorAll(".kc-tab-btn").forEach((btn) => {
         btn.classList.toggle("active", btn.dataset.kcTab === tab);
       });
-      detailBody?.classList.toggle("hidden", tab !== "revised");
+      const view = window.__kcDetailView || {};
       detailOriginal?.classList.toggle("hidden", tab !== "original");
       detailChanges?.classList.toggle("hidden", tab !== "changes");
+      if (tab === "original" || tab === "changes") {
+        detailBody?.classList.add("hidden");
+        return;
+      }
+      detailBody?.classList.remove("hidden");
+      if (!detailBody) return;
+      if (tab === "revised") {
+        if (view.finalMarkup) {
+          detailBody.innerHTML = view.finalMarkup;
+          bindKcRevisionPopover(detailBody);
+        } else {
+          detailBody.textContent = view.finalContent || "";
+        }
+        window.__kcActiveRevisionChanges = view.finalChanges || [];
+        return;
+      }
+      const stageMatch = /^stage-(\d+)$/.exec(tab);
+      if (stageMatch && view.stages) {
+        const stage = view.stages[Number(stageMatch[1]) - 1];
+        if (stage) {
+          detailBody.innerHTML = buildRevisionMarkup(stage.content || "", { changes: stage.revision?.changes || [] });
+          bindKcRevisionPopover(detailBody);
+          window.__kcActiveRevisionChanges = (stage.revision?.changes || []).map((change) => ({
+            ...change,
+            step: stage.step,
+            preset_label: stage.preset_label,
+          }));
+        }
+      }
+    }
+
+    function buildKcDetailTabs(item) {
+      if (!detailTabs) return;
+      const revision = item.revision;
+      if (!item.has_revision || !revision) {
+        detailTabs.classList.add("hidden");
+        detailTabs.innerHTML = "";
+        return;
+      }
+      detailTabs.classList.remove("hidden");
+      const tabs = ['<button type="button" class="secondary small kc-tab-btn active" data-kc-tab="revised">Endergebnis</button>'];
+      if (isKcPipelineRevision(revision)) {
+        revision.pipeline.forEach((stage) => {
+          tabs.push(
+            `<button type="button" class="secondary small kc-tab-btn" data-kc-tab="stage-${stage.step}">Stufe ${stage.step}: ${escapeHtml(stage.preset_label || stage.preset || "")}</button>`,
+          );
+        });
+      } else {
+        tabs[0] = '<button type="button" class="secondary small kc-tab-btn active" data-kc-tab="revised">Überarbeitet</button>';
+      }
+      tabs.push(
+        '<button type="button" class="secondary small kc-tab-btn" data-kc-tab="original">Original</button>',
+        '<button type="button" class="secondary small kc-tab-btn" data-kc-tab="changes">Änderungen</button>',
+      );
+      detailTabs.innerHTML = tabs.join("");
     }
 
     detailTabs?.addEventListener("click", (event) => {
@@ -3465,14 +3546,24 @@
     const useAiToggle = document.getElementById("kc-submit-use-ai");
     const presetsWrap = document.getElementById("kc-submit-presets");
     const presetsSection = document.getElementById("kc-submit-presets-wrap");
+    const pipelineOrder = document.getElementById("kc-submit-pipeline-order");
     const submitBtn = document.getElementById("kc-submit-btn");
     const submitStatus = document.getElementById("kc-submit-status");
     const myList = document.getElementById("kc-my-list");
     const myEmpty = document.getElementById("kc-my-empty");
     const myCount = document.getElementById("kc-my-count");
 
+    const MAX_PIPELINE_STEPS = 4;
     let presets = [];
-    let selectedPreset = "expand_notes";
+    let selectedPresets = ["expand_notes"];
+
+    function presetLabel(presetId) {
+      return presets.find((row) => row.id === presetId)?.label || presetId;
+    }
+
+    function saveSelectedPresets() {
+      localStorage.setItem("kc-submit-presets", JSON.stringify(selectedPresets));
+    }
 
     function renderCustomers(customers) {
       if (!customerSelect) return;
@@ -3485,17 +3576,40 @@
       });
     }
 
+    function renderPipelineOrder() {
+      if (!pipelineOrder) return;
+      pipelineOrder.innerHTML = "";
+      selectedPresets.forEach((presetId, index) => {
+        const li = document.createElement("li");
+        li.className = "kc-pipeline-chip";
+        li.innerHTML = `
+          <span class="kc-pipeline-chip-index">${index + 1}</span>
+          <span class="kc-pipeline-chip-label">${escapeHtml(presetLabel(presetId))}</span>
+          <span class="kc-pipeline-chip-actions">
+            <button type="button" class="secondary small" data-move="up" data-index="${index}" aria-label="Nach oben" ${index === 0 ? "disabled" : ""}>↑</button>
+            <button type="button" class="secondary small" data-move="down" data-index="${index}" aria-label="Nach unten" ${index === selectedPresets.length - 1 ? "disabled" : ""}>↓</button>
+            <button type="button" class="secondary small" data-remove="${index}" aria-label="Entfernen">×</button>
+          </span>
+        `;
+        pipelineOrder.appendChild(li);
+      });
+    }
+
     function renderPresets() {
       if (!presetsWrap) return;
+      const atLimit = selectedPresets.length >= MAX_PIPELINE_STEPS;
       presetsWrap.innerHTML = "";
       presets.forEach((preset) => {
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.className = `secondary small kc-preset-btn${preset.id === selectedPreset ? " active" : ""}`;
+        btn.className = "secondary small kc-preset-btn";
         btn.dataset.presetId = preset.id;
         btn.textContent = preset.label;
+        btn.disabled = atLimit;
+        btn.title = atLimit ? "Maximal 4 Schritte" : "Zur Pipeline hinzufügen";
         presetsWrap.appendChild(btn);
       });
+      renderPipelineOrder();
     }
 
     function syncAiUi() {
@@ -3503,15 +3617,20 @@
       presetsSection?.classList.toggle("hidden", !enabled);
       if (presetsSection) presetsSection.setAttribute("aria-hidden", enabled ? "false" : "true");
       if (submitBtn) {
-        submitBtn.textContent = enabled ? "KI starten & einreichen" : "Vorschlag einreichen";
+        const stepCount = selectedPresets.length;
+        submitBtn.textContent = enabled
+          ? stepCount > 1
+            ? `KI-Pipeline starten (${stepCount} Schritte)`
+            : "KI starten & einreichen"
+          : "Vorschlag einreichen";
       }
     }
 
     async function loadContext() {
       const data = await api("/api/tools/knowledge-center/submit-context");
       presets = data.presets || [];
-      if (presets.length && !presets.some((row) => row.id === selectedPreset)) {
-        selectedPreset = presets[0].id;
+      if (!selectedPresets.length && presets.length) {
+        selectedPresets = [presets[0].id];
       }
       renderCustomers(data.customers || []);
       renderPresets();
@@ -3541,19 +3660,51 @@
 
     const savedAi = localStorage.getItem("kc-submit-use-ai");
     if (savedAi != null && useAiToggle) useAiToggle.checked = savedAi === "1";
-    const savedPreset = localStorage.getItem("kc-submit-preset");
-    if (savedPreset) selectedPreset = savedPreset;
+    try {
+      const savedPresets = JSON.parse(localStorage.getItem("kc-submit-presets") || "[]");
+      if (Array.isArray(savedPresets) && savedPresets.length) selectedPresets = savedPresets;
+    } catch {
+      /* ignore */
+    }
 
     useAiToggle?.addEventListener("change", () => {
       localStorage.setItem("kc-submit-use-ai", useAiToggle.checked ? "1" : "0");
+      if (useAiToggle.checked && !selectedPresets.length) {
+        selectedPresets = ["expand_notes"];
+      }
       syncAiUi();
     });
 
     presetsWrap?.addEventListener("click", (event) => {
       const btn = event.target.closest(".kc-preset-btn");
-      if (!btn || !useAiToggle?.checked) return;
-      selectedPreset = btn.dataset.presetId || selectedPreset;
-      localStorage.setItem("kc-submit-preset", selectedPreset);
+      if (!btn || !useAiToggle?.checked || btn.disabled) return;
+      const presetId = btn.dataset.presetId;
+      if (!presetId) return;
+      if (selectedPresets.length >= MAX_PIPELINE_STEPS) return;
+      selectedPresets.push(presetId);
+      saveSelectedPresets();
+      renderPresets();
+      syncAiUi();
+    });
+
+    pipelineOrder?.addEventListener("click", (event) => {
+      const removeBtn = event.target.closest("[data-remove]");
+      if (removeBtn) {
+        const index = Number(removeBtn.dataset.remove);
+        selectedPresets.splice(index, 1);
+        if (!selectedPresets.length) selectedPresets = ["expand_notes"];
+        saveSelectedPresets();
+        renderPresets();
+        syncAiUi();
+        return;
+      }
+      const moveBtn = event.target.closest("[data-move]");
+      if (!moveBtn || moveBtn.disabled) return;
+      const index = Number(moveBtn.dataset.index);
+      const swapWith = moveBtn.dataset.move === "up" ? index - 1 : index + 1;
+      if (swapWith < 0 || swapWith >= selectedPresets.length) return;
+      [selectedPresets[index], selectedPresets[swapWith]] = [selectedPresets[swapWith], selectedPresets[index]];
+      saveSelectedPresets();
       renderPresets();
     });
 
@@ -3565,8 +3716,13 @@
         showStatus(submitStatus, "Mandant und Inhalt sind Pflicht.", "error");
         return;
       }
+      if (useAiToggle?.checked && !selectedPresets.length) {
+        showStatus(submitStatus, "Mindestens ein KI-Schritt wählen.", "error");
+        return;
+      }
       if (submitBtn) submitBtn.disabled = true;
-      showStatus(submitStatus, useAiToggle?.checked ? "KI überarbeitet…" : "Wird eingereicht…", "");
+      const stepLabel = selectedPresets.length > 1 ? `${selectedPresets.length} Schritte` : "1 Schritt";
+      showStatus(submitStatus, useAiToggle?.checked ? `KI überarbeitet (${stepLabel})…` : "Wird eingereicht…", "");
       try {
         await api("/api/tools/knowledge-center/submit", {
           method: "POST",
@@ -3575,7 +3731,7 @@
             raw_text: rawText,
             title: titleInput?.value.trim() || null,
             use_ai: Boolean(useAiToggle?.checked),
-            preset: selectedPreset,
+            presets: useAiToggle?.checked ? selectedPresets : undefined,
           },
         });
         form.reset();
@@ -3595,7 +3751,7 @@
       .catch(() => {});
   }
 
-  function initKnowledgeCenterSourcesPage() {
+  function initKnowledgeCenterSourcesPage  function initKnowledgeCenterSourcesPage() {
     const tbody = document.getElementById("kc-source-table-body");
     const emptyEl = document.getElementById("kc-source-empty");
     const countEl = document.getElementById("kc-source-count");

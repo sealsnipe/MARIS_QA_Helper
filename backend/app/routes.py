@@ -222,6 +222,7 @@ class KnowledgeContentSubmitRequest(BaseModel):
     title: str | None = Field(default=None, max_length=200)
     use_ai: bool = False
     preset: str | None = Field(default=None, max_length=64)
+    presets: list[str] | None = Field(default=None, max_length=4)
 
 
 class DocumentUpdateRequest(BaseModel):
@@ -1835,6 +1836,7 @@ def api_tools_knowledge_center_submit(
         title=payload.title,
         use_ai=payload.use_ai,
         preset=payload.preset,
+        presets=payload.presets,
     )
 
 

@@ -130,7 +130,7 @@ def test_submit_without_ai(client, db_session):
     assert body["original_content"] == body["content"]
 
 
-@patch("app.knowledge_center.refine_content_with_llm")
+@patch("app.knowledge_center.refine_pipeline_with_llm")
 def test_submit_with_ai(mock_refine, client, db_session):
     _seed(db_session)
     login(client, "user@example.com", "secret123")
@@ -141,17 +141,43 @@ def test_submit_with_ai(mock_refine, client, db_session):
         keywords=["vpn"],
         content="Dies ist der überarbeitete Text mit genügend Länge.",
         revision={
-            "version": 1,
+            "version": 2,
+            "presets": ["clarify"],
+            "pipeline": [
+                {
+                    "step": 1,
+                    "preset": "clarify",
+                    "preset_label": "Klarer formulieren",
+                    "input_content": "original",
+                    "content": "Dies ist der überarbeitete Text mit genügend Länge.",
+                    "revision": {
+                        "version": 1,
+                        "changes": [
+                            {
+                                "id": "c1",
+                                "kind": "replace",
+                                "sources": ["Rohtext"],
+                                "target": "überarbeitete",
+                                "anchor": "überarbeitete",
+                            }
+                        ],
+                        "stats": {"change_ratio": 0.2, "change_count": 1},
+                    },
+                }
+            ],
             "changes": [
                 {
-                    "id": "c1",
+                    "id": "s1-c1",
+                    "step": 1,
+                    "preset": "clarify",
+                    "preset_label": "Klarer formulieren",
                     "kind": "replace",
                     "sources": ["Rohtext"],
                     "target": "überarbeitete",
                     "anchor": "überarbeitete",
                 }
             ],
-            "stats": {"change_ratio": 0.2, "change_count": 1},
+            "stats": {"change_ratio": 0.2, "change_count": 1, "step_count": 1},
         },
     )
 
@@ -169,6 +195,45 @@ def test_submit_with_ai(mock_refine, client, db_session):
     assert body["host_code"] == HOST_CODE_CHAT_REFINE
     assert body["revision"] is not None
     assert body["has_revision"] is True
+
+
+
+
+@patch("app.knowledge_center.refine_pipeline_with_llm")
+def test_submit_with_presets_list(mock_refine, client, db_session):
+    _seed(db_session)
+    login(client, "user@example.com", "secret123")
+
+    mock_refine.return_value = ContentRefineResult(
+        title="VPN Guide",
+        summary="Kurzfassung",
+        keywords=["vpn"],
+        content="Schritt zwei Text mit genügend Länge für die Einreichung.",
+        revision={
+            "version": 2,
+            "presets": ["expand_notes", "structure"],
+            "pipeline": [],
+            "changes": [],
+            "stats": {"change_ratio": 0.3, "change_count": 0, "step_count": 2},
+        },
+    )
+
+    response = client.post(
+        "/api/tools/knowledge-center/submit",
+        json={
+            "customer_id": "bg-frankfurt",
+            "raw_text": "Dies ist ein Rohtext mit genügend Länge für die Einreichung.",
+            "use_ai": True,
+            "presets": ["expand_notes", "structure"],
+        },
+    )
+    assert response.status_code == 200
+    mock_refine.assert_called_once()
+    kwargs = mock_refine.call_args.kwargs
+    assert kwargs["preset_ids"] == ["expand_notes", "structure"]
+    body = response.json()["content"]
+    assert body["refine_presets"] == ["expand_notes", "structure"]
+    assert body["pipeline_step_count"] == 2
 
 
 def test_adopt_requires_admin(client, db_session, monkeypatch):
