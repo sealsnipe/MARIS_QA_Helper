@@ -3762,7 +3762,7 @@
       .catch(() => {});
   }
 
-  function initKnowledgeCenterSourcesPage  function initKnowledgeCenterSourcesPage() {
+  function initKnowledgeCenterSourcesPage() {
     const tbody = document.getElementById("kc-source-table-body");
     const emptyEl = document.getElementById("kc-source-empty");
     const countEl = document.getElementById("kc-source-count");
