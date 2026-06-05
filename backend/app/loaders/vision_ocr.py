@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,11 +20,73 @@ from app.document_assets import (
 from app.llm import LLMError, transcribe_image
 from app.loaders.image_inspect import MIN_IMAGE_BYTES, IMAGE_FILE_EXTENSIONS
 
-OCR_PROMPT = (
-    "Transkribiere ALLEN sichtbaren Text in diesem Bild wörtlich. "
-    "Beschreibe UI-Elemente, Schritte, Fehlermeldungen und Beschriftungen. "
-    "Keine Zusammenfassung. Antworte auf Deutsch, wenn der Inhalt deutsch ist."
-)
+OCR_PROMPT = """\
+Du transkribierst Bilder für eine Wissensdatenbank. Entscheide SELBST, welcher Fall zutrifft — der Nutzer wählt nicht.
+
+Schritt 1 — Bildtyp erkennen (intern, nicht ausgeben):
+- FALL A (Textbild): überwiegend Fließtext, Listen, Überschriften, Screenshots von Artikeln/Dokumenten — ohne erkennbare grafische Struktur mit Verknüpfungen zwischen Elementen.
+- FALL B (Darstellung): Bilder mit visueller Struktur — Diagramme, Abläufe mit Pfeilen/Linien zwischen beschrifteten Elementen, Tabellen als Grafik, Fotos, Skizzen, Mockups.
+
+Schritt 2 — Ausgabe (NUR das Ergebnis, keine Meta-Kommentare, keine Überschrift wie "Transkription" oder "UI-Beschreibung"):
+
+FALL A — reiner Textinhalt:
+- Gib den lesbaren Inhalt wörtlich wieder (Sprache des Bildes beibehalten).
+- Struktur beibehalten: nummerierte Listen, Aufzählungen, Absätze, Überschriften.
+- WEGLASSEN (nicht in die KB): Website-Chrome und Dekoration — z. B. Quellen-Badges ("Wikipedia +2"), Icon-Buttons, Share/Link-Chips, Navigationsleisten, Cookie-Hinweise, Werbung.
+- WEGLASSEN: Beschreibungen von Formatierung (kein "blauer unterstrichener Link", keine Farben/Schriftarten/Layout).
+- Links: nur den sichtbaren Linktext übernehmen; URL nur wenn vollständig lesbar, sonst weglassen.
+- Keine Icon-Namen erfinden; nur Text, der auf dem Bild steht.
+- Unleserlich: [unleserlich]; abgeschnitten: [… abgeschnitten …].
+
+FALL B — Darstellung / Diagramm / Foto:
+Nur Beschriftungen oder Stichworte aufzulisten reicht NICHT. Erfasse Text UND die visuelle Struktur: was mit wem verbunden ist, in welcher Richtung, und was die Verbindung bedeutet.
+
+Pflichtinhalt in "text" (Sprache des Bildes beibehalten):
+- Titel und Legende wörtlich, wenn sichtbar.
+- Kurzer Kontext in einem Satz — ohne Floskeln wie „Das Bild zeigt …".
+- Alle beschrifteten Elemente vollständig (Nummer/Name und Text); keine lose, ungeordnete Liste.
+- Beziehungen und Ablauf — eigener Abschnitt, der explizit beschreibt:
+  • welches Element mit welchem verbunden ist (Pfeile, Linien, Kanten, Pfeilrichtung)
+  • parallele Zweige, Verzweigungen und Zusammenführungen
+  • Bedeutung der Verknüpfung, soweit aus Legende, Beschriftung oder Kontext ersichtlich
+  • unterschiedliche Linien- oder Pfeiltypen nur soweit Legende oder Beschriftung es vorgibt
+- Visuelle tragende Elemente knapp benennen (z. B. Knoten, Pfeil, gestrichelte Linie, Gruppe) — ohne Farb-/Schrift-Kommentare.
+- Tabellen: als Markdown-Tabelle; Fotos: sachliche Beschreibung plus sichtbarer Text.
+- Nichts erfinden, nichts weglassen. Eine reine Textliste ohne Beschreibung der Verknüpfungen ist in Fall B unvollständig.
+
+Allgemein: Keine Zusammenfassung in FALL A. Keine doppelte Wiederholung.
+
+Antwortformat — AUSSCHLIESSLICH gültiges JSON, kein Markdown drumherum:
+{"text": "…", "mermaid": null}
+
+- "text": nur die Transkription (Fall A oder B), ohne Mermaid-Code.
+- "mermaid": nur wenn die Darstellung als Knoten-Kanten-Diagramm sinnvoll abbildbar ist — dann valider Mermaid-Code. Sonst null. Kein Mermaid in "text" wiederholen."""
+
+
+def _strip_json_fence(raw: str) -> str:
+    stripped = raw.strip()
+    match = re.match(r"^```(?:json)?\s*(.*?)\s*```$", stripped, flags=re.DOTALL | re.IGNORECASE)
+    return match.group(1).strip() if match else stripped
+
+
+def parse_ocr_response(raw: str) -> tuple[str, str | None]:
+    """Parse vision OCR output into plain text and optional mermaid diagram code."""
+    cleaned = _strip_json_fence(raw.strip())
+    if cleaned.startswith("{"):
+        try:
+            payload = json.loads(cleaned)
+        except json.JSONDecodeError:
+            return cleaned, None
+        if not isinstance(payload, dict):
+            return cleaned, None
+        text = str(payload.get("text") or "").strip()
+        mermaid_raw = payload.get("mermaid")
+        mermaid = str(mermaid_raw).strip() if mermaid_raw else None
+        if mermaid:
+            mermaid = re.sub(r"^```(?:mermaid)?\s*", "", mermaid, flags=re.IGNORECASE)
+            mermaid = re.sub(r"\s*```$", "", mermaid).strip() or None
+        return text or cleaned, mermaid
+    return cleaned, None
 
 
 @dataclass
@@ -111,7 +174,8 @@ def run_vision_ocr(
             output_saved.append(saved)
 
         try:
-            text = transcribe_image(image.data, image.mime_type, prompt=OCR_PROMPT).strip()
+            raw = transcribe_image(image.data, image.mime_type, prompt=OCR_PROMPT).strip()
+            text, _mermaid = parse_ocr_response(raw)
         except LLMError:
             failed += 1
             continue

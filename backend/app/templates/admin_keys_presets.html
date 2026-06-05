@@ -1,0 +1,80 @@
+{% extends "layout.html" %}
+
+{% block title %}LLM Presets · MARIS - Q/A Helper{% endblock %}
+{% block page_title %}LLM Presets{% endblock %}
+
+{% block content %}
+<section class="panel keys-admin-panel">
+  <nav class="keys-subnav" aria-label="Keys-Bereich">
+    <a href="/admin/keys/presets" class="keys-subnav-link active">Presets</a>
+    <a href="/admin/keys/assignments" class="keys-subnav-link">Zuordnung</a>
+  </nav>
+
+  <p class="muted keys-intro">
+    OAuth-Presets: Anbieter, Modell und Anmeldung. Presets werden auf der Seite <a href="/admin/keys/assignments">Zuordnung</a> den Funktionen zugewiesen.
+    <span id="preset-catalog-note" class="hidden"></span>
+  </p>
+
+  <div class="keys-toolbar">
+    <button type="button" class="primary" id="preset-create-btn">+ Preset anlegen</button>
+  </div>
+
+  <div id="preset-grid" class="preset-grid"></div>
+  <p id="preset-empty" class="muted hidden">Noch keine Presets.</p>
+  <p id="preset-status" class="status" aria-live="polite"></p>
+</section>
+
+<div id="preset-form-modal" class="keys-modal hidden" role="dialog" aria-modal="true" aria-labelledby="preset-form-title">
+  <div class="keys-modal-dialog keys-modal-dialog-wide">
+    <div class="keys-modal-header">
+      <h3 id="preset-form-title">Preset anlegen</h3>
+      <button type="button" class="keys-modal-close" id="preset-form-close" aria-label="Schließen">×</button>
+    </div>
+    <form id="preset-form" class="preset-form">
+      <label>
+        Name
+        <input type="text" id="preset-name" required maxlength="120" placeholder="z. B. Grok Build Prod">
+      </label>
+      <label>
+        Anbieter
+        <select id="preset-provider" required></select>
+      </label>
+      <label>
+        Modell
+        <select id="preset-model" required></select>
+      </label>
+      <div class="keys-modal-actions">
+        <button type="submit" class="primary">Speichern &amp; OAuth starten</button>
+        <button type="button" class="secondary" id="preset-form-cancel">Abbrechen</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="oauth-wizard-modal" class="keys-modal hidden" role="dialog" aria-modal="true" aria-labelledby="oauth-wizard-title">
+  <div class="keys-modal-dialog">
+    <div class="keys-modal-header">
+      <h3 id="oauth-wizard-title">OAuth-Anmeldung</h3>
+      <button type="button" class="keys-modal-close" id="oauth-wizard-close" aria-label="Schließen">×</button>
+    </div>
+    <ol class="oauth-steps">
+      <li class="oauth-step active" data-step="1">Preset</li>
+      <li class="oauth-step" data-step="2">Anmelden</li>
+      <li class="oauth-step" data-step="3">Fertig</li>
+    </ol>
+    <div id="oauth-wizard-body">
+      <p class="muted">Browser öffnen und Code eingeben:</p>
+      <p><a id="oauth-verify-url" target="_blank" rel="noopener"></a></p>
+      <p>Code: <strong id="oauth-user-code" class="oauth-user-code"></strong>
+        <button type="button" class="secondary small" id="oauth-copy-code">Kopieren</button>
+      </p>
+      <p id="oauth-wizard-hint" class="muted">Warte auf Bestätigung im Browser …</p>
+    </div>
+    <p id="oauth-wizard-status" class="status" aria-live="polite"></p>
+    <div class="keys-modal-actions">
+      <button type="button" class="secondary" id="oauth-wizard-cancel">Abbrechen</button>
+      <button type="button" class="primary hidden" id="oauth-wizard-done">Fertig</button>
+    </div>
+  </div>
+</div>
+{% endblock %}

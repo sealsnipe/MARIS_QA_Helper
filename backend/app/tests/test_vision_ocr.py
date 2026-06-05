@@ -3,7 +3,48 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.document_assets import SavedDocumentImage, format_image_block, save_document_image
-from app.loaders.vision_ocr import merge_ocr_blocks, run_vision_ocr
+from app.loaders.vision_ocr import OCR_PROMPT, merge_ocr_blocks, parse_ocr_response, run_vision_ocr
+
+
+def test_ocr_prompt_auto_detects_image_type_without_user_choice() -> None:
+    assert "Entscheide SELBST" in OCR_PROMPT
+    assert "der Nutzer wählt nicht" in OCR_PROMPT
+    assert "FALL A" in OCR_PROMPT
+    assert "FALL B" in OCR_PROMPT
+    assert "Website-Chrome" in OCR_PROMPT
+    assert "Markdown-Tabelle" in OCR_PROMPT
+    assert "Verknüpfungen" in OCR_PROMPT
+    assert "reicht NICHT" in OCR_PROMPT
+    assert "Beziehungen und Ablauf" in OCR_PROMPT
+    assert "PERT" not in OCR_PROMPT
+    assert "Netzplan" not in OCR_PROMPT
+    assert '"mermaid"' in OCR_PROMPT
+
+
+def test_parse_ocr_response_json_with_mermaid() -> None:
+    raw = '{"text": "Ablauf", "mermaid": "flowchart TD\\n  A --> B"}'
+    text, mermaid = parse_ocr_response(raw)
+    assert text == "Ablauf"
+    assert mermaid == "flowchart TD\n  A --> B"
+
+
+def test_parse_ocr_response_json_without_mermaid() -> None:
+    text, mermaid = parse_ocr_response('{"text": "Nur Text", "mermaid": null}')
+    assert text == "Nur Text"
+    assert mermaid is None
+
+
+def test_parse_ocr_response_fenced_json() -> None:
+    raw = '```json\n{"text": "Inhalt", "mermaid": null}\n```'
+    text, mermaid = parse_ocr_response(raw)
+    assert text == "Inhalt"
+    assert mermaid is None
+
+
+def test_parse_ocr_response_plain_text_fallback() -> None:
+    text, mermaid = parse_ocr_response("Alter Fliesstext ohne JSON")
+    assert text == "Alter Fliesstext ohne JSON"
+    assert mermaid is None
 
 
 def test_format_image_block_uses_bild_tags() -> None:

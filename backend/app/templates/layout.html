@@ -63,8 +63,9 @@
         <div class="nav-section">
           <div class="nav-heading">Einstellungen</div>
           {% if is_admin %}
-          {% set admin_nav_pages = ['customers', 'admin_knowledge', 'admin_prompts', 'admin_users', 'admin_roles', 'admin_keys'] %}
+          {% set admin_nav_pages = ['customers', 'admin_knowledge', 'admin_prompts', 'admin_users', 'admin_roles', 'admin_keys', 'admin_keys_presets', 'admin_keys_assignments'] %}
           {% set user_nav_pages = ['admin_users', 'admin_roles'] %}
+          {% set keys_nav_pages = ['admin_keys_presets', 'admin_keys_assignments'] %}
           <div class="nav-group {% if active_page in admin_nav_pages %}expanded{% endif %}" id="admin-nav-group">
             <button type="button" class="nav-group-toggle" id="admin-nav-toggle" aria-expanded="{% if active_page in admin_nav_pages %}true{% else %}false{% endif %}">
               Administration
@@ -82,7 +83,15 @@
                   <a href="/admin/roles" class="nav-link nav-sublink {% if active_page == 'admin_roles' %}active{% endif %}">Rollen</a>
                 </div>
               </div>
-              <a href="/admin/keys" class="nav-link nav-sublink {% if active_page == 'admin_keys' %}active{% endif %}">Keys</a>
+              <div class="nav-group nav-group-nested {% if active_page in keys_nav_pages %}expanded{% endif %}" id="keys-nav-group">
+                <button type="button" class="nav-group-toggle nav-sublink" id="keys-nav-toggle" aria-expanded="{% if active_page in keys_nav_pages %}true{% else %}false{% endif %}">
+                  Keys
+                </button>
+                <div class="nav-submenu nav-submenu-nested">
+                  <a href="/admin/keys/presets" class="nav-link nav-sublink {% if active_page == 'admin_keys_presets' %}active{% endif %}">Presets</a>
+                  <a href="/admin/keys/assignments" class="nav-link nav-sublink {% if active_page == 'admin_keys_assignments' %}active{% endif %}">Zuordnung</a>
+                </div>
+              </div>
             </div>
           </div>
           {% endif %}

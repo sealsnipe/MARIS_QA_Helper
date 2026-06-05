@@ -4,36 +4,38 @@
 {% block page_title %}Tools · Bild zu Text{% endblock %}
 
 {% block content %}
-<section class="panel kb-panel full-page">
-  <h2>Bild zu Text <span class="muted">— Vision-OCR Agent</span></h2>
-  <p class="muted">Fügen Sie Bilder per <strong>Strg+V</strong> ein (oder klicken/Drop), wählen Sie aus und transkribieren Sie den sichtbaren Text. Der Text steht danach zum Kopieren bereit.</p>
+<section class="panel kb-panel bild-tool-page">
+  <div class="bild-tool-intro">
+    <h2>Bild zu Text</h2>
+    <p class="muted">Vision-OCR für Screenshots und Diagramme — optional mit Mermaid-Darstellung.</p>
+  </div>
 
-  <form id="image-tool-form">
-    <div class="ingest-field" style="margin-bottom: 0.5rem;">
-      <span class="ingest-field-label">Bild(er) einfügen</span>
-      <div id="image-paste-zone" class="dropzone" tabindex="0" role="button" aria-label="Bilder per Strg+V oder Klick einfügen">
-        <p><strong>Strg+V</strong> hier einfügen oder klicken zum Datei(en) wählen</p>
-        <p class="muted">PNG, JPG, WEBP, GIF · mehrere möglich</p>
+  <form id="image-tool-form" class="bild-tool-form">
+    <div class="ingest-field bild-tool-field">
+      <span class="ingest-field-label">Bild(er)</span>
+      <div id="image-paste-zone" class="dropzone kb-dropzone bild-tool-dropzone" tabindex="0" role="button" aria-label="Bilder per Strg+V oder Klick einfügen">
+        <div id="image-dropzone-empty" class="bild-tool-dropzone-empty">
+          <p><strong>Strg+V</strong> einfügen, klicken oder Datei ziehen</p>
+          <p class="muted dropzone-hint">PNG · JPG · WEBP · GIF · mehrere möglich</p>
+        </div>
+        <div id="image-preview-inline" class="bild-tool-preview-inline hidden" aria-live="polite"></div>
         <input type="file" id="image-file-input" accept="image/*" multiple hidden>
       </div>
     </div>
 
-    <div id="image-preview-list" class="image-preview-grid"></div>
-
-    <div class="tool-actions" style="margin: 0.5rem 0 1rem;">
+    <div class="bild-tool-toolbar">
       <button type="button" id="transcribe-btn" disabled>Transkribieren</button>
-      <button type="button" id="clear-images-btn" class="secondary">Alle entfernen</button>
+      <button type="button" id="clear-images-btn" class="secondary small">Alle entfernen</button>
+      <p id="tool-status" class="status bild-tool-status" aria-live="polite"></p>
     </div>
   </form>
 
-  <div id="transcribe-output" class="tool-output hidden">
-    <h3>Transkribierter Text</h3>
-    <div id="output-content" style="margin-bottom: 0.5rem;"></div>
-    <button type="button" id="copy-all-btn" class="secondary small">Gesamten Text kopieren</button>
-  </div>
-
-  <p id="tool-status" class="status" aria-live="polite"></p>
+  <div id="transcribe-results" class="bild-tool-results hidden" aria-live="polite"></div>
 </section>
+{% endblock %}
+
+{% block vendor_scripts %}
+<script src="/static/vendor/mermaid.min.js"></script>
 {% endblock %}
 
 {% block scripts %}

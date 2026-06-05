@@ -162,6 +162,30 @@ class AppSecret(Base):
     updated_by: Mapped[str] = mapped_column(String, nullable=False)
 
 
+class LlmPreset(Base):
+    __tablename__ = "llm_presets"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    provider: Mapped[str] = mapped_column(String, nullable=False)
+    model_id: Mapped[str] = mapped_column(String, nullable=False)
+    oauth_token_path: Mapped[str] = mapped_column(String, nullable=False)
+    oauth_account_label: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)
+    updated_by: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class LlmSlotBinding(Base):
+    __tablename__ = "llm_slot_bindings"
+
+    slot: Mapped[str] = mapped_column(String, primary_key=True)
+    binding_type: Mapped[str] = mapped_column(String, nullable=False, default="inherit")
+    preset_id: Mapped[str | None] = mapped_column(String, ForeignKey("llm_presets.id"), nullable=True)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)
+    updated_by: Mapped[str] = mapped_column(String, nullable=False)
+
+
 class KnowledgeSource(Base):
     __tablename__ = "knowledge_sources"
 

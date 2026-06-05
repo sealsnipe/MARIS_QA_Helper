@@ -47,7 +47,7 @@ from app.db import get_db
 from app.document_assets import image_payloads, resolve_document_image_path
 from app.llm import LLMError, transcribe_image
 from app.loaders.image_inspect import MIN_IMAGE_BYTES
-from app.loaders.vision_ocr import OCR_PROMPT
+from app.loaders.vision_ocr import OCR_PROMPT, parse_ocr_response
 from app.chunking import normalize_text
 from app.config import get_settings
 from app.ingestion import (
@@ -203,6 +203,22 @@ class AdminKeysIntegrationUpdate(BaseModel):
     api_key: str | None = None
 
 
+class LlmPresetCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    provider: str = Field(min_length=1, max_length=32)
+    model_id: str = Field(min_length=1, max_length=120)
+
+
+class LlmPresetUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    model_id: str | None = Field(default=None, min_length=1, max_length=120)
+
+
+class LlmSlotBindingUpdateRequest(BaseModel):
+    binding_type: str = Field(min_length=1, max_length=16)
+    preset_id: str | None = None
+
+
 class AdminKnowledgeSourceCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     host_code: str = Field(min_length=1, max_length=64)
@@ -281,6 +297,8 @@ CUSTOMER_NAV_GLOBAL_PAGES = frozenset({
     "admin_users",
     "admin_roles",
     "admin_keys",
+    "admin_keys_presets",
+    "admin_keys_assignments",
     "tools_kc_content",
     "tools_kc_sources",
 })
@@ -616,8 +634,43 @@ def admin_roles_page(
     )
 
 
-@router.get("/admin/keys", response_class=HTMLResponse)
-def admin_keys_page(
+@router.get("/admin/keys", response_class=RedirectResponse)
+def admin_keys_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/admin/keys/assignments", status_code=status.HTTP_302_FOUND)
+
+
+@router.get("/admin/keys/presets", response_class=HTMLResponse)
+def admin_keys_presets_page(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    if redirect := _admin_page_redirect(user):
+        return redirect
+    return templates.TemplateResponse(
+        request,
+        "admin_keys_presets.html",
+        _page_context(request, user, db, active_page="admin_keys_presets"),
+    )
+
+
+@router.get("/admin/keys/assignments", response_class=HTMLResponse)
+def admin_keys_assignments_page(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    if redirect := _admin_page_redirect(user):
+        return redirect
+    return templates.TemplateResponse(
+        request,
+        "admin_keys_assignments.html",
+        _page_context(request, user, db, active_page="admin_keys_assignments"),
+    )
+
+
+@router.get("/admin/keys/legacy", response_class=HTMLResponse)
+def admin_keys_legacy_page(
     request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -900,12 +953,16 @@ async def api_tools_transcribe(
             results.append({"filename": f.filename, "error": "image_too_small"})
             continue
         try:
-            text = transcribe_image(content, mime or "image/png", prompt=OCR_PROMPT).strip()
-            results.append({
+            raw = transcribe_image(content, mime or "image/png", prompt=OCR_PROMPT).strip()
+            text, mermaid = parse_ocr_response(raw)
+            item: dict = {
                 "filename": f.filename,
                 "mime_type": mime,
                 "text": text,
-            })
+            }
+            if mermaid:
+                item["mermaid"] = mermaid
+            results.append(item)
         except LLMError as exc:
             results.append({"filename": f.filename, "error": "transcription_failed", "detail": str(exc)})
         except Exception as exc:
@@ -1641,7 +1698,179 @@ def api_admin_get_keys(
     _admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    return get_keys_status(db)
+    from app.llm_presets import get_assignments_status
+
+    return get_assignments_status(db)
+
+
+@router.get("/api/admin/llm-presets/catalog")
+def api_admin_llm_presets_catalog(
+    _admin: User = Depends(get_admin_user),
+) -> dict:
+    from app.llm_catalog import get_catalog
+
+    return get_catalog()
+
+
+@router.get("/api/admin/llm-presets")
+def api_admin_list_llm_presets(
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    from app.llm_presets import list_presets
+
+    return {"presets": list_presets(db)}
+
+
+@router.post("/api/admin/llm-presets")
+def api_admin_create_llm_preset(
+    payload: LlmPresetCreateRequest,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    from app.llm_presets import LlmPresetsError, create_preset
+
+    try:
+        return {"preset": create_preset(db, name=payload.name, provider=payload.provider, model_id=payload.model_id, updated_by=_admin.email)}
+    except LlmPresetsError as exc:
+        raise SecretsAdminError(exc.code, status_code=exc.status_code, detail=exc.detail) from exc
+
+
+@router.patch("/api/admin/llm-presets/{preset_id}")
+def api_admin_update_llm_preset(
+    preset_id: str,
+    payload: LlmPresetUpdateRequest,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    from app.llm_presets import LlmPresetsError, update_preset
+
+    try:
+        return {
+            "preset": update_preset(
+                db,
+                preset_id,
+                name=payload.name,
+                model_id=payload.model_id,
+                updated_by=_admin.email,
+            )
+        }
+    except LlmPresetsError as exc:
+        raise SecretsAdminError(exc.code, status_code=exc.status_code, detail=exc.detail) from exc
+
+
+@router.delete("/api/admin/llm-presets/{preset_id}")
+def api_admin_delete_llm_preset(
+    preset_id: str,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    from app.llm_presets import LlmPresetsError, delete_preset
+
+    try:
+        delete_preset(db, preset_id)
+        return {"deleted": True, "id": preset_id}
+    except LlmPresetsError as exc:
+        raise SecretsAdminError(exc.code, status_code=exc.status_code, detail=exc.detail) from exc
+
+
+@router.patch("/api/admin/llm-bindings/{slot}")
+def api_admin_update_llm_binding(
+    slot: str,
+    payload: LlmSlotBindingUpdateRequest,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    from app.llm_presets import LlmPresetsError, update_binding
+
+    try:
+        return {"binding": update_binding(db, slot, binding_type=payload.binding_type, preset_id=payload.preset_id, updated_by=_admin.email)}
+    except LlmPresetsError as exc:
+        raise SecretsAdminError(exc.code, status_code=exc.status_code, detail=exc.detail) from exc
+
+
+@router.post("/api/admin/llm-presets/{preset_id}/oauth/start")
+def api_admin_preset_oauth_start(
+    preset_id: str,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    from app.llm_presets import LlmPresetsError, get_preset
+
+    try:
+        preset = get_preset(db, preset_id)
+        if preset.provider == "openai":
+            from app.oauth_device_flow import start_device_flow
+
+            info = start_device_flow()
+            info["provider"] = "openai"
+            return info
+        if preset.provider == "grok":
+            from app.oauth_xai_flow import start_device_flow as start_xai_flow
+
+            info = start_xai_flow()
+            return info
+        raise LlmPresetsError("provider_not_supported")
+    except LlmPresetsError as exc:
+        raise SecretsAdminError(exc.code, status_code=exc.status_code, detail=exc.detail) from exc
+    except Exception as exc:
+        raise SecretsAdminError("oauth_start_failed", status_code=502, detail=str(exc)) from exc
+
+
+@router.post("/api/admin/llm-presets/{preset_id}/oauth/poll")
+def api_admin_preset_oauth_poll(
+    preset_id: str,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+    provider: str = "",
+    device_auth_id: str = "",
+    user_code: str = "",
+    device_code: str = "",
+    interval: int = 5,
+) -> dict:
+    from app.llm_presets import LlmPresetsError, get_preset, mark_preset_oauth
+    from pathlib import Path
+
+    try:
+        preset = get_preset(db, preset_id)
+        target = Path(preset.oauth_token_path)
+        prov = provider or preset.provider
+
+        if prov == "openai":
+            from app.oauth_device_flow import exchange_and_save, poll_device_completion
+
+            res = poll_device_completion(device_auth_id, user_code, interval, max_seconds=20)
+            if res.get("status") != "complete":
+                return {"status": res.get("status", "pending")}
+            acc = exchange_and_save(res["authorization_code"], res["code_verifier"], target)
+            preset_row = mark_preset_oauth(db, preset_id, acc.get("account_id"), _admin.email)
+            return {"status": "complete", "preset": preset_row}
+
+        if prov == "grok":
+            from app.oauth_xai_flow import exchange_and_save as xai_save, poll_device_completion as xai_poll
+
+            if not device_code:
+                return {"status": "error", "detail": "device_code_required"}
+            res = xai_poll(device_code, interval, max_seconds=20)
+            if res.get("status") != "complete":
+                detail = res.get("detail")
+                if detail == "invalid_grant" and target.exists() and target.stat().st_size > 50:
+                    from app.oauth_token_store import load_oauth_tokens
+
+                    existing = load_oauth_tokens(target)
+                    if (existing.get("access_token") or "").strip():
+                        preset_row = mark_preset_oauth(db, preset_id, existing.get("account_label"), _admin.email)
+                        return {"status": "complete", "preset": preset_row}
+                return {"status": res.get("status", "pending"), "detail": detail}
+            acc = xai_save(res["tokens"], target)
+            preset_row = mark_preset_oauth(db, preset_id, acc.get("account_label"), _admin.email)
+            return {"status": "complete", "preset": preset_row}
+
+        raise LlmPresetsError("provider_not_supported")
+    except LlmPresetsError as exc:
+        raise SecretsAdminError(exc.code, status_code=exc.status_code, detail=exc.detail) from exc
+    except Exception as exc:
+        raise SecretsAdminError("oauth_poll_failed", status_code=502, detail=str(exc)) from exc
 
 
 @router.patch("/api/admin/keys/chat")
@@ -1654,7 +1883,9 @@ def api_admin_update_keys_chat(
         update_secret(db, "chat_auth_mode", payload.auth_mode, _admin.email)
     if payload.api_key is not None:
         update_secret(db, "chat_api_key", payload.api_key, _admin.email)
-    return get_keys_status(db)
+    from app.llm_presets import get_assignments_status
+
+    return get_assignments_status(db)
 
 
 @router.patch("/api/admin/keys/embedding")
@@ -1665,7 +1896,9 @@ def api_admin_update_keys_embedding(
 ) -> dict:
     if payload.api_key is not None:
         update_secret(db, "embedding_api_key", payload.api_key, _admin.email)
-    return get_keys_status(db)
+    from app.llm_presets import get_assignments_status
+
+    return get_assignments_status(db)
 
 
 @router.patch("/api/admin/keys/similarity")
@@ -1680,7 +1913,9 @@ def api_admin_update_keys_similarity(
         update_secret(db, "similarity_auth_mode", payload.auth_mode, _admin.email)
     if payload.api_key is not None:
         update_secret(db, "similarity_api_key", payload.api_key, _admin.email)
-    return get_keys_status(db)
+    from app.llm_presets import get_assignments_status
+
+    return get_assignments_status(db)
 
 
 @router.patch("/api/admin/keys/integration")
@@ -1691,7 +1926,9 @@ def api_admin_update_keys_integration(
 ) -> dict:
     if payload.api_key is not None:
         update_secret(db, "integration_api_token", payload.api_key, _admin.email)
-    return get_keys_status(db)
+    from app.llm_presets import get_assignments_status
+
+    return get_assignments_status(db)
 
 
 @router.post("/api/admin/keys/oauth/start")

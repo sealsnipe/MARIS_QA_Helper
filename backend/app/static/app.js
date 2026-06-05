@@ -1750,51 +1750,65 @@
 
   function initImageToTextTool() {
     const zone = document.getElementById("image-paste-zone");
+    const zoneEmpty = document.getElementById("image-dropzone-empty");
+    const inlinePreview = document.getElementById("image-preview-inline");
     const fileInput = document.getElementById("image-file-input");
-    const listEl = document.getElementById("image-preview-list");
     const transcribeBtn = document.getElementById("transcribe-btn");
     const clearBtn = document.getElementById("clear-images-btn");
     const statusEl = document.getElementById("tool-status");
-    const outputEl = document.getElementById("transcribe-output");
-    const outputContent = document.getElementById("output-content");
-    const copyAllBtn = document.getElementById("copy-all-btn");
+    const resultsEl = document.getElementById("transcribe-results");
 
     let images = []; // {id, file: File, url: string}
+    let mermaidReady = false;
 
-    function renderList() {
-      if (!listEl) return;
-      listEl.innerHTML = "";
-      if (images.length === 0) {
-        transcribeBtn.disabled = true;
-        return;
-      }
-      transcribeBtn.disabled = false;
-
-      images.forEach((img) => {
-        const card = document.createElement("div");
-        card.className = "image-preview-card";
-        card.innerHTML = `
-          <img src="${img.url}" alt="">
-          <div class="card-label">${escapeHtml(img.file.name)}</div>
-          <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;margin-top:4px;">
-            <input type="checkbox" class="select-img" data-id="${img.id}" checked> OCR
-          </label>
-          <button type="button" class="remove-btn" data-id="${img.id}">×</button>
-        `;
-        listEl.appendChild(card);
+    function ensureMermaid() {
+      if (mermaidReady || typeof window.mermaid === "undefined") return;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        theme: "dark",
+        securityLevel: "strict",
+        fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
       });
+      mermaidReady = true;
     }
 
-    listEl?.addEventListener("click", (e) => {
-      const removeBtn = e.target.closest(".remove-btn");
-      if (removeBtn) {
-        const id = removeBtn.dataset.id;
-        const entry = images.find((i) => i.id === id);
-        if (entry) URL.revokeObjectURL(entry.url);
-        images = images.filter((i) => i.id !== id);
-        renderList();
-        if (outputEl) outputEl.classList.add("hidden");
-      }
+    function updateDropzoneState() {
+      const hasImages = images.length > 0;
+      zone?.classList.toggle("has-images", hasImages);
+      zoneEmpty?.classList.toggle("hidden", hasImages);
+      inlinePreview?.classList.toggle("hidden", !hasImages);
+      if (transcribeBtn) transcribeBtn.disabled = !hasImages;
+    }
+
+    function renderInlinePreview() {
+      if (!inlinePreview) return;
+      inlinePreview.innerHTML = "";
+      images.forEach((img) => {
+        const item = document.createElement("div");
+        item.className = "bild-tool-thumb";
+        item.innerHTML = `
+          <img src="${img.url}" alt="">
+          <button type="button" class="bild-tool-thumb-remove" data-id="${img.id}" title="Entfernen">×</button>
+          <div class="bild-tool-thumb-meta">${escapeHtml(img.file.name || "Bild")}</div>
+          <label class="bild-tool-thumb-check">
+            <input type="checkbox" class="select-img" data-id="${img.id}" checked> OCR
+          </label>
+        `;
+        inlinePreview.appendChild(item);
+      });
+      updateDropzoneState();
+    }
+
+    inlinePreview?.addEventListener("click", (e) => {
+      const removeBtn = e.target.closest(".bild-tool-thumb-remove");
+      if (!removeBtn) return;
+      e.stopPropagation();
+      const id = removeBtn.dataset.id;
+      const entry = images.find((i) => i.id === id);
+      if (entry) URL.revokeObjectURL(entry.url);
+      images = images.filter((i) => i.id !== id);
+      renderInlinePreview();
+      if (images.length === 0 && resultsEl) resultsEl.classList.add("hidden");
     });
 
     function addImage(file) {
@@ -1802,13 +1816,13 @@
       const id = "img_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
       const url = URL.createObjectURL(file);
       images.push({ id, file, url });
-      renderList();
-      if (outputEl) outputEl.classList.add("hidden");
+      renderInlinePreview();
+      if (resultsEl) resultsEl.classList.add("hidden");
       showStatus(statusEl, "");
     }
 
     function handlePaste(ev) {
-      if (ev.defaultPrevented) return; // another listener (zone/form/doc) already handled this paste
+      if (ev.defaultPrevented) return;
       let added = false;
       if (typeof fileFromClipboard === "function") {
         const f = fileFromClipboard(ev.clipboardData);
@@ -1818,16 +1832,17 @@
           added = true;
         }
       }
-      if (!added && ev.clipboardData && ev.clipboardData.files && ev.clipboardData.files.length) {
+      if (!added && ev.clipboardData?.files?.length) {
         ev.preventDefault();
         Array.from(ev.clipboardData.files).forEach(addImage);
       }
     }
 
     if (zone && fileInput) {
-      zone.addEventListener("click", () => {
+      zone.addEventListener("click", (ev) => {
+        if (ev.target.closest(".bild-tool-thumb-remove, .select-img, label")) return;
         fileInput.click();
-        zone.focus(); // ensure focused so paste targets the zone (like KB dropzone)
+        zone.focus();
       });
       zone.addEventListener("keydown", (ev) => {
         if (ev.key === "Enter" || ev.key === " ") {
@@ -1835,27 +1850,13 @@
           fileInput.click();
         }
       });
-
       fileInput.addEventListener("change", () => {
         Array.from(fileInput.files || []).forEach(addImage);
         fileInput.value = "";
       });
-
-      // paste support on the zone itself (mirrors setupDropzone in KB)
       zone.addEventListener("paste", handlePaste);
-
-      // also on the containing form (like the ingest-form paste listener in bindIngestForm for KB)
-      // this makes Ctrl+V work even if focus is on other elements inside the form area
-      const toolForm = document.getElementById("image-tool-form");
-      toolForm?.addEventListener("paste", handlePaste);
-
-      // Document-level listener for this dedicated tool page.
-      // Makes "Strg+V" work from anywhere on the page (no need to focus the dropzone first),
-      // using the exact same fileFromClipboard helper as the KB implementation.
-      // Non-image pastes do nothing (no preventDefault).
+      document.getElementById("image-tool-form")?.addEventListener("paste", handlePaste);
       document.addEventListener("paste", handlePaste);
-
-      // drag & drop bonus
       zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("dragover"); });
       zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
       zone.addEventListener("drop", (e) => {
@@ -1868,16 +1869,147 @@
     clearBtn?.addEventListener("click", () => {
       images.forEach((i) => URL.revokeObjectURL(i.url));
       images = [];
-      renderList();
-      if (outputEl) outputEl.classList.add("hidden");
-      if (outputContent) outputContent.innerHTML = "";
+      renderInlinePreview();
+      if (resultsEl) {
+        resultsEl.innerHTML = "";
+        resultsEl.classList.add("hidden");
+      }
       showStatus(statusEl, "");
     });
 
+    function buildClipboardPayload(text, mermaid) {
+      const body = (text || "").trim();
+      if (!mermaid) return body;
+      return `${body}\n\n\`\`\`mermaid\n${mermaid.trim()}\n\`\`\``;
+    }
+
+    async function flashButton(btn, label = "Kopiert!") {
+      if (!btn) return;
+      const old = btn.textContent;
+      btn.textContent = label;
+      setTimeout(() => { btn.textContent = old; }, 1200);
+    }
+
+    async function renderMermaidDiagram(container, code) {
+      ensureMermaid();
+      if (!container || !code || typeof window.mermaid === "undefined") return;
+      const renderId = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      try {
+        const { svg } = await window.mermaid.render(renderId, code);
+        container.innerHTML = svg;
+      } catch (_err) {
+        container.innerHTML = `<p class="muted">Diagramm konnte nicht gerendert werden — Code-Ansicht nutzen.</p>`;
+      }
+    }
+
+    function createMermaidPanel(mermaidCode) {
+      const panel = document.createElement("div");
+      panel.className = "bild-mermaid-panel";
+      panel.innerHTML = `
+        <div class="bild-mermaid-toolbar">
+          <span class="bild-mermaid-label">Mermaid</span>
+          <div class="bild-mermaid-toggle" role="tablist" aria-label="Mermaid-Ansicht">
+            <button type="button" class="active" data-mode="diagram">Diagramm</button>
+            <button type="button" data-mode="code">Code</button>
+          </div>
+          <button type="button" class="secondary small copy-mermaid-code-btn">Code kopieren</button>
+        </div>
+        <div class="bild-mermaid-view">
+          <div class="bild-mermaid-diagram" aria-label="Mermaid-Diagramm"></div>
+          <pre class="bild-mermaid-code hidden"></pre>
+        </div>
+      `;
+      const diagramEl = panel.querySelector(".bild-mermaid-diagram");
+      const codeEl = panel.querySelector(".bild-mermaid-code");
+      if (codeEl) codeEl.textContent = mermaidCode;
+      renderMermaidDiagram(diagramEl, mermaidCode);
+
+      const toggle = panel.querySelector(".bild-mermaid-toggle");
+      toggle?.addEventListener("click", (ev) => {
+        const btn = ev.target.closest("button[data-mode]");
+        if (!btn) return;
+        toggle.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b === btn));
+        const showCode = btn.dataset.mode === "code";
+        diagramEl?.classList.toggle("hidden", showCode);
+        codeEl?.classList.toggle("hidden", !showCode);
+      });
+
+      panel.querySelector(".copy-mermaid-code-btn")?.addEventListener("click", async (ev) => {
+        const btn = ev.currentTarget;
+        try {
+          await navigator.clipboard.writeText(mermaidCode);
+          await flashButton(btn);
+        } catch (_err) {}
+      });
+
+      return panel;
+    }
+
+    function renderResults(results) {
+      if (!resultsEl) return;
+      resultsEl.innerHTML = "";
+
+      results.forEach((r, idx) => {
+        const card = document.createElement("article");
+        card.className = "bild-result-card";
+
+        const head = document.createElement("div");
+        head.className = "bild-result-head";
+        head.innerHTML = `<h3 class="bild-result-title">${escapeHtml(r.filename || `Bild ${idx + 1}`)}</h3>`;
+        card.appendChild(head);
+
+        if (r.error) {
+          const err = document.createElement("p");
+          err.className = "bild-result-error";
+          err.textContent = r.error + (r.detail ? ` (${r.detail})` : "");
+          card.appendChild(err);
+          resultsEl.appendChild(card);
+          return;
+        }
+
+        const text = r.text || "";
+        const mermaid = r.mermaid || "";
+        const copyPayload = buildClipboardPayload(text, mermaid);
+
+        const actions = document.createElement("div");
+        actions.className = "bild-result-actions";
+        const copyBtn = document.createElement("button");
+        copyBtn.type = "button";
+        copyBtn.className = "secondary small";
+        copyBtn.textContent = mermaid ? "Text + Mermaid kopieren" : "Text kopieren";
+        copyBtn.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(copyPayload);
+            await flashButton(copyBtn);
+          } catch (_err) {}
+        });
+        actions.appendChild(copyBtn);
+        head.appendChild(actions);
+
+        const body = document.createElement("div");
+        body.className = "bild-result-body";
+
+        const ta = document.createElement("textarea");
+        ta.className = "bild-result-text";
+        ta.value = text;
+        ta.readOnly = true;
+        ta.rows = Math.min(14, Math.max(4, text.split("\n").length + 1));
+        body.appendChild(ta);
+
+        if (mermaid) {
+          body.appendChild(createMermaidPanel(mermaid));
+        }
+
+        card.appendChild(body);
+        resultsEl.appendChild(card);
+      });
+
+      resultsEl.classList.toggle("hidden", results.length === 0);
+    }
+
     transcribeBtn?.addEventListener("click", async () => {
       const selected = [];
-      if (!listEl) return;
-      listEl.querySelectorAll(".select-img:checked").forEach((cb) => {
+      inlinePreview?.querySelectorAll(".select-img:checked").forEach((cb) => {
         const id = cb.dataset.id;
         const entry = images.find((i) => i.id === id);
         if (entry) selected.push(entry);
@@ -1897,66 +2029,8 @@
 
       try {
         const res = await api("/api/tools/transcribe", { method: "POST", body: formData });
-        const results = res.results || [];
-
-        outputContent.innerHTML = "";
-        let allTextParts = [];
-
-        results.forEach((r, idx) => {
-          const item = document.createElement("div");
-          item.className = "output-item";
-
-          const head = document.createElement("div");
-          head.style.fontWeight = "600";
-          head.style.marginBottom = "0.25rem";
-          head.textContent = r.filename || `Bild ${idx + 1}`;
-          item.appendChild(head);
-
-          if (r.error) {
-            const err = document.createElement("div");
-            err.className = "status error";
-            err.textContent = r.error + (r.detail ? ` (${r.detail})` : "");
-            item.appendChild(err);
-          } else {
-            const ta = document.createElement("textarea");
-            ta.value = r.text || "";
-            ta.rows = Math.min(12, Math.max(3, (r.text || "").split("\n").length));
-            ta.style.width = "100%";
-            ta.readOnly = true;
-            item.appendChild(ta);
-
-            const copyOne = document.createElement("button");
-            copyOne.type = "button";
-            copyOne.className = "secondary small";
-            copyOne.style.marginTop = "0.25rem";
-            copyOne.textContent = "Diesen Text kopieren";
-            copyOne.addEventListener("click", () => {
-              navigator.clipboard.writeText(ta.value || "").then(() => {
-                const old = copyOne.textContent;
-                copyOne.textContent = "Kopiert!";
-                setTimeout(() => (copyOne.textContent = old), 1200);
-              }).catch(() => {});
-            });
-            item.appendChild(copyOne);
-
-            allTextParts.push(r.text || "");
-          }
-          outputContent.appendChild(item);
-        });
-
-        if (copyAllBtn) {
-          copyAllBtn.onclick = () => {
-            const joined = allTextParts.join("\n\n---\n\n");
-            navigator.clipboard.writeText(joined).then(() => {
-              const old = copyAllBtn.textContent;
-              copyAllBtn.textContent = "Kopiert!";
-              setTimeout(() => (copyAllBtn.textContent = old), 1200);
-            }).catch(() => {});
-          };
-        }
-
-        if (outputEl) outputEl.classList.remove("hidden");
-        showStatus(statusEl, "Fertig — Text kann kopiert werden.", "ok");
+        renderResults(res.results || []);
+        showStatus(statusEl, "Fertig — Ergebnis kann kopiert werden.", "ok");
       } catch (err) {
         const msg = (err && err.code) ? `Fehler: ${err.code}` : "Transkription fehlgeschlagen.";
         showStatus(statusEl, msg, "error");
@@ -1965,9 +2039,8 @@
       }
     });
 
-    // initial render
-    renderList();
-    if (outputEl) outputEl.classList.add("hidden");
+    renderInlinePreview();
+    if (resultsEl) resultsEl.classList.add("hidden");
   }
 
   function initAdminKnowledgePage() {
@@ -3015,6 +3088,464 @@
     window.__refreshKeys = loadAndRender;
   }
 
+  function initKeysPresetsPage() {
+    const grid = document.getElementById("preset-grid");
+    const emptyEl = document.getElementById("preset-empty");
+    const statusEl = document.getElementById("preset-status");
+    const createBtn = document.getElementById("preset-create-btn");
+    const formModal = document.getElementById("preset-form-modal");
+    const form = document.getElementById("preset-form");
+    const formTitle = document.getElementById("preset-form-title");
+    const nameInput = document.getElementById("preset-name");
+    const providerSelect = document.getElementById("preset-provider");
+    const modelSelect = document.getElementById("preset-model");
+    const oauthModal = document.getElementById("oauth-wizard-modal");
+    const oauthUrl = document.getElementById("oauth-verify-url");
+    const oauthCode = document.getElementById("oauth-user-code");
+    const oauthHint = document.getElementById("oauth-wizard-hint");
+    const oauthStatus = document.getElementById("oauth-wizard-status");
+    const oauthWizardBody = document.getElementById("oauth-wizard-body");
+    const oauthWizardCancel = document.getElementById("oauth-wizard-cancel");
+    const oauthWizardDone = document.getElementById("oauth-wizard-done");
+
+    let catalog = { providers: [] };
+    let presets = [];
+    let oauthSession = null;
+    let oauthPollTimer = null;
+    let oauthPollInFlight = false;
+    let oauthDone = false;
+    let editingPresetId = null;
+
+    function providerLabel(id) {
+      const row = catalog.providers.find((p) => p.id === id);
+      return row?.label || id;
+    }
+
+    function modelLabel(provider, modelId) {
+      const row = catalog.providers.find((p) => p.id === provider);
+      return row?.models?.find((m) => m.id === modelId)?.label || modelId;
+    }
+
+    function fillProviderSelect() {
+      if (!providerSelect) return;
+      providerSelect.innerHTML = "";
+      catalog.providers.forEach((provider) => {
+        const opt = document.createElement("option");
+        opt.value = provider.id;
+        opt.textContent = provider.enabled ? provider.label : `${provider.label} (demnächst)`;
+        opt.disabled = !provider.enabled;
+        providerSelect.appendChild(opt);
+      });
+      fillModelSelect();
+    }
+
+    function fillModelSelect() {
+      if (!modelSelect || !providerSelect) return;
+      const provider = catalog.providers.find((p) => p.id === providerSelect.value);
+      modelSelect.innerHTML = "";
+      (provider?.models || []).forEach((model) => {
+        const opt = document.createElement("option");
+        opt.value = model.id;
+        opt.textContent = model.label;
+        modelSelect.appendChild(opt);
+      });
+    }
+
+    function closeFormModal() {
+      formModal?.classList.add("hidden");
+      editingPresetId = null;
+    }
+
+    function stopOAuthPoll() {
+      if (oauthPollTimer) {
+        clearInterval(oauthPollTimer);
+        oauthPollTimer = null;
+      }
+    }
+
+    function setOAuthWizardActions(mode) {
+      const done = mode === "done";
+      oauthWizardCancel?.classList.toggle("hidden", done);
+      oauthWizardDone?.classList.toggle("hidden", !done);
+      oauthWizardBody?.classList.toggle("hidden", done);
+    }
+
+    function closeOAuthModal() {
+      stopOAuthPoll();
+      oauthDone = false;
+      oauthPollInFlight = false;
+      oauthModal?.classList.add("hidden");
+      oauthSession = null;
+      if (oauthStatus) oauthStatus.textContent = "";
+      setOAuthWizardActions("pending");
+    }
+
+    async function finishOAuthSuccess() {
+      if (oauthDone) return;
+      oauthDone = true;
+      stopOAuthPoll();
+      setOAuthStep(3);
+      if (oauthHint) oauthHint.textContent = "Anmeldung erfolgreich.";
+      if (oauthStatus) oauthStatus.textContent = "OAuth gespeichert.";
+      setOAuthWizardActions("done");
+      await loadPresets();
+    }
+
+    async function oauthAlreadyConfigured(presetId) {
+      try {
+        const data = await api("/api/admin/llm-presets");
+        return (data.presets || []).some((row) => row.id === presetId && row.oauth_configured);
+      } catch {
+        return false;
+      }
+    }
+
+    function setOAuthStep(step) {
+      oauthModal?.querySelectorAll(".oauth-step").forEach((el) => {
+        el.classList.toggle("active", el.dataset.step === String(step));
+      });
+    }
+
+    async function pollOAuthOnce() {
+      if (!oauthSession?.presetId || oauthDone) return;
+      if (oauthPollInFlight) return;
+      oauthPollInFlight = true;
+      const presetId = oauthSession.presetId;
+      const params = new URLSearchParams({
+        provider: oauthSession.provider,
+        interval: String(oauthSession.interval || 5),
+      });
+      if (oauthSession.provider === "grok") {
+        params.set("device_code", oauthSession.device_code || "");
+      } else {
+        params.set("device_auth_id", oauthSession.device_auth_id || "");
+        params.set("user_code", oauthSession.user_code || "");
+      }
+      try {
+        const res = await api(`/api/admin/llm-presets/${presetId}/oauth/poll?${params}`, { method: "POST" });
+        if (oauthDone) return;
+        if (res.status === "complete") {
+          await finishOAuthSuccess();
+          return;
+        }
+        if (res.status === "error") {
+          const detail = String(res.detail || res.status || "");
+          if (detail === "invalid_grant" && (await oauthAlreadyConfigured(presetId))) {
+            await finishOAuthSuccess();
+            return;
+          }
+          stopOAuthPoll();
+          if (oauthStatus) oauthStatus.textContent = `Fehler: ${detail || res.status}`;
+        }
+      } catch (e) {
+        if (oauthDone) return;
+        const detail = String(e?.detail || e?.message || "unbekannt");
+        if (detail.includes("invalid_grant") && (await oauthAlreadyConfigured(presetId))) {
+          await finishOAuthSuccess();
+          return;
+        }
+        if (oauthStatus) oauthStatus.textContent = `Fehler: ${detail}`;
+      } finally {
+        oauthPollInFlight = false;
+      }
+    }
+
+    function startOAuthPoll() {
+      stopOAuthPoll();
+      oauthDone = false;
+      oauthPollInFlight = false;
+      oauthPollTimer = setInterval(() => {
+        pollOAuthOnce().catch(() => {});
+      }, Math.max((oauthSession?.interval || 5) * 1000, 4000));
+      pollOAuthOnce().catch(() => {});
+    }
+
+    async function openOAuthWizard(presetId, startInfo) {
+      oauthSession = { presetId, ...startInfo };
+      oauthDone = false;
+      oauthPollInFlight = false;
+      setOAuthStep(2);
+      if (oauthUrl) {
+        oauthUrl.href = startInfo.verification_url || "#";
+        oauthUrl.textContent = startInfo.verification_url || "—";
+      }
+      if (oauthCode) oauthCode.textContent = startInfo.user_code || "—";
+      if (oauthHint) oauthHint.textContent = "Warte auf Bestätigung im Browser …";
+      if (oauthStatus) oauthStatus.textContent = "";
+      setOAuthWizardActions("pending");
+      oauthModal?.classList.remove("hidden");
+      startOAuthPoll();
+    }
+
+    function providerLogoMeta(provider) {
+      if (provider === "openai") {
+        return { src: "/static/providers/openai.svg", alt: "OpenAI" };
+      }
+      if (provider === "grok") {
+        return { src: "/static/providers/grok.svg", alt: "Grok" };
+      }
+      return null;
+    }
+
+    function renderGrid() {
+      if (!grid) return;
+      grid.innerHTML = "";
+      if (emptyEl) emptyEl.classList.toggle("hidden", presets.length > 0);
+      presets.forEach((preset) => {
+        const card = document.createElement("article");
+        card.className = "preset-card";
+        const dotClass = preset.oauth_configured ? "ok" : "warn";
+        const logo = providerLogoMeta(preset.provider);
+        const invalidModel = preset.model_id === "composer-2.5";
+        card.innerHTML = `
+          <div class="preset-card-head">
+            <h3 class="preset-card-title">${escapeHtml(preset.name)}</h3>
+            ${logo ? `<img class="preset-provider-logo" src="${logo.src}" alt="${escapeHtml(logo.alt)}" title="${escapeHtml(logo.alt)}">` : ""}
+          </div>
+          <div class="preset-card-meta">
+            <span>${escapeHtml(modelLabel(preset.provider, preset.model_id))}</span>
+            <span class="preset-status-wrap" title="${preset.oauth_configured ? "OAuth verbunden" : "OAuth ausstehend"}"><span class="preset-status-dot ${dotClass}"></span></span>
+            ${invalidModel ? `<span class="muted">Modell nicht über API verfügbar — bitte Preset neu anlegen (z. B. Grok Build 0.1)</span>` : ""}
+            ${preset.oauth_account_label ? `<span>${escapeHtml(preset.oauth_account_label)}</span>` : ""}
+          </div>
+          <div class="preset-card-actions">
+            <button type="button" class="secondary small preset-oauth-btn">OAuth</button>
+            <button type="button" class="secondary small preset-delete-btn">Löschen</button>
+          </div>
+        `;
+        card.querySelector(".preset-oauth-btn")?.addEventListener("click", async () => {
+          try {
+            showStatus(statusEl, "OAuth wird gestartet …", "");
+            const info = await api(`/api/admin/llm-presets/${preset.id}/oauth/start`, { method: "POST" });
+            showStatus(statusEl, "", "");
+            await openOAuthWizard(preset.id, info);
+          } catch (e) {
+            showStatus(statusEl, `OAuth-Start fehlgeschlagen: ${e?.detail || e?.message}`, "error");
+          }
+        });
+        card.querySelector(".preset-delete-btn")?.addEventListener("click", async () => {
+          if (!window.confirm(`Preset „${preset.name}" löschen?`)) return;
+          try {
+            await api(`/api/admin/llm-presets/${preset.id}`, { method: "DELETE" });
+            await loadPresets();
+            showStatus(statusEl, "Preset gelöscht.", "success");
+          } catch (e) {
+            showStatus(statusEl, e?.detail || e?.message || "Löschen fehlgeschlagen", "error");
+          }
+        });
+        grid.appendChild(card);
+      });
+    }
+
+    async function loadCatalog() {
+      catalog = await api("/api/admin/llm-presets/catalog");
+      fillProviderSelect();
+      const noteEl = document.getElementById("preset-catalog-note");
+      const note = catalog.notes?.composer_cli_only;
+      if (noteEl && note) {
+        noteEl.textContent = ` Hinweis: ${note}`;
+        noteEl.classList.remove("hidden");
+      }
+    }
+
+    async function loadPresets() {
+      const data = await api("/api/admin/llm-presets");
+      presets = data.presets || [];
+      renderGrid();
+    }
+
+    createBtn?.addEventListener("click", () => {
+      if (formTitle) formTitle.textContent = "Preset anlegen";
+      if (nameInput) nameInput.value = "";
+      fillProviderSelect();
+      formModal?.classList.remove("hidden");
+    });
+    document.getElementById("preset-form-close")?.addEventListener("click", closeFormModal);
+    document.getElementById("preset-form-cancel")?.addEventListener("click", closeFormModal);
+    document.getElementById("oauth-wizard-close")?.addEventListener("click", closeOAuthModal);
+    document.getElementById("oauth-wizard-cancel")?.addEventListener("click", closeOAuthModal);
+    document.getElementById("oauth-wizard-done")?.addEventListener("click", closeOAuthModal);
+    document.getElementById("oauth-copy-code")?.addEventListener("click", async () => {
+      const code = oauthCode?.textContent || "";
+      try {
+        await navigator.clipboard.writeText(code);
+        if (oauthStatus) oauthStatus.textContent = "Code kopiert.";
+      } catch {
+        if (oauthStatus) oauthStatus.textContent = "Kopieren nicht möglich.";
+      }
+    });
+    providerSelect?.addEventListener("change", fillModelSelect);
+
+    form?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const name = nameInput?.value?.trim() || "";
+      const provider = providerSelect?.value || "";
+      const model_id = modelSelect?.value || "";
+      if (!name || !provider || !model_id) return;
+      try {
+        showStatus(statusEl, "Preset wird angelegt …", "");
+        const created = await api("/api/admin/llm-presets", {
+          method: "POST",
+          body: JSON.stringify({ name, provider, model_id }),
+        });
+        closeFormModal();
+        showStatus(statusEl, "", "");
+        const info = await api(`/api/admin/llm-presets/${created.preset.id}/oauth/start`, { method: "POST" });
+        await loadPresets();
+        await openOAuthWizard(created.preset.id, info);
+      } catch (e) {
+        showStatus(statusEl, e?.detail || e?.message || "Speichern fehlgeschlagen", "error");
+      }
+    });
+
+    Promise.all([loadCatalog(), loadPresets()]).catch(() => {
+      showStatus(statusEl, "Presets konnten nicht geladen werden.", "error");
+    });
+  }
+
+  function initKeysAssignmentsPage() {
+    const bindingsBody = document.getElementById("bindings-table-body");
+    const secretsBody = document.getElementById("secrets-table-body");
+    const statusEl = document.getElementById("assign-status");
+
+    let state = null;
+
+    function presetOptions(selectedId, { allowInherit }) {
+      const opts = [];
+      if (allowInherit) {
+        opts.push(`<option value="inherit" ${!selectedId ? "selected" : ""}>— wie Chat —</option>`);
+      }
+      (state?.presets || []).forEach((preset) => {
+        opts.push(
+          `<option value="${escapeHtml(preset.id)}" ${preset.id === selectedId ? "selected" : ""}>${escapeHtml(preset.name)} (${escapeHtml(preset.model_id)})</option>`,
+        );
+      });
+      return opts.join("");
+    }
+
+    function bindingStatus(binding) {
+      if (binding.binding_type === "inherit") return "Erbt Chat-Preset";
+      const preset = binding.preset;
+      if (!preset) return "Kein Preset gewählt";
+      if (!preset.oauth_configured) return "OAuth ausstehend";
+      return `Aktiv · ${preset.provider} / ${preset.model_id}`;
+    }
+
+    function renderBindings() {
+      if (!bindingsBody) return;
+      bindingsBody.innerHTML = "";
+      (state?.bindings || []).forEach((binding) => {
+        const tr = document.createElement("tr");
+        const selected = binding.binding_type === "inherit" ? "inherit" : binding.preset_id || "";
+        tr.innerHTML = `
+          <td>
+            <strong>${escapeHtml(binding.label)}</strong>
+            <div class="muted" style="font-size:0.85rem">${escapeHtml(binding.description || "")}</div>
+          </td>
+          <td>
+            <select class="binding-preset-select" data-slot="${escapeHtml(binding.slot)}">
+              ${binding.slot === "chat"
+                ? `<option value="">— Preset wählen —</option>${(state?.presets || [])
+                    .map(
+                      (preset) =>
+                        `<option value="${escapeHtml(preset.id)}" ${preset.id === binding.preset_id ? "selected" : ""}>${escapeHtml(preset.name)} (${escapeHtml(preset.model_id)})</option>`,
+                    )
+                    .join("")}`
+                : presetOptions(selected, { allowInherit: binding.allow_inherit })}
+            </select>
+          </td>
+          <td class="muted">${escapeHtml(bindingStatus(binding))}</td>
+        `;
+        const select = tr.querySelector(".binding-preset-select");
+        select?.addEventListener("change", async () => {
+          const slot = select.dataset.slot;
+          const value = select.value;
+          if (slot === "chat" && !value) return;
+          const payload =
+            value === "inherit"
+              ? { binding_type: "inherit", preset_id: null }
+              : { binding_type: "preset", preset_id: value };
+          try {
+            await api(`/api/admin/llm-bindings/${slot}`, { method: "PATCH", body: JSON.stringify(payload) });
+            await load();
+            showStatus(statusEl, "Zuordnung gespeichert.", "success");
+          } catch (e) {
+            showStatus(statusEl, e?.detail || e?.message || "Speichern fehlgeschlagen", "error");
+          }
+        });
+        bindingsBody.appendChild(tr);
+      });
+    }
+
+    function renderSecretRow(area, label, masked, onSave) {
+      const tr = document.createElement("tr");
+      tr.dataset.area = area;
+      tr.innerHTML = `
+        <td><strong>${escapeHtml(label)}</strong></td>
+        <td class="keys-value-cell"><code class="keys-val">${escapeHtml(masked || "—")}</code></td>
+        <td class="keys-actions-cell">
+          <div class="row-actions">
+            <button type="button" class="icon-btn secondary secret-edit-btn" aria-label="Bearbeiten">${ICON_EDIT}</button>
+          </div>
+        </td>
+      `;
+      tr.querySelector(".secret-edit-btn")?.addEventListener("click", () => {
+        const valCell = tr.querySelector(".keys-value-cell");
+        const actCell = tr.querySelector(".keys-actions-cell");
+        if (!valCell || !actCell) return;
+        tr.classList.add("editing");
+        valCell.innerHTML = `
+          <div class="keys-edit-row">
+            <label>Key
+              <input type="password" class="secret-key-input" placeholder="neuer Key (leer = deaktivieren)">
+            </label>
+          </div>
+        `;
+        actCell.innerHTML = `
+          <div class="row-actions">
+            <button type="button" class="icon-btn save secret-save-btn" aria-label="Speichern">${ICON_SAVE}</button>
+            <button type="button" class="icon-btn secondary secret-cancel-btn" aria-label="Abbrechen">Abbrechen</button>
+          </div>
+        `;
+        tr.querySelector(".secret-save-btn")?.addEventListener("click", async () => {
+          const value = tr.querySelector(".secret-key-input")?.value ?? "";
+          try {
+            await onSave(value);
+            await load();
+            showStatus(statusEl, "Gespeichert.", "success");
+          } catch (e) {
+            showStatus(statusEl, e?.detail || e?.message || "Speichern fehlgeschlagen", "error");
+          }
+        });
+        tr.querySelector(".secret-cancel-btn")?.addEventListener("click", () => renderSecrets());
+      });
+      return tr;
+    }
+
+    function renderSecrets() {
+      if (!secretsBody) return;
+      secretsBody.innerHTML = "";
+      secretsBody.appendChild(
+        renderSecretRow("embedding", "Embeddings", state?.embedding?.api_key_masked, (api_key) =>
+          api("/api/admin/keys/embedding", { method: "PATCH", body: JSON.stringify({ api_key }) }),
+        ),
+      );
+      secretsBody.appendChild(
+        renderSecretRow("integration", "Integration API", state?.integration?.api_key_masked, (api_key) =>
+          api("/api/admin/keys/integration", { method: "PATCH", body: JSON.stringify({ api_key }) }),
+        ),
+      );
+    }
+
+    async function load() {
+      state = await api("/api/admin/keys");
+      renderBindings();
+      renderSecrets();
+    }
+
+    load().catch(() => showStatus(statusEl, "Zuordnung konnte nicht geladen werden.", "error"));
+  }
+
   function kcStatusLabel(status) {
     if (status === "pending") return "Offen";
     if (status === "adopted") return "Übernommen";
@@ -3965,5 +4496,7 @@
   if (page === "admin_users") initUsersPage();
   if (page === "admin_roles") initRolesPage();
   if (page === "admin_keys") initKeysPage();
+  if (page === "admin_keys_presets") initKeysPresetsPage();
+  if (page === "admin_keys_assignments") initKeysAssignmentsPage();
   if (page === "customers") initCustomersPage();
 })();

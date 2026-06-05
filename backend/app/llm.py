@@ -212,31 +212,171 @@ class CodexOAuthLLM:
         return answer
 
 
+class XaiOAuthLLM:
+    """xAI Responses API via Grok OAuth tokens."""
+
+    def __init__(self, auth_path: Path, base_url: str, model: str) -> None:
+        self._auth_path = auth_path
+        self._base_url = base_url.rstrip("/")
+        self._model = model
+
+    def _headers(self) -> dict[str, str]:
+        from app.oauth_xai_flow import auth_headers
+
+        return auth_headers(self._auth_path)
+
+    def chat(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None) -> LLMResponse:
+        has_tool_results = any(message.get("role") == "tool" for message in messages)
+        if tools and not has_tool_results:
+            query = _last_user_message(messages)
+            call_id = f"call_{uuid.uuid4().hex[:12]}"
+            tool_call = ToolCall(
+                id=call_id,
+                name="search_knowledge_base",
+                arguments={"query": query},
+            )
+            return LLMResponse(
+                content=None,
+                tool_calls=[tool_call],
+                assistant_message={
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": call_id,
+                            "type": "function",
+                            "function": {
+                                "name": tool_call.name,
+                                "arguments": json.dumps(tool_call.arguments),
+                            },
+                        }
+                    ],
+                },
+            )
+
+        system_parts = [message["content"] for message in messages if message.get("role") == "system"]
+        instructions = "\n\n".join(part for part in system_parts if isinstance(part, str))
+        input_messages: list[dict[str, Any]] = []
+        for message in messages:
+            role = message.get("role")
+            content = message.get("content")
+            if role in {"user", "assistant"} and content:
+                input_messages.append({"role": role, "content": content})
+            elif role == "tool" and content:
+                input_messages.append({"role": "user", "content": f"[Tool-Ergebnis]\n{content}"})
+
+        payload = {
+            "model": self._model,
+            "input": input_messages,
+            "instructions": instructions,
+            "store": False,
+            "stream": True,
+        }
+
+        try:
+            answer = self._stream_response(payload)
+        except Exception as exc:
+            raise LLMError(str(exc)) from exc
+
+        return LLMResponse(
+            content=answer,
+            tool_calls=[],
+            assistant_message={"role": "assistant", "content": answer},
+        )
+
+    def _stream_response(self, payload: dict[str, Any]) -> str:
+        parts: list[str] = []
+        with httpx.stream(
+            "POST",
+            f"{self._base_url}/responses",
+            headers=self._headers(),
+            json=payload,
+            timeout=120.0,
+        ) as response:
+            if response.status_code >= 400:
+                body = response.read().decode(errors="replace")
+                raise LLMError(f"{response.status_code} {body[:300]}")
+
+            for line in response.iter_lines():
+                if not line.startswith("data: ") or line == "data: [DONE]":
+                    continue
+                event = json.loads(line[6:])
+                if event.get("type") == "response.output_text.delta":
+                    parts.append(event.get("delta") or "")
+
+        answer = "".join(parts).strip()
+        if not answer:
+            raise LLMError("empty_answer")
+        return answer
+
+
 _llm_backend: LLMBackend | None = None
 _similarity_backend: LLMBackend | None = None
+
+
+def _build_backend_from_preset(preset) -> LLMBackend:
+    settings = get_settings()
+    auth_path = Path(preset.oauth_token_path)
+    if preset.provider == "openai":
+        return CodexOAuthLLM(
+            auth_path=auth_path,
+            base_url=settings.CODEX_BASE_URL,
+            model=preset.model_id,
+        )
+    if preset.provider == "grok":
+        return XaiOAuthLLM(
+            auth_path=auth_path,
+            base_url=settings.XAI_BASE_URL,
+            model=preset.model_id,
+        )
+    raise LLMError(f"unsupported_provider:{preset.provider}")
+
+
+def _legacy_openai_backend(db: Session | None, *, model: str | None = None) -> LLMBackend:
+    from app.secrets_admin import get_effective_secret
+
+    settings = get_settings()
+    auth_mode = get_effective_secret(db, "chat_auth_mode") or settings.LLM_AUTH_MODE
+    chat_model = model or settings.CHAT_MODEL
+    if auth_mode == "chatgpt_oauth":
+        auth_path = Path(settings.codex_oauth_auth_path)
+        return CodexOAuthLLM(
+            auth_path=auth_path,
+            base_url=settings.CODEX_BASE_URL,
+            model=chat_model,
+        )
+    key = get_effective_secret(db, "chat_api_key") or settings.OPENAI_API_KEY
+    return OpenAILLM(
+        api_key=key,
+        base_url=settings.OPENAI_BASE_URL,
+        model=chat_model,
+    )
+
+
+def _resolve_slot_llm(db: Session, slot: str) -> LLMBackend:
+    from app.db import SessionLocal
+    from app.llm_presets import ensure_legacy_migration, resolve_preset_for_slot
+
+    if db is None:
+        tmp = SessionLocal()
+        try:
+            return _resolve_slot_llm(tmp, slot)
+        finally:
+            tmp.close()
+
+    ensure_legacy_migration(db)
+    preset = resolve_preset_for_slot(db, slot)
+    if preset is not None:
+        return _build_backend_from_preset(preset)
+    if slot == "chat":
+        return _legacy_openai_backend(db)
+    return _resolve_slot_llm(db, "chat")
 
 
 def get_llm(db: Session | None = None) -> LLMBackend:
     global _llm_backend
     if _llm_backend is None:
-        from app.secrets_admin import get_effective_secret
-
-        settings = get_settings()
-        auth_mode = get_effective_secret(db, "chat_auth_mode") or settings.LLM_AUTH_MODE
-        if auth_mode == "chatgpt_oauth":
-            auth_path = Path(settings.codex_oauth_auth_path)
-            _llm_backend = CodexOAuthLLM(
-                auth_path=auth_path,
-                base_url=settings.CODEX_BASE_URL,
-                model=settings.CHAT_MODEL,
-            )
-        else:
-            key = get_effective_secret(db, "chat_api_key") or settings.OPENAI_API_KEY
-            _llm_backend = OpenAILLM(
-                api_key=key,
-                base_url=settings.OPENAI_BASE_URL,
-                model=settings.CHAT_MODEL,
-            )
+        _llm_backend = _resolve_slot_llm(db, "chat")
     return _llm_backend
 
 
@@ -248,36 +388,7 @@ def set_llm(backend: LLMBackend | None) -> None:
 def get_similarity_llm(db: Session | None = None) -> LLMBackend:
     global _similarity_backend
     if _similarity_backend is None:
-        from app.secrets_admin import get_effective_secret
-
-        settings = get_settings()
-        mode = get_effective_secret(db, "similarity_mode") or "same_as_chat"
-        if mode == "same_as_chat":
-            _similarity_backend = get_llm(db=db)
-            return _similarity_backend
-        sim_auth = (
-            get_effective_secret(db, "similarity_auth_mode")
-            or get_effective_secret(db, "chat_auth_mode")
-            or settings.LLM_AUTH_MODE
-        )
-        if sim_auth == "chatgpt_oauth":
-            auth_path = Path(settings.codex_oauth_auth_path)
-            _similarity_backend = CodexOAuthLLM(
-                auth_path=auth_path,
-                base_url=settings.CODEX_BASE_URL,
-                model=settings.CHAT_MODEL,
-            )
-        else:
-            key = (
-                get_effective_secret(db, "similarity_api_key")
-                or get_effective_secret(db, "chat_api_key")
-                or settings.OPENAI_API_KEY
-            )
-            _similarity_backend = OpenAILLM(
-                api_key=key,
-                base_url=settings.OPENAI_BASE_URL,
-                model=settings.CHAT_MODEL,
-            )
+        _similarity_backend = _resolve_slot_llm(db, "similarity")
     return _similarity_backend
 
 
@@ -334,12 +445,55 @@ def _extract_responses_text(data: dict[str, Any]) -> str:
     return "".join(parts).strip()
 
 
-def _transcribe_image_oauth(image_data: bytes, mime_type: str, prompt: str) -> str:
+def _vision_auth_context(db: Session | None) -> tuple[str, str, Path, str]:
+    """Returns provider, model, auth_path, codex_or_xai_base_url."""
+    from app.db import SessionLocal
+    from app.llm_presets import ensure_legacy_migration, resolve_preset_for_slot
+
+    if db is None:
+        tmp = SessionLocal()
+        try:
+            return _vision_auth_context(tmp)
+        finally:
+            tmp.close()
+
     settings = get_settings()
-    auth_path = Path(settings.codex_oauth_auth_path)
-    headers = _oauth_auth_headers(auth_path, settings.CODEX_BASE_URL, accept_json=False)
+    ensure_legacy_migration(db)
+    preset = resolve_preset_for_slot(db, "vision")
+    if preset is not None:
+        base = settings.CODEX_BASE_URL if preset.provider == "openai" else settings.XAI_BASE_URL
+        return preset.provider, preset.model_id, Path(preset.oauth_token_path), base
+    return _vision_auth_context_legacy(db)
+
+
+def _vision_auth_context_legacy(db: Session | None) -> tuple[str, str, Path, str]:
+    from app.secrets_admin import get_effective_secret
+
+    settings = get_settings()
+    auth_mode = get_effective_secret(db, "chat_auth_mode") or settings.LLM_AUTH_MODE
+    if auth_mode == "chatgpt_oauth":
+        return "openai", settings.VISION_MODEL, Path(settings.codex_oauth_auth_path), settings.CODEX_BASE_URL
+    return "api_key", settings.VISION_MODEL, Path(), settings.OPENAI_BASE_URL
+
+
+def _transcribe_image_oauth_stream(
+    image_data: bytes,
+    mime_type: str,
+    prompt: str,
+    *,
+    provider: str,
+    auth_path: Path,
+    base_url: str,
+    model: str,
+) -> str:
+    if provider == "grok":
+        from app.oauth_xai_flow import auth_headers
+
+        headers = auth_headers(auth_path)
+    else:
+        headers = _oauth_auth_headers(auth_path, base_url, accept_json=False)
     payload = {
-        "model": settings.VISION_MODEL,
+        "model": model,
         "instructions": prompt,
         "input": [
             {
@@ -361,7 +515,7 @@ def _transcribe_image_oauth(image_data: bytes, mime_type: str, prompt: str) -> s
     try:
         with httpx.stream(
             "POST",
-            f"{settings.CODEX_BASE_URL.rstrip('/')}/responses",
+            f"{base_url.rstrip('/')}/responses",
             headers=headers,
             json=payload,
             timeout=120.0,
@@ -387,13 +541,28 @@ def _transcribe_image_oauth(image_data: bytes, mime_type: str, prompt: str) -> s
     return text
 
 
-def _transcribe_image_api_key(image_data: bytes, mime_type: str, prompt: str, *, api_key: str | None = None) -> str:
+def _transcribe_image_oauth(image_data: bytes, mime_type: str, prompt: str) -> str:
+    provider, model, auth_path, base_url = _vision_auth_context(None)
+    if provider == "api_key":
+        raise LLMError("vision_oauth_not_configured")
+    return _transcribe_image_oauth_stream(
+        image_data,
+        mime_type,
+        prompt,
+        provider=provider,
+        auth_path=auth_path,
+        base_url=base_url,
+        model=model,
+    )
+
+
+def _transcribe_image_api_key(image_data: bytes, mime_type: str, prompt: str, *, api_key: str | None = None, model: str | None = None) -> str:
     settings = get_settings()
     key = api_key or settings.OPENAI_API_KEY
     client = OpenAI(api_key=key, base_url=settings.OPENAI_BASE_URL)
     try:
         response = client.chat.completions.create(
-            model=settings.VISION_MODEL,
+            model=model or settings.VISION_MODEL,
             messages=[
                 {
                     "role": "user",
@@ -423,11 +592,20 @@ def transcribe_image(image_data: bytes, mime_type: str, *, prompt: str) -> str:
     if _vision_transcriber_override is not None:
         return _vision_transcriber_override(image_data, mime_type, prompt)
 
+    provider, model, auth_path, base_url = _vision_auth_context(None)
+    if provider in {"openai", "grok"}:
+        return _transcribe_image_oauth_stream(
+            image_data,
+            mime_type,
+            prompt,
+            provider=provider,
+            auth_path=auth_path,
+            base_url=base_url,
+            model=model,
+        )
+
     from app.secrets_admin import get_effective_secret
 
     settings = get_settings()
-    auth_mode = get_effective_secret(None, "chat_auth_mode") or settings.LLM_AUTH_MODE
-    if auth_mode == "chatgpt_oauth":
-        return _transcribe_image_oauth(image_data, mime_type, prompt)
     key = get_effective_secret(None, "chat_api_key") or settings.OPENAI_API_KEY
-    return _transcribe_image_api_key(image_data, mime_type, prompt, api_key=key)
+    return _transcribe_image_api_key(image_data, mime_type, prompt, api_key=key, model=model)

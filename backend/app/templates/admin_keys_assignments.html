@@ -1,0 +1,47 @@
+{% extends "layout.html" %}
+
+{% block title %}LLM Zuordnung · MARIS - Q/A Helper{% endblock %}
+{% block page_title %}LLM Zuordnung{% endblock %}
+
+{% block content %}
+<section class="panel keys-admin-panel">
+  <nav class="keys-subnav" aria-label="Keys-Bereich">
+    <a href="/admin/keys/presets" class="keys-subnav-link">Presets</a>
+    <a href="/admin/keys/assignments" class="keys-subnav-link active">Zuordnung</a>
+  </nav>
+
+  <p class="muted keys-intro">
+    Welches Preset für welche Funktion genutzt wird. Embeddings und Integration bleiben als API-Key/Token separat.
+  </p>
+
+  <div class="customer-list-wrap">
+    <h2>Funktions-Slots</h2>
+    <table class="customer-table" id="bindings-table">
+      <thead>
+        <tr>
+          <th>Funktion</th>
+          <th>Preset</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="bindings-table-body"></tbody>
+    </table>
+  </div>
+
+  <div class="customer-list-wrap keys-secrets-wrap">
+    <h2>Weitere Keys</h2>
+    <table class="customer-table" id="secrets-table">
+      <thead>
+        <tr>
+          <th>Bereich</th>
+          <th>Wert</th>
+          <th>Aktionen</th>
+        </tr>
+      </thead>
+      <tbody id="secrets-table-body"></tbody>
+    </table>
+  </div>
+
+  <p id="assign-status" class="status" aria-live="polite"></p>
+</section>
+{% endblock %}
