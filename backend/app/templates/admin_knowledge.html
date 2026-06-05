@@ -5,38 +5,42 @@
 
 {% block content %}
 <section class="panel kb-panel full-page" id="admin-knowledge-panel">
-  <form id="admin-ingest-form" class="ingest-form kb-ingest-form">
-    <label>
-      Titel
-      <input type="text" id="admin-ingest-title" maxlength="200" placeholder="Optional — sonst Dateiname">
-    </label>
-    <label>
-      Text / Einleitung / Schlagworte
-      <textarea id="admin-ingest-text" rows="3" placeholder="Optional…"></textarea>
-    </label>
-    <div class="ingest-field">
-      <span class="ingest-field-label">Datei</span>
-      <div id="admin-dropzone" class="dropzone dropzone-compact" tabindex="0" role="button" aria-label="Datei auswählen">
-        <p id="admin-file-label">Datei hierher ziehen, klicken oder Strg+V</p>
-        <p class="muted dropzone-hint">Optional · .txt · .md · .pdf · .docx · .png · .jpg</p>
-        <input type="file" id="admin-file-input" accept=".txt,.md,.pdf,.docx,.png,.jpg,.jpeg,.webp,.gif" hidden>
-      </div>
+  <div class="kb-workspace">
+    <div class="kb-workspace-main">
+      <form id="admin-ingest-form" class="ingest-form kb-ingest-form">
+        <label>
+          Titel
+          <input type="text" id="admin-ingest-title" maxlength="200" placeholder="Optional — sonst Dateiname">
+        </label>
+        <label>
+          Text / Einleitung / Schlagworte
+          <textarea id="admin-ingest-text" rows="4" placeholder="Optional…"></textarea>
+        </label>
+        <div class="ingest-field">
+          <span class="ingest-field-label">Datei</span>
+          <div id="admin-dropzone" class="dropzone kb-dropzone" tabindex="0" role="button" aria-label="Datei auswählen">
+            <p id="admin-file-label">Datei hierher ziehen, klicken oder Strg+V</p>
+            <p class="muted dropzone-hint">Optional · .txt · .md · .pdf · .docx · .png · .jpg</p>
+            <input type="file" id="admin-file-input" accept=".txt,.md,.pdf,.docx,.png,.jpg,.jpeg,.webp,.gif" hidden>
+          </div>
+        </div>
+        <button type="submit" id="admin-ingest-submit">Einpflegen</button>
+        <p id="admin-ingest-status" class="status" aria-live="polite"></p>
+      </form>
     </div>
-    <button type="submit" id="admin-ingest-submit">Einpflegen</button>
-    <p id="admin-ingest-status" class="status" aria-live="polite"></p>
-  </form>
 
-  <div class="doc-list-wrap">
-    <div class="doc-list-toolbar">
-      <h3>Dokumente <span id="admin-doc-count" class="muted">(0)</span></h3>
-      <label class="doc-search-filter">
+    <aside class="kb-workspace-side" aria-label="Dokumente">
+      <label class="doc-search-filter kb-doc-search">
         Suche
         <input type="search" id="admin-doc-search" placeholder="Titel, Inhalt, Dateiname…" autocomplete="off">
       </label>
-    </div>
-    <p id="admin-doc-list-status" class="status" aria-live="polite"></p>
-    <ul id="admin-doc-list" class="doc-list"></ul>
-    <p id="admin-doc-empty" class="muted">Noch keine Dokumente.</p>
+      <h3 class="kb-doc-heading">Dokumente <span id="admin-doc-count" class="muted">(0)</span></h3>
+      <p id="admin-doc-list-status" class="status kb-doc-list-status" aria-live="polite"></p>
+      <div class="kb-doc-list-scroll">
+        <ul id="admin-doc-list" class="doc-list doc-list-compact"></ul>
+        <p id="admin-doc-empty" class="muted kb-doc-empty">Noch keine Dokumente.</p>
+      </div>
+    </aside>
   </div>
 </section>
 {% endblock %}

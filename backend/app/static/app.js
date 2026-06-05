@@ -316,18 +316,9 @@
 
       const meta = document.createElement("div");
       meta.className = "doc-meta";
-      const customerLabel = showCustomer
-        ? `<span class="badge">${escapeHtml(customerLabels[doc.customer_id] || doc.customer_id)}</span> · `
-        : "";
       meta.innerHTML = `
-        <strong>${escapeHtml(doc.title)}</strong>
-        <span>
-          ${customerLabel}
-          <span class="badge ${doc.status === "failed" ? "failed" : ""}">${escapeHtml(doc.source_type)}</span>
-          · ${doc.chunk_count} Chunks
-          ${doc.status === "failed" ? "· fehlgeschlagen" : ""}
-          ${renderExtractionBadges(doc.extraction_meta)}
-        </span>
+        <strong class="doc-title" title="${escapeHtml(doc.title)}">${escapeHtml(doc.title)}</strong>
+        <div class="doc-meta-badges">${renderDocumentBadges(doc, { showCustomer })}</div>
       `;
 
       item.appendChild(meta);
@@ -673,19 +664,42 @@
     });
   }
 
+  function formatDocSourceType(sourceType) {
+    if (!sourceType) return "—";
+    const raw = String(sourceType);
+    if (raw.startsWith("kc:")) return raw.slice(3);
+    return raw;
+  }
+
   function renderExtractionBadges(extractionMeta) {
     if (!extractionMeta || typeof extractionMeta !== "object") return "";
     const parts = [];
     if (extractionMeta.coverage === "partial" && extractionMeta.image_count > 0) {
       const missing = Math.max(0, extractionMeta.image_count - (extractionMeta.images_processed || 0));
       if (missing > 0) {
-        parts.push(`<span class="badge partial">· ${missing} Bild(er) nicht verarbeitet</span>`);
+        parts.push(`<span class="badge partial">${missing} Bild(er) offen</span>`);
       }
     }
     if (extractionMeta.vision_used) {
-      parts.push('<span class="badge vision">· Vision-OCR</span>');
+      parts.push('<span class="badge vision">Vision-OCR</span>');
     }
-    return parts.join(" ");
+    return parts.join("");
+  }
+
+  function renderDocumentBadges(doc, { showCustomer = false } = {}) {
+    const badges = [];
+    if (showCustomer) {
+      badges.push(`<span class="badge">${escapeHtml(customerLabels[doc.customer_id] || doc.customer_id)}</span>`);
+    }
+    badges.push(
+      `<span class="badge ${doc.status === "failed" ? "failed" : ""}">${escapeHtml(formatDocSourceType(doc.source_type))}</span>`,
+    );
+    badges.push(`<span class="badge">${doc.chunk_count} Chunks</span>`);
+    if (doc.status === "failed") {
+      badges.push('<span class="badge failed">fehlgeschlagen</span>');
+    }
+    badges.push(renderExtractionBadges(doc.extraction_meta));
+    return badges.filter(Boolean).join("");
   }
 
   function resolveInspectPath(apiPath) {
