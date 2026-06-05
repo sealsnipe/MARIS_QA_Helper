@@ -2150,6 +2150,59 @@
     );
   }
 
+  function roleOptionsPanelMarkup({ nameValue = "", nameInputClass = "", nameInputId = "", isAdmin = false, autoCustomers = false } = {}) {
+    const nameAttrs = [
+      nameInputId ? `id="${escapeHtml(nameInputId)}"` : "",
+      nameInputClass ? `class="${escapeHtml(nameInputClass)}"` : "",
+      !nameInputClass && !nameInputId ? "" : "",
+    ].filter(Boolean).join(" ");
+    const adminActive = isAdmin ? "is-active" : "is-inactive";
+    const autoActive = autoCustomers ? "is-active" : "is-inactive";
+    return `
+      <div class="role-options-panel">
+        <label class="role-name-field">
+          <span class="ingest-field-label">Name</span>
+          <input type="text" maxlength="120" placeholder="z. B. Support BG Frankfurt" ${nameAttrs} value="${escapeHtml(nameValue)}" required>
+        </label>
+        <div class="role-toggle-group" role="group" aria-label="Rollenoptionen">
+          <button type="button" class="role-toggle-btn ${adminActive}" data-toggle="admin" aria-pressed="${isAdmin ? "true" : "false"}" title="Administrator — voller Systemzugriff">ADM</button>
+          <button type="button" class="role-toggle-btn ${autoActive}" data-toggle="auto-customers" aria-pressed="${autoCustomers ? "true" : "false"}" title="Neue Kunden automatisch zuweisen">AK</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function bindRoleToggleButtons(panel, options = {}) {
+    if (!panel) return;
+    const { customersContainer = null } = options;
+    panel.querySelectorAll(".role-toggle-btn[data-toggle]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const next = btn.getAttribute("aria-pressed") !== "true";
+        btn.setAttribute("aria-pressed", next ? "true" : "false");
+        btn.classList.toggle("is-active", next);
+        btn.classList.toggle("is-inactive", !next);
+        if (btn.dataset.toggle === "auto-customers" && next && customersContainer) {
+          customersContainer.querySelectorAll('input[type="checkbox"]').forEach((el) => {
+            el.checked = true;
+          });
+        }
+      });
+    });
+  }
+
+  function readRoleOption(panel, key) {
+    const btn = panel?.querySelector(`.role-toggle-btn[data-toggle="${key}"]`);
+    return btn?.getAttribute("aria-pressed") === "true";
+  }
+
+  function resetRoleToggleButtons(panel) {
+    panel?.querySelectorAll(".role-toggle-btn[data-toggle]").forEach((btn) => {
+      btn.setAttribute("aria-pressed", "false");
+      btn.classList.remove("is-active");
+      btn.classList.add("is-inactive");
+    });
+  }
+
   function readCustomerCheckboxValues(container, namePrefix) {
     return readCheckboxValues(container, namePrefix);
   }
@@ -2181,12 +2234,13 @@
     const roleListStatus = document.getElementById("role-list-status");
     const roleCreateForm = document.getElementById("role-create-form");
     const roleCreateName = document.getElementById("role-create-name");
-    const roleCreateAdmin = document.getElementById("role-create-admin");
-    const roleCreateAutoCustomers = document.getElementById("role-create-auto-customers");
+    const roleCreateOptions = document.getElementById("role-create-options");
     const roleCreateCustomers = document.getElementById("role-create-customers");
     const roleCreateStatus = document.getElementById("role-create-status");
     let assignableCustomers = [];
     let customerNameById = {};
+
+    bindRoleToggleButtons(roleCreateOptions, { customersContainer: roleCreateCustomers });
 
     function customerBadges(ids) {
       const slugs = ids || [];
@@ -2229,11 +2283,12 @@
         editRow.innerHTML = `
           <td colspan="5">
             <div class="ingest-form">
-              <div class="customer-form-row user-form-row">
-                <label>Name<input type="text" class="role-edit-name" value="${escapeHtml(role.name)}" maxlength="120"></label>
-                <label class="user-admin-checkbox"><input type="checkbox" class="role-edit-admin" ${role.is_admin ? "checked" : ""}> Administrator</label>
-                <label class="user-admin-checkbox"><input type="checkbox" class="role-edit-auto-customers" ${role.auto_add_new_customers ? "checked" : ""}> Neue Kunden auto-hinzufügen</label>
-              </div>
+              ${roleOptionsPanelMarkup({
+                nameValue: role.name,
+                nameInputClass: "role-edit-name",
+                isAdmin: role.is_admin,
+                autoCustomers: role.auto_add_new_customers,
+              })}
               <fieldset class="user-customers-fieldset">
                 <legend>Kunden (Preset)</legend>
                 <div class="role-edit-customers user-customer-checkboxes"></div>
@@ -2246,6 +2301,9 @@
           </td>
         `;
         roleTbody.appendChild(editRow);
+        bindRoleToggleButtons(editRow.querySelector(".role-options-panel"), {
+          customersContainer: editRow.querySelector(".role-edit-customers"),
+        });
         renderCustomerCheckboxes(
           editRow.querySelector(".role-edit-customers"),
           assignableCustomers,
@@ -2287,8 +2345,9 @@
         if (!editRow) return;
         const roleId = editRow.dataset.roleId;
         const name = editRow.querySelector(".role-edit-name")?.value.trim() || "";
-        const isAdmin = Boolean(editRow.querySelector(".role-edit-admin")?.checked);
-        const autoCustomers = Boolean(editRow.querySelector(".role-edit-auto-customers")?.checked);
+        const optionsPanel = editRow.querySelector(".role-options-panel");
+        const isAdmin = readRoleOption(optionsPanel, "admin");
+        const autoCustomers = readRoleOption(optionsPanel, "auto-customers");
         const customerIds = readCustomerCheckboxValues(
           editRow.querySelector(".role-edit-customers"),
           `role-edit-${roleId}`,
@@ -2338,8 +2397,8 @@
     roleCreateForm?.addEventListener("submit", async (event) => {
       event.preventDefault();
       const name = (roleCreateName?.value || "").trim();
-      const isAdmin = Boolean(roleCreateAdmin?.checked);
-      const autoCustomers = Boolean(roleCreateAutoCustomers?.checked);
+      const isAdmin = readRoleOption(roleCreateOptions, "admin");
+      const autoCustomers = readRoleOption(roleCreateOptions, "auto-customers");
       const customerIds = readCustomerCheckboxValues(roleCreateCustomers, "role-create");
       if (!name) {
         showStatus(roleCreateStatus, "Rollenname ist Pflicht.", "error");
@@ -2357,8 +2416,7 @@
           }),
         });
         if (roleCreateName) roleCreateName.value = "";
-        if (roleCreateAdmin) roleCreateAdmin.checked = false;
-        if (roleCreateAutoCustomers) roleCreateAutoCustomers.checked = false;
+        resetRoleToggleButtons(roleCreateOptions);
         roleCreateCustomers?.querySelectorAll("input[type=checkbox]").forEach((el) => {
           el.checked = false;
         });

@@ -984,6 +984,17 @@ select:focus-visible,
   margin-bottom: 1.5rem;
 }
 
+.customer-create-form button[type="submit"] {
+  width: auto;
+  align-self: flex-start;
+  margin-top: 0.1rem;
+  padding: 0.38rem 0.85rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.2;
+  border-radius: 7px;
+}
+
 .customer-form-row {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) minmax(220px, 2fr) auto;
@@ -993,6 +1004,36 @@ select:focus-visible,
 
 .customer-list-wrap {
   margin-top: 1rem;
+}
+
+.admin-list-panel {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.14);
+  padding: 0.75rem 0.85rem;
+}
+
+.admin-list-panel > h2 {
+  margin: 0 0 0.65rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.admin-list-panel .customer-table {
+  margin-top: 0.15rem;
+}
+
+.admin-list-panel #role-empty,
+.admin-list-panel #user-empty {
+  margin: 0.35rem 0 0;
+}
+
+.role-edit-row .user-customers-fieldset,
+.user-edit-row .user-customers-fieldset {
+  display: block;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .customer-table {
@@ -1035,16 +1076,18 @@ select:focus-visible,
 }
 
 .user-customers-fieldset {
-  border: none;
-  padding: 0;
-  margin: 0.75rem 0 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.14);
+  padding: 0.65rem 0.85rem 0.75rem;
+  margin: 0 0 1rem;
 }
 
 .user-customers-fieldset legend {
-  padding: 0;
+  padding: 0 0.25rem;
   margin-bottom: 0.45rem;
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 0.88rem;
 }
 
 .user-customer-checkboxes {
@@ -1053,9 +1096,9 @@ select:focus-visible,
   gap: 0;
   max-height: 220px;
   overflow-y: auto;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(42, 47, 58, 0.85);
   border-radius: 8px;
-  background: rgba(0, 0, 0, 0.12);
+  background: rgba(0, 0, 0, 0.1);
 }
 
 .user-customer-checkboxes:empty::after {
@@ -1099,8 +1142,7 @@ select:focus-visible,
 }
 
 .user-customer-row-body {
-  display: grid;
-  grid-template-columns: 8rem minmax(0, 1fr);
+  display: flex;
   align-items: center;
   gap: 0.65rem;
   flex: 1;
@@ -1109,16 +1151,98 @@ select:focus-visible,
 }
 
 .user-customer-slug {
+  display: inline-block;
+  width: fit-content;
+  max-width: 100%;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.78rem;
   color: var(--accent);
-  background: rgba(76, 139, 245, 0.12);
-  padding: 0.1rem 0.4rem;
-  border-radius: 4px;
+  background: rgba(76, 139, 245, 0.1);
+  border: 1px solid rgba(76, 139, 245, 0.32);
+  padding: 0.12rem 0.45rem;
+  border-radius: 6px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+.role-options-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  padding: 0.75rem 0.85rem;
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.role-name-field {
+  flex: 1 1 320px;
+  min-width: 220px;
+  margin: 0;
+}
+
+.role-name-field input[type="text"] {
+  width: 100%;
+}
+
+.role-toggle-group {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  padding-bottom: 0.1rem;
+}
+
+.role-toggle-btn {
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.role-toggle-btn.is-active,
+.role-toggle-btn[aria-pressed="true"] {
+  background: rgba(63, 185, 80, 0.2);
+  border-color: rgba(63, 185, 80, 0.55);
+  color: #9be9a8;
+}
+
+.role-toggle-btn.is-inactive,
+.role-toggle-btn[aria-pressed="false"] {
+  background: rgba(154, 163, 178, 0.1);
+  border-color: rgba(154, 163, 178, 0.35);
+  color: var(--text-muted);
+}
+
+.role-toggle-btn:hover {
+  filter: brightness(1.1);
+}
+
+.role-edit-row td {
+  background: rgba(76, 139, 245, 0.06);
+}
+
+.user-slug-badge {
+  display: inline-block;
+  width: fit-content;
   max-width: 100%;
+  padding: 0.12rem 0.45rem;
+  border-radius: 6px;
+  border: 1px solid rgba(76, 139, 245, 0.32);
+  background: rgba(76, 139, 245, 0.1);
 }
 
 .user-customer-name {

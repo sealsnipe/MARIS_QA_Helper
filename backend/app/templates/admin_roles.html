@@ -9,19 +9,15 @@
 
   <form id="role-create-form" class="ingest-form customer-create-form">
     <h2>Neue Rolle</h2>
-    <div class="customer-form-row user-form-row">
-      <label>
-        Name
+    <div id="role-create-options" class="role-options-panel">
+      <label class="role-name-field">
+        <span class="ingest-field-label">Name</span>
         <input type="text" id="role-create-name" maxlength="120" placeholder="z. B. Support BG Frankfurt" required>
       </label>
-      <label class="user-admin-checkbox">
-        <input type="checkbox" id="role-create-admin">
-        Administrator
-      </label>
-      <label class="user-admin-checkbox">
-        <input type="checkbox" id="role-create-auto-customers">
-        Neue Kunden auto-hinzufügen
-      </label>
+      <div class="role-toggle-group" role="group" aria-label="Rollenoptionen">
+        <button type="button" class="role-toggle-btn is-inactive" data-toggle="admin" aria-pressed="false" title="Administrator — voller Systemzugriff">ADM</button>
+        <button type="button" class="role-toggle-btn is-inactive" data-toggle="auto-customers" aria-pressed="false" title="Neue Kunden automatisch zuweisen">AK</button>
+      </div>
     </div>
     <fieldset class="user-customers-fieldset">
       <legend>Kunden (Preset)</legend>
@@ -31,7 +27,7 @@
     <p id="role-create-status" class="status" aria-live="polite"></p>
   </form>
 
-  <div class="customer-list-wrap">
+  <div class="customer-list-wrap admin-list-panel">
     <h2>Rollen <span id="role-count" class="muted">(0)</span></h2>
     <table class="customer-table" id="role-table">
       <thead>
