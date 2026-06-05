@@ -25,15 +25,14 @@
     });
   }
 
+  let refreshAdminKnowledgeDocuments = null;
+
   function syncAdminPageScopeFromSidebar(customerId) {
     const scope = adminScopeFromCustomerId(customerId);
     if (page === "admin_knowledge") {
-      const scopeSelect = document.getElementById("knowledge-scope");
-      if (!scopeSelect) return;
-      if (scopeSelect.querySelector(`option[value="${scope}"]`)) {
-        scopeSelect.value = scope;
-        scopeSelect.dispatchEvent(new Event("change"));
-      }
+      syncActiveCustomerFromSelect();
+      refreshAdminKnowledgeDocuments?.().catch(() => {});
+      return;
     }
     if (page === "admin_prompts") {
       const promptScope = document.getElementById("prompt-scope");
@@ -127,10 +126,6 @@
       noCustomerBanner?.classList.remove("hidden");
       pageContent?.classList.add("disabled");
     }
-
-    const kbName = document.getElementById("kb-customer-name");
-    const suffix = enabled ? `(${activeCustomerName})` : "";
-    if (kbName) kbName.textContent = suffix;
   }
 
   function syncActiveCustomerFromSelect() {
@@ -301,11 +296,18 @@
   }
 
   function renderDocuments(documents, listEl, countEl, emptyEl, deletePath, options = {}) {
-    const { readOnly = false, showCustomer = false, adminEdit = null } = options;
+    const { readOnly = false, showCustomer = false, adminEdit = null, searchActive = false } = options;
     if (!listEl) return;
     listEl.innerHTML = "";
     if (countEl) countEl.textContent = `(${documents.length})`;
     emptyEl?.classList.toggle("hidden", documents.length > 0);
+    if (emptyEl && documents.length === 0) {
+      emptyEl.textContent = searchActive
+        ? "Keine Treffer für die aktuelle Suche."
+        : readOnly
+          ? "Noch keine Dokumente in den verfügbaren Wissensdatenbanken."
+          : "Noch kein Wissen für diesen Kunden.";
+    }
 
     for (const doc of documents) {
       const item = document.createElement("li");
@@ -470,6 +472,24 @@
     }
   }
 
+  function setupDocSearch(inputId, onSearch) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    let timer = null;
+    input.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        onSearch().catch(() => {});
+      }, 250);
+    });
+  }
+
+  function documentsApiQuery(searchValue) {
+    const search = (searchValue || "").trim();
+    if (!search) return "";
+    return `?search=${encodeURIComponent(search)}`;
+  }
+
   function setKbReadOnlyMode(readOnly) {
     const form = document.getElementById("ingest-form");
     const banner = document.getElementById("kb-readonly-banner");
@@ -485,40 +505,67 @@
 
   async function refreshKbDocuments() {
     if (!activeCustomerId) return;
-    const data = await api("/api/documents");
-    const readOnly = Boolean(data.read_only);
-    setKbReadOnlyMode(readOnly);
-    renderDocuments(
-      data.documents || [],
-      document.getElementById("doc-list"),
-      document.getElementById("doc-count"),
-      document.getElementById("doc-empty"),
-      "/api/documents",
-      { readOnly, showCustomer: readOnly },
-    );
+    const searchInput = document.getElementById("kb-doc-search");
+    const listStatus = document.getElementById("kb-doc-list-status");
+    const search = searchInput?.value || "";
+    showStatus(listStatus, search ? "Suche…" : "", "");
+    try {
+      const data = await api(`/api/documents${documentsApiQuery(search)}`);
+      const readOnly = Boolean(data.read_only);
+      setKbReadOnlyMode(readOnly);
+      renderDocuments(
+        data.documents || [],
+        document.getElementById("doc-list"),
+        document.getElementById("doc-count"),
+        document.getElementById("doc-empty"),
+        "/api/documents",
+        { readOnly, showCustomer: readOnly, searchActive: Boolean(search.trim()) },
+      );
+      showStatus(
+        listStatus,
+        search && !(data.documents || []).length ? "Keine Treffer für die Suche." : "",
+        search && !(data.documents || []).length ? "error" : "",
+      );
+    } catch (error) {
+      showStatus(listStatus, "Dokumente konnten nicht geladen werden.", "error");
+      throw error;
+    }
   }
 
-  async function refreshAdminDocuments(scope = "global") {
+  async function refreshAdminDocuments(scope = "global", search = "") {
     const base =
       scope === "global"
         ? "/api/admin/documents"
         : `/api/admin/customers/${encodeURIComponent(scope)}/documents`;
-    const data = await api(base);
-    const listEl = document.getElementById("admin-doc-list");
-    closeAllDocEditPanels(listEl);
-    renderDocuments(
-      data.documents || [],
-      listEl,
-      document.getElementById("admin-doc-count"),
-      document.getElementById("admin-doc-empty"),
-      base,
-      {
-        adminEdit: {
-          basePath: base,
-          onRefresh: () => refreshAdminDocuments(scope),
+    const listStatus = document.getElementById("admin-doc-list-status");
+    showStatus(listStatus, search ? "Suche…" : "", "");
+    try {
+      const data = await api(`${base}${documentsApiQuery(search)}`);
+      const listEl = document.getElementById("admin-doc-list");
+      closeAllDocEditPanels(listEl);
+      renderDocuments(
+        data.documents || [],
+        listEl,
+        document.getElementById("admin-doc-count"),
+        document.getElementById("admin-doc-empty"),
+        base,
+        {
+          adminEdit: {
+            basePath: base.replace(/\?.*$/, ""),
+            onRefresh: () => refreshAdminDocuments(scope, search),
+          },
+          searchActive: Boolean(search.trim()),
         },
-      },
-    );
+      );
+      showStatus(
+        listStatus,
+        search && !(data.documents || []).length ? "Keine Treffer für die Suche." : "",
+        search && !(data.documents || []).length ? "error" : "",
+      );
+    } catch (error) {
+      showStatus(listStatus, "Dokumente konnten nicht geladen werden.", "error");
+      throw error;
+    }
   }
 
   function knowledgeScopeLabel(scope) {
@@ -1668,8 +1715,12 @@
       onSuccess: refreshKbDocuments,
     });
 
+    setupDocSearch("kb-doc-search", refreshKbDocuments);
+
     if (activeCustomerId) {
-      refreshKbDocuments().catch(() => showStatus(document.getElementById("ingest-status"), "Dokumente konnten nicht geladen werden.", "error"));
+      refreshKbDocuments().catch(() =>
+        showStatus(document.getElementById("ingest-status"), "Dokumente konnten nicht geladen werden.", "error"),
+      );
     }
   }
 
@@ -1896,44 +1947,17 @@
   }
 
   function initAdminKnowledgePage() {
-    const scopeSelect = document.getElementById("knowledge-scope");
-    const scopeLabel = document.getElementById("knowledge-scope-label");
-    const scopeHint = document.getElementById("knowledge-scope-hint");
     const statusEl = document.getElementById("admin-ingest-status");
 
-    if (customerNavMode === "admin_scoped" && scopeSelect) {
-      const initialScope = adminScopeFromCustomerId(activeCustomerId);
-      if (scopeSelect.querySelector(`option[value="${initialScope}"]`)) {
-        scopeSelect.value = initialScope;
-      }
-    }
-
     function currentScope() {
-      return scopeSelect?.value || "global";
-    }
-
-    function updateScopeUi() {
-      const scope = currentScope();
-      if (scopeLabel) scopeLabel.textContent = `(${knowledgeScopeLabel(scope)})`;
-      if (scopeHint) {
-        scopeHint.textContent =
-          scope === "global"
-            ? "Gilt mandantenübergreifend — wird zusätzlich zur Kunden-KB durchsucht."
-            : `Kunden-Wissensdatenbank für ${knowledgeScopeLabel(scope)}.`;
-      }
+      return adminScopeFromCustomerId(activeCustomerId || globalCustomerId);
     }
 
     async function refreshScopeDocuments() {
-      await refreshAdminDocuments(currentScope());
+      const search = document.getElementById("admin-doc-search")?.value || "";
+      await refreshAdminDocuments(currentScope(), search);
     }
-
-    scopeSelect?.addEventListener("change", () => {
-      closeAllDocEditPanels(document.getElementById("admin-doc-list"));
-      updateScopeUi();
-      refreshScopeDocuments().catch(() =>
-        showStatus(statusEl, "Dokumente konnten nicht geladen werden.", "error"),
-      );
-    });
+    refreshAdminKnowledgeDocuments = refreshScopeDocuments;
 
     bindIngestForm({
       form: document.getElementById("admin-ingest-form"),
@@ -1953,7 +1977,7 @@
       onSuccess: refreshScopeDocuments,
     });
 
-    updateScopeUi();
+    setupDocSearch("admin-doc-search", refreshScopeDocuments);
     refreshScopeDocuments().catch(() =>
       showStatus(statusEl, "Dokumente konnten nicht geladen werden.", "error"),
     );

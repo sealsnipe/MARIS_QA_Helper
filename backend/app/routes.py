@@ -687,11 +687,17 @@ def api_tenant_check(
     return {"customer_id": customer.id, "customer_name": customer.name}
 
 
-def _documents_for_scope(db: Session, user: User, customer: Customer) -> list[dict]:
+def _documents_for_scope(
+    db: Session,
+    user: User,
+    customer: Customer,
+    *,
+    search: str | None = None,
+) -> list[dict]:
     if is_global_customer(customer.id):
         scope_ids = [GLOBAL_CUSTOMER_ID, *list_assigned_customer_ids(db, user.id)]
-        return list_documents_for_customers(db, scope_ids)
-    return list_documents(db, customer.id)
+        return list_documents_for_customers(db, scope_ids, search=search)
+    return list_documents(db, customer.id, search=search)
 
 
 def _reject_global_write(customer: Customer) -> JSONResponse | None:
@@ -711,11 +717,12 @@ def api_list_documents(
     user: User = Depends(get_current_user),
     customer: Customer = Depends(get_current_customer),
     db: Session = Depends(get_db),
+    search: str | None = None,
 ) -> dict:
     return {
         "customer_id": customer.id,
         "read_only": is_global_customer(customer.id),
-        "documents": _documents_for_scope(db, user, customer),
+        "documents": _documents_for_scope(db, user, customer, search=search),
     }
 
 
@@ -1144,10 +1151,11 @@ def api_put_system_prompt(
 def api_admin_list_documents(
     _admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
+    search: str | None = None,
 ) -> dict:
     return {
         "customer_id": GLOBAL_CUSTOMER_ID,
-        "documents": list_documents(db, GLOBAL_CUSTOMER_ID),
+        "documents": list_documents(db, GLOBAL_CUSTOMER_ID, search=search),
     }
 
 
@@ -1350,11 +1358,12 @@ def api_admin_list_customer_documents(
     customer_id: str,
     _admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
+    search: str | None = None,
 ) -> dict:
     customer = _admin_tenant_customer(db, customer_id)
     return {
         "customer_id": customer.id,
-        "documents": list_documents(db, customer.id),
+        "documents": list_documents(db, customer.id, search=search),
     }
 
 

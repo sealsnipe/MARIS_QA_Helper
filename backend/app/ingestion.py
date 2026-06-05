@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.chunking import chunk_text, validate_ingest_text
@@ -330,7 +330,26 @@ def update_document_content(
     return IngestResult(document=document)
 
 
-def list_documents_for_customers(db: Session, customer_ids: list[str]) -> list[dict[str, Any]]:
+def _filter_documents_by_search(stmt, search: str | None):
+    if not search or not search.strip():
+        return stmt
+    needle = f"%{search.strip().lower()}%"
+    chunk_matches = select(Chunk.document_id).where(func.lower(Chunk.text).like(needle))
+    return stmt.where(
+        or_(
+            func.lower(Document.title).like(needle),
+            func.lower(Document.original_filename).like(needle),
+            Document.id.in_(chunk_matches),
+        )
+    )
+
+
+def list_documents_for_customers(
+    db: Session,
+    customer_ids: list[str],
+    *,
+    search: str | None = None,
+) -> list[dict[str, Any]]:
     if not customer_ids:
         return []
     stmt = (
@@ -338,16 +357,23 @@ def list_documents_for_customers(db: Session, customer_ids: list[str]) -> list[d
         .where(Document.customer_id.in_(customer_ids), Document.deleted_at.is_(None))
         .order_by(Document.created_at.desc())
     )
+    stmt = _filter_documents_by_search(stmt, search)
     rows = list(db.scalars(stmt))
     return [_document_to_dict(row) for row in rows]
 
 
-def list_documents(db: Session, customer_id: str) -> list[dict[str, Any]]:
+def list_documents(
+    db: Session,
+    customer_id: str,
+    *,
+    search: str | None = None,
+) -> list[dict[str, Any]]:
     stmt = (
         select(Document)
         .where(Document.customer_id == customer_id, Document.deleted_at.is_(None))
         .order_by(Document.created_at.desc())
     )
+    stmt = _filter_documents_by_search(stmt, search)
     rows = list(db.scalars(stmt))
     return [_document_to_dict(row) for row in rows]
 

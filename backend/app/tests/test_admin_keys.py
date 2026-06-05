@@ -22,7 +22,7 @@ def test_admin_keys_page_shows_global_nav_not_unassigned(client, db_session):
     resp = client.get("/admin/keys")
     assert resp.status_code == 200
     assert "Kein Kunde zugeordnet" not in resp.text
-    assert "Gilt nicht für diese Seite" in resp.text
+    assert 'data-nav-mode="global"' in resp.text
 
 
 def test_admin_keys_requires_admin(client, db_session):

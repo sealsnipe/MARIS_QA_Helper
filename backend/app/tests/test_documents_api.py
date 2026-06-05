@@ -45,3 +45,38 @@ def test_production_customers_visible_for_admin(client, db_session):
     assert response.status_code == 200
     ids = {item["id"] for item in response.json()["customers"]}
     assert ids == {"global", "bg-ludwigshafen", "bg-frankfurt", "detmold-lippe", "kkrr"}
+
+
+def test_documents_search_matches_title_and_chunk_text(client, db_session):
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_user(db_session, "sven@example.com", "secret123", ("bg-ludwigshafen",))
+    login(client, "sven@example.com", "secret123")
+    client.post("/api/session/customer", json={"customer_id": "bg-ludwigshafen"})
+
+    client.post(
+        "/api/documents/text",
+        json={
+            "title": "VPN Runbook",
+            "text": "BG Ludwigshafen VPN Eskalation: FortiGate prüfen, danach Netzwerkteam informieren.",
+        },
+    )
+    client.post(
+        "/api/documents/text",
+        json={
+            "title": "Urlaubsregelung",
+            "text": "Antrag mindestens zwei Wochen vorher einreichen.",
+        },
+    )
+
+    by_title = client.get("/api/documents", params={"search": "vpn runbook"})
+    assert by_title.status_code == 200
+    assert len(by_title.json()["documents"]) == 1
+    assert by_title.json()["documents"][0]["title"] == "VPN Runbook"
+
+    by_content = client.get("/api/documents", params={"search": "netzwerkteam"})
+    assert by_content.status_code == 200
+    assert len(by_content.json()["documents"]) == 1
+
+    no_match = client.get("/api/documents", params={"search": "weihnachten"})
+    assert no_match.status_code == 200
+    assert no_match.json()["documents"] == []

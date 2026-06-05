@@ -4,36 +4,21 @@
 {% block page_title %}Wissensdatenbanken{% endblock %}
 
 {% block content %}
-<div class="admin-toolbar">
-  <label>
-    Gültig für
-    <select id="knowledge-scope" class="customer-select">
-      <option value="global">Global (alle Kunden)</option>
-      {% for customer in admin_customers %}
-      <option value="{{ customer.id }}">{{ customer.name }}</option>
-      {% endfor %}
-    </select>
-  </label>
-</div>
-
 <section class="panel kb-panel full-page" id="admin-knowledge-panel">
-  <h2>Wissensdatenbank <span id="knowledge-scope-label" class="muted"></span></h2>
-  <p class="muted" id="knowledge-scope-hint">Gilt mandantenübergreifend — wird zusätzlich zur Kunden-KB durchsucht.</p>
-
-  <form id="admin-ingest-form" class="ingest-form">
+  <form id="admin-ingest-form" class="ingest-form kb-ingest-form">
     <label>
       Titel
       <input type="text" id="admin-ingest-title" maxlength="200" placeholder="Optional — sonst Dateiname">
     </label>
     <label>
       Text / Einleitung / Schlagworte
-      <textarea id="admin-ingest-text" rows="5" placeholder="Optional…"></textarea>
+      <textarea id="admin-ingest-text" rows="3" placeholder="Optional…"></textarea>
     </label>
     <div class="ingest-field">
       <span class="ingest-field-label">Datei</span>
-      <div id="admin-dropzone" class="dropzone" tabindex="0" role="button" aria-label="Datei auswählen">
+      <div id="admin-dropzone" class="dropzone dropzone-compact" tabindex="0" role="button" aria-label="Datei auswählen">
         <p id="admin-file-label">Datei hierher ziehen, klicken oder Strg+V</p>
-        <p class="muted">Optional · .txt · .md · .pdf · .docx · .png · .jpg</p>
+        <p class="muted dropzone-hint">Optional · .txt · .md · .pdf · .docx · .png · .jpg</p>
         <input type="file" id="admin-file-input" accept=".txt,.md,.pdf,.docx,.png,.jpg,.jpeg,.webp,.gif" hidden>
       </div>
     </div>
@@ -42,7 +27,14 @@
   </form>
 
   <div class="doc-list-wrap">
-    <h3>Dokumente <span id="admin-doc-count" class="muted">(0)</span></h3>
+    <div class="doc-list-toolbar">
+      <h3>Dokumente <span id="admin-doc-count" class="muted">(0)</span></h3>
+      <label class="doc-search-filter">
+        Suche
+        <input type="search" id="admin-doc-search" placeholder="Titel, Inhalt, Dateiname…" autocomplete="off">
+      </label>
+    </div>
+    <p id="admin-doc-list-status" class="status" aria-live="polite"></p>
     <ul id="admin-doc-list" class="doc-list"></ul>
     <p id="admin-doc-empty" class="muted">Noch keine Dokumente.</p>
   </div>

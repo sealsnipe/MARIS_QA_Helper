@@ -1,30 +1,28 @@
 {% extends "layout.html" %}
 
 {% block title %}Wissensdatenbank · MARIS - Q/A Helper{% endblock %}
-{% block page_title %}Wissensdatenbanken{% endblock %}
+{% block page_title %}Wissensdatenbank{% endblock %}
 
 {% block content %}
 <section class="panel kb-panel full-page">
-  <h2>Wissensdatenbank <span id="kb-customer-name" class="muted"></span></h2>
-
   <div id="kb-readonly-banner" class="banner info hidden">
-    Leseansicht (Global): Alle Wissensdatenbanken. Bearbeiten nur unter <strong>Einstellungen → Administration → Wissensdatenbanken</strong>.
+    Leseansicht (Global): Bearbeiten nur unter <strong>Administration → Wissensdatenbanken</strong>.
   </div>
 
-  <form id="ingest-form" class="ingest-form">
+  <form id="ingest-form" class="ingest-form kb-ingest-form">
     <label>
       Titel
       <input type="text" id="ingest-title" maxlength="200" placeholder="Optional — sonst Dateiname">
     </label>
     <label>
       Text / Einleitung / Schlagworte
-      <textarea id="ingest-text" rows="6" placeholder="Optional — Einleitung, Stichworte o. Ä., wird vor den Dateiinhalt gesetzt…"></textarea>
+      <textarea id="ingest-text" rows="3" placeholder="Optional — Einleitung, Stichworte o. Ä., wird vor den Dateiinhalt gesetzt…"></textarea>
     </label>
     <div class="ingest-field">
       <span class="ingest-field-label">Datei</span>
-      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Datei auswählen">
+      <div id="dropzone" class="dropzone dropzone-compact" tabindex="0" role="button" aria-label="Datei auswählen">
         <p id="file-label">Datei hierher ziehen, klicken oder Strg+V</p>
-        <p class="muted">Optional · .txt · .md · .pdf · .docx · .png · .jpg · max. 30 MB</p>
+        <p class="muted dropzone-hint">Optional · .txt · .md · .pdf · .docx · .png · .jpg · max. 30 MB</p>
         <input type="file" id="file-input" accept=".txt,.md,.pdf,.docx,.png,.jpg,.jpeg,.webp,.gif" hidden>
       </div>
     </div>
@@ -33,7 +31,14 @@
   </form>
 
   <div class="doc-list-wrap">
-    <h3>Dokumente <span id="doc-count" class="muted">(0)</span></h3>
+    <div class="doc-list-toolbar">
+      <h3>Dokumente <span id="doc-count" class="muted">(0)</span></h3>
+      <label class="doc-search-filter">
+        Suche
+        <input type="search" id="kb-doc-search" placeholder="Titel, Inhalt, Dateiname…" autocomplete="off">
+      </label>
+    </div>
+    <p id="kb-doc-list-status" class="status" aria-live="polite"></p>
     <ul id="doc-list" class="doc-list"></ul>
     <p id="doc-empty" class="muted">Noch kein Wissen für diesen Kunden.</p>
   </div>
