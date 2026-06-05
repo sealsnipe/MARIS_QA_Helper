@@ -10,7 +10,7 @@
 
 ---
 
-## Hälfte A — Cursor (46 Dateien) ✓
+## Hälfte A — Cursor (55 Dateien) ✓ (inkl. Post-MVP Module nach Review 2026-06)
 
 | Spiegel | Quelle |
 |---|---|
@@ -34,6 +34,15 @@
 | [backend/app/loaders/image_inspect.md](./backend/app/loaders/image_inspect.md) | `backend/app/loaders/image_inspect.py` |
 | [backend/app/loaders/vision_ocr.md](./backend/app/loaders/vision_ocr.md) | `backend/app/loaders/vision_ocr.py` |
 | [backend/app/document_assets.md](./backend/app/document_assets.md) | `backend/app/document_assets.py` |
+| [backend/app/document_fingerprints.md](./backend/app/document_fingerprints.md) | `backend/app/document_fingerprints.py` |
+| [backend/app/document_merge.md](./backend/app/document_merge.md) | `backend/app/document_merge.py` |
+| [backend/app/duplicates.md](./backend/app/duplicates.md) | `backend/app/duplicates.py` |
+| [backend/app/integration_auth.md](./backend/app/integration_auth.md) | `backend/app/integration_auth.py` |
+| [backend/app/integration_routes.md](./backend/app/integration_routes.md) | `backend/app/integration_routes.py` |
+| [backend/app/knowledge_center.md](./backend/app/knowledge_center.md) | `backend/app/knowledge_center.py` |
+| [backend/app/oauth_device_flow.md](./backend/app/oauth_device_flow.md) | `backend/app/oauth_device_flow.py` |
+| [backend/app/roles_admin.md](./backend/app/roles_admin.md) | `backend/app/roles_admin.py` |
+| [backend/app/secrets_admin.md](./backend/app/secrets_admin.md) | `backend/app/secrets_admin.py` |
 | [backend/app/upload.md](./backend/app/upload.md) | `backend/app/upload.py` |
 | [backend/app/loaders/errors.md](./backend/app/loaders/errors.md) | `backend/app/loaders/errors.py` |
 | [backend/app/loaders/pdf_loader.md](./backend/app/loaders/pdf_loader.md) | `backend/app/loaders/pdf_loader.py` |
@@ -52,7 +61,9 @@
 | [backend/app/static/vendor/purify.min.md](./backend/app/static/vendor/purify.min.md) | `purify.min.js` |
 | [backend/app/system_prompts.md](./backend/app/system_prompts.md) | `backend/app/system_prompts.py` |
 | [backend/app/templates/admin_knowledge.md](./backend/app/templates/admin_knowledge.md) | `admin_knowledge.html` |
+| [backend/app/templates/admin_keys.md](./backend/app/templates/admin_keys.md) | `admin_keys.html` |
 | [backend/app/templates/admin_prompts.md](./backend/app/templates/admin_prompts.md) | `admin_prompts.html` |
+| [backend/app/templates/admin_roles.md](./backend/app/templates/admin_roles.md) | `admin_roles.html` |
 | [backend/app/templates/admin_users.md](./backend/app/templates/admin_users.md) | `admin_users.html` |
 | [backend/app/templates/base.md](./backend/app/templates/base.md) | `base.html` |
 | [backend/app/templates/chat.md](./backend/app/templates/chat.md) | `chat.html` |
@@ -61,6 +72,9 @@
 | [backend/app/templates/kb.md](./backend/app/templates/kb.md) | `kb.html` |
 | [backend/app/templates/layout.md](./backend/app/templates/layout.md) | `layout.html` |
 | [backend/app/templates/login.md](./backend/app/templates/login.md) | `login.html` |
+| [backend/app/templates/tools/bild_zu_text.md](./backend/app/templates/tools/bild_zu_text.md) | `tools/bild_zu_text.html` |
+| [backend/app/templates/tools/knowledge_center_content.md](./backend/app/templates/tools/knowledge_center_content.md) | `tools/knowledge_center_content.html` |
+| [backend/app/templates/tools/knowledge_center_sources.md](./backend/app/templates/tools/knowledge_center_sources.md) | `tools/knowledge_center_sources.html` |
 | [backend/app/tenant.md](./backend/app/tenant.md) | `backend/app/tenant.py` |
 | [backend/app/tests/__init__.md](./backend/app/tests/__init__.md) | `tests/__init__.py` |
 | [backend/app/tests/conftest.md](./backend/app/tests/conftest.md) | `tests/conftest.py` |
@@ -71,7 +85,7 @@
 |---|---|
 | [README.md](./README.md) | `README.md` |
 
-## Hälfte B — Grok (47 Dateien) ✓
+## Hälfte B — Grok (62 Dateien) ✓ (inkl. fehlende Spiegel nach Review 2026-06)
 
 Vollständig dokumentiert (Subagenten B1–B4). Alle Einträge folgen Spiegelregel §2; install.md/setup.md/docker*.md/qdrant.md wurden ggf. an §6-Vorlage angepasst.
 
@@ -80,19 +94,30 @@ Vollständig dokumentiert (Subagenten B1–B4). Alle Einträge folgen Spiegelreg
 | [test_admin.md](./backend/app/tests/test_admin.md) | `backend/app/tests/test_admin.py` |
 | [test_admin_customers.md](./backend/app/tests/test_admin_customers.md) | `backend/app/tests/test_admin_customers.py` |
 | [test_admin_users.md](./backend/app/tests/test_admin_users.md) | `backend/app/tests/test_admin_users.py` |
+| [test_admin_keys.md](./backend/app/tests/test_admin_keys.md) | `backend/app/tests/test_admin_keys.py` |
+| [test_admin_roles.md](./backend/app/tests/test_admin_roles.md) | `backend/app/tests/test_admin_roles.py` |
 | [test_agent.md](./backend/app/tests/test_agent.md) | `backend/app/tests/test_agent.py` |
 | [test_auth.md](./backend/app/tests/test_auth.md) | `backend/app/tests/test_auth.py` |
 | [test_chats.md](./backend/app/tests/test_chats.md) | `backend/app/tests/test_chats.py` |
 | [test_chunking.md](./backend/app/tests/test_chunking.md) | `backend/app/tests/test_chunking.py` |
 | [test_customers.md](./backend/app/tests/test_customers.md) | `backend/app/tests/test_customers.py` |
 | [test_documents_api.md](./backend/app/tests/test_documents_api.md) | `backend/app/tests/test_documents_api.py` |
+| [test_docx_content.md](./backend/app/tests/test_docx_content.md) | `backend/app/tests/test_docx_content.py` |
+| [test_duplicate_detection.md](./backend/app/tests/test_duplicate_detection.md) | `backend/app/tests/test_duplicate_detection.py` |
 | [test_global_customer.md](./backend/app/tests/test_global_customer.md) | `backend/app/tests/test_global_customer.py` |
 | [test_health.md](./backend/app/tests/test_health.md) | `backend/app/tests/test_health.py` |
 | [test_ingestion.md](./backend/app/tests/test_ingestion.md) | `backend/app/tests/test_ingestion.py` |
+| [test_image_inspect.md](./backend/app/tests/test_image_inspect.md) | `backend/app/tests/test_image_inspect.py` |
+| [test_integration_api.md](./backend/app/tests/test_integration_api.md) | `backend/app/tests/test_integration_api.py` |
+| [test_knowledge_center.md](./backend/app/tests/test_knowledge_center.md) | `backend/app/tests/test_knowledge_center.py` |
 | [test_loaders.md](./backend/app/tests/test_loaders.md) | `backend/app/tests/test_loaders.py` |
 | [test_retrieval.md](./backend/app/tests/test_retrieval.md) | `backend/app/tests/test_retrieval.py` |
+| [test_selective_vision.md](./backend/app/tests/test_selective_vision.md) | `backend/app/tests/test_selective_vision.py` |
 | [test_tenant_isolation.md](./backend/app/tests/test_tenant_isolation.md) | `backend/app/tests/test_tenant_isolation.py` |
 | [test_upload_api.md](./backend/app/tests/test_upload_api.md) | `backend/app/tests/test_upload_api.py` |
+| [test_vision_ocr.md](./backend/app/tests/test_vision_ocr.md) | `backend/app/tests/test_vision_ocr.py` |
+| [test_document_fingerprints.md](./backend/app/tests/test_document_fingerprints.md) | `backend/app/tests/test_document_fingerprints.py` |
+| [test_document_merge.md](./backend/app/tests/test_document_merge.md) | `backend/app/tests/test_document_merge.py` |
 | [upload.md](./backend/app/upload.md) | `backend/app/upload.py` |
 | [users_admin.md](./backend/app/users_admin.md) | `backend/app/users_admin.py` |
 | [backend/pyproject.md](./backend/pyproject.md) | `backend/pyproject.toml` |
@@ -113,6 +138,7 @@ Vollständig dokumentiert (Subagenten B1–B4). Alle Einträge folgen Spiegelreg
 | [seed_customers.md](./scripts/seed_customers.md) | `scripts/seed_customers.py` |
 | [seed_data.md](./scripts/seed_data.md) | `scripts/seed_data.py` |
 | [seed_kb.md](./scripts/seed_kb.md) | `scripts/seed_kb.py` |
+| [seed_knowledge_center_demo.md](./scripts/seed_knowledge_center_demo.md) | `scripts/seed_knowledge_center_demo.py` |
 | [seed_production.md](./scripts/seed_production.md) | `scripts/seed_production.py` |
 | [seed_setup.md](./scripts/seed_setup.md) | `scripts/seed_setup.py` |
 | [seed_users.md](./scripts/seed_users.md) | `scripts/seed_users.py` |

@@ -2,7 +2,7 @@
 
 **Projekt:** MARIS Q/A Helper (ehem. SUP_QA_Helper)
 **Status:** MVP implementiert — Betrieb & Abnahme
-**Stand:** 2026-06-03
+**Stand:** 2026-06-05 (Review + Standards + Spiegel-Sync)
 **Verantwortlich:** Product Owner + Projektleitung + Engineering (eine Rolle, Claude)
 
 ---
@@ -25,15 +25,17 @@ dieses Prototyps**.
 **Code-Spiegel (file-per-file):** Regeln und Format → **`DOCUMENTATION_RULES.md`**.  
 Implementierte Spiegel-Dateien: **`docs/docs/INDEX.md`**.
 
+**Projekt-Standards & Einstieg:** **`PROJECT_STANDARDS.md`** — Prioritäten, Refactoring-Gate, Doku-Pflicht (einheitlicher Einstieg).  
 **Querschnitt (Zusammenspiel):** **`docs/system/00_README.md`** — Flows, Mandant, Betrieb.  
 **Plan vs Code:** **`15_implementation_status.md`**.
 
-Empfohlene Reihenfolge Planungsdocs: **01 → 02 → 03**, danach themenspezifisch.
+Empfohlene Reihenfolge für neue Entwickler/Agents: `README.md` → **`PROJECT_STANDARDS.md`** + `DOCUMENTATION_RULES.md` → `13_coding_agent_brief.md` → `system/00_README.md` + `05_tenant_isolation.md` → 01→02→03, danach themenspezifisch.
 
 | # | Dokument | Zweck | Zielgruppe |
 |---|---|---|---|
 | — | `README.md` (dieses) | Einstieg, Index, Konventionen | alle |
 | — | **`DOCUMENTATION_RULES.md`** | **Verbindlich:** Spiegel + Querschnitt | Engineering, Agents |
+| — | **`PROJECT_STANDARDS.md`** | Prioritäten, Refactoring-Gate, Doku-Pflicht (einheitlicher Einstieg) | Engineering, Agents, PO |
 | — | **`docs/system/00_README.md`** | **End-to-End:** Flows, Mandant, Runbook | Engineering |
 | — | `docs/docs/INDEX.md` | Index der Code-Spiegel-Doku | Engineering |
 | 15 | `15_implementation_status.md` | Plan vs Ist-Stand Code | PO, Engineering |

@@ -1,6 +1,6 @@
 # System-Dokumentation — Einstieg
 
-**Stand:** 2026-06-03  
+**Stand:** 2026-06-05 (Review-Update) 
 **Ebene:** Querschnitt (dateiübergreifend)
 
 ---
@@ -16,10 +16,11 @@
 **Lesereihenfolge für neue Entwickler:**
 
 1. [`docs/README.md`](../README.md) — Projektüberblick  
-2. Diese Datei + [`02_request_and_session_flow.md`](./02_request_and_session_flow.md)  
-3. [`03_chat_pipeline.md`](./03_chat_pipeline.md) + [`04_ingestion_pipeline.md`](./04_ingestion_pipeline.md)  
-4. [`05_tenant_isolation.md`](./05_tenant_isolation.md) — Pflicht-Invariante  
-5. Bei Bedarf: Spiegel-Doku unter `docs/docs/backend/app/…`
+2. [`docs/PROJECT_STANDARDS.md`](../PROJECT_STANDARDS.md) (Prioritäten + Gate) + `DOCUMENTATION_RULES.md`  
+3. Diese Datei + [`02_request_and_session_flow.md`](./02_request_and_session_flow.md)  
+4. [`03_chat_pipeline.md`](./03_chat_pipeline.md) + [`04_ingestion_pipeline.md`](./04_ingestion_pipeline.md)  
+5. [`05_tenant_isolation.md`](./05_tenant_isolation.md) — Pflicht-Invariante  
+6. Bei Bedarf: Spiegel-Doku unter `docs/docs/backend/app/…` (siehe `docs/docs/INDEX.md`)
 
 ---
 

@@ -1,6 +1,6 @@
 # Dokumentationsregeln — MARIS Q/A Helper
 
-**Stand:** 2026-06-03  
+**Stand:** 2026-06-05 (Review-Sync) 
 **Status:** verbindlich für neue und überarbeitete Doku  
 **Erweiterbar:** ja — weitere Kapitel (Architektur-Overviews, ADRs, Runbooks) kommen später ergänzend dazu
 
@@ -225,9 +225,10 @@ Links auf verwandte Spiegel-Dateien oder Planungsdocs (`docs/11_setup_and_operat
 ## 8. Index
 
 - **Regelwerk:** `docs/DOCUMENTATION_RULES.md`
+- **Projekt-Standards:** `docs/PROJECT_STANDARDS.md` (Prioritäten, Refactoring-Gate, Doku-Pflicht)
 - **Spiegel-Index (Dateibaum):** `docs/docs/INDEX.md` — wird mit den Spiegel-Dateien gepflegt
 - Root-`README.md`-Spiegel: `docs/docs/README.md` (Inhalt = Projekt-README, kein Dateiindex)
-- Planungs-Einstieg: `docs/README.md`
+- Planungs-Einstieg: `docs/README.md` (verweist auf PROJECT_STANDARDS)
 
 ---
 
@@ -245,10 +246,13 @@ Links auf verwandte Spiegel-Dateien oder Planungsdocs (`docs/11_setup_and_operat
 
 ## 10. Spätere Erweiterungen (Platzhalter)
 
-Erledigt (2026-06-03):
+Erledigt (2026-06-03 + Review 2026-06-05):
 
 - **Ebene 3 Querschnitt:** `docs/system/00_README.md` … `11_operations_runbook.md`
 - **Ist-Stand:** `docs/15_implementation_status.md`
+- **Einheitlicher Einstieg + Gate:** `docs/PROJECT_STANDARDS.md`
+- **Vollständige Spiegel:** 25 fehlende nachgezogen (Review); `docs/docs/INDEX.md` + `system/09` + `03 §7` sync
+- Review-Ergebnis: `docs/reviews/2026-06-05-project-review.md` (A: kein Refactor)
 
 Noch offen:
 

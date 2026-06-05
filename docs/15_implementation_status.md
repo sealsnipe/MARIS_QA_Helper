@@ -1,6 +1,6 @@
 # 15 — Implementierungsstatus (Plan vs Ist)
 
-**Stand:** 2026-06-04
+**Stand:** 2026-06-05 (Review-Sync: 25 Spiegel + Querschnitt nachgezogen)
 
 ---
 
@@ -49,7 +49,7 @@ Abgleich zwischen **Planungsdocs** (`docs/01–14`, Stand teils 2026-06-02) und 
 | Ebene | Status |
 |---|---|
 | Planung `01–14` | vorhanden, **teilweise aktualisiert** (05, 08, 11, 14) |
-| Spiegel `docs/docs/` | ~90+ Dateien (file-per-file) |
+| Spiegel `docs/docs/` | ~115+ Dateien (file-per-file; alle 25 fehlenden nach Review 2026-06 nachgezogen; INDEX komplett) |
 | Querschnitt `docs/system/` | ✅ 00–11 |
 | Regelwerk | `DOCUMENTATION_RULES.md` inkl. Ebene 3 |
 
@@ -70,9 +70,12 @@ Siehe [`12_roadmap.md`](./12_roadmap.md)
 
 | Doc | Grund |
 |---|---|
-| `03_architecture.md` | Admin-Komponenten, Chat-Sessions |
-| `05_api_specification.md` | Admin + Chat APIs |
-| `08_ui_ux_design.md` | Sidebar, Admin-Seiten |
+| `03_architecture.md` | ✅ §7 Repo-Struktur + Komponenten (Review-Sync 2026-06) |
+| `05_api_specification.md` | Admin + Chat + Integration APIs (teilweise aktuell; bei Bedarf vertiefen) |
+| `08_ui_ux_design.md` | Sidebar, Admin-Seiten, Tools (teilweise) |
 | `14_customer_administration.md` | Status „implementiert“ |
 
-Diese Updates wurden 2026-06-03 **begonnen** — Details in den jeweiligen Dateien prüfen.
+**Review 2026-06:** `PROJECT_STANDARDS.md` neu, 25 Spiegel + `docs/docs/INDEX.md` + `system/09` + `03 §7` + `15` aktualisiert (A-Pfad, kein Refactor). Siehe `reviews/2026-06-05-project-review.md`.
+
+Diese Updates wurden 2026-06-03 **begonnen** und im Review-Branch finalisiert — Details in den jeweiligen Dateien prüfen.
+

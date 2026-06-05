@@ -1,6 +1,6 @@
 # 03 — Architektur
 
-**Stand:** 2026-06-03 · **Status:** verbindlich für MVP
+**Stand:** 2026-06-05 · **Status:** verbindlich für MVP + Post-MVP (Review-Sync)
 
 > Querschnitt: [`system/09_module_dependency_map.md`](../system/09_module_dependency_map.md)
 
@@ -157,53 +157,45 @@ SUP_QA_Helper/
   .env.example
   .gitignore
   .gitattributes               # * text=auto eol=lf
-  docker-compose.yml
-  docs/                        # diese Planungsdokumente
+  docker-compose*.yml
+  docs/                        # Planung + system/ + docs/ (Spiegel 1:1)
   backend/
     Dockerfile
     pyproject.toml
     app/
       __init__.py
-      main.py
-      config.py
-      db.py
-      models.py                # users, customers, user_customers, documents, chunks
-      auth.py                  # Login/Logout, Argon2id, get_current_user
-      tenant.py                # get_current_customer (user∈customer → 403)
-      customers.py             # Kunden-Registry-Zugriff
-      routes.py
-      loaders/
-        __init__.py            # dispatch nach Extension
-        text_loader.py         # .txt/.md
-        pdf_loader.py          # pypdf
-        docx_loader.py         # python-docx
-      ingestion.py
-      chunking.py
-      embeddings.py
-      llm.py
-      agent.py
-      prompts.py
-      qdrant_store.py
-      templates/
-        base.html  login.html  index.html
-      static/
-        app.css  app.js
-      tests/
-        conftest.py
-        test_chunking.py
-        test_auth.py
-        test_loaders.py
-        test_ingestion.py
-        test_agent.py
-        test_tenant_isolation.py
+      main.py                  # FastAPI + SessionMW + include routers + Exception-Handler
+      config.py                # pydantic-settings + fail-fast + allowed_extensions
+      db.py models.py          # SQLite + ORM (users, customers, documents, chunks, roles, secrets, kc_* ...)
+      auth.py tenant.py        # get_current_user + get_current_customer (Session + 403)
+      customers.py             # Registry, user_has, collection_name, global, rename (Qdrant+FS+SQLite)
+      routes.py                # HTML + JSON (monolithisch, aber delegiert)
+      integration_routes.py    # /api/v1/* (separater Router + Bearer)
+      integration_auth.py      # get_integration_user
+      knowledge_center.py      # Sources + Contents (ingest/adopt/reject, visibility)
+      upload.py                # ingest_combined, inspect, vision, dupe-checks
+      ingestion.py             # ingest_text (chunk+embed+upsert+meta)
+      document_merge.py        # heuristic + optional LLM Merge für Admin
+      duplicates.py            # exact sha256 Stufe 1
+      document_fingerprints.py # Stufe 2 + inspect_similarity
+      content_hash.py
+      document_assets.py
+      chats.py users_admin.py system_prompts.py
+      roles_admin.py secrets_admin.py
+      oauth_device_flow.py     # Device + refresh für chatgpt_oauth
+      chunking.py embeddings.py llm.py agent.py retrieval.py prompts.py
+      qdrant_store.py          # per-customer collections (InMemory + real)
+      loaders/                 # dispatch + text/pdf/docx + vision_ocr + image_inspect + docx_content
+      templates/               # layout + chat/kb + admin_* + tools/*
+      static/                  # app.js (APP_BOOT) + app.css + brands + vendor
+      tests/                   # 25+ Suiten (Isolation Pflicht, alle grün ohne Netz)
   scripts/
-    seed_customers.py
-    seed_users.py              # inkl. user↔customer-Zuordnung
-    seed_kb.py                 # Demo-Wissen pro Kunde
+    seed_*.py (customers, users, kb, knowledge_center_demo, production, ...)
   data/
-    uploads/                   # {customer_id}/{document_id}/{file}
-    support_kb.sqlite3         # gitignored
+    uploads/{customer_id}/...  # + support_kb.sqlite3 (gitignored)
 ```
+
+Siehe `docs/docs/INDEX.md` (vollständige Spiegel-Liste) und `system/09_module_dependency_map.md` (aktuelle Abhängigkeiten).
 
 ## 8. Grenzen & bewusste Vereinfachungen
 - Single-Worker-Uvicorn (SQLite-Locking), WAL aktiv.
