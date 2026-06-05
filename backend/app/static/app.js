@@ -526,7 +526,7 @@
     return customerLabels[scope] || scope;
   }
 
-  function initAdminNav() {
+  function initCollapsibleNav() {
     document.querySelectorAll(".nav-group-toggle").forEach((toggle) => {
       const group = toggle.closest(".nav-group");
       if (!group) return;
@@ -534,6 +534,26 @@
         event.stopPropagation();
         group.classList.toggle("expanded");
         toggle.setAttribute("aria-expanded", group.classList.contains("expanded") ? "true" : "false");
+      });
+    });
+  }
+
+  function initSidebarNavScroll() {
+    const nav = document.querySelector(".sidebar-nav");
+    if (!nav) return;
+    const storageKey = "sidebar-nav-scroll";
+    const saved = sessionStorage.getItem(storageKey);
+    if (saved !== null) {
+      requestAnimationFrame(() => {
+        nav.scrollTop = Number(saved) || 0;
+      });
+    }
+    nav.addEventListener("scroll", () => {
+      sessionStorage.setItem(storageKey, String(nav.scrollTop));
+    });
+    nav.querySelectorAll('a[href]').forEach((link) => {
+      link.addEventListener("click", () => {
+        sessionStorage.setItem(storageKey, String(nav.scrollTop));
       });
     });
   }
@@ -3903,10 +3923,10 @@
 
   syncActiveCustomerFromSelect();
   setCustomerUiEnabled(Boolean(activeCustomerId));
+  initCollapsibleNav();
+  initSidebarNavScroll();
   initChatSidebar();
   refreshChatHistory().catch(() => {});
-
-  if (isAdmin) initAdminNav();
 
   if (page === "chat") initChatPage();
   if (page === "kb") initKbPage();
