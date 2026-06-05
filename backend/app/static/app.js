@@ -2958,30 +2958,120 @@
     return "Ersetzt";
   }
 
+  function normalizeForMatch(text) {
+    return String(text)
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .replace(/[ \t]+/g, " ")
+      .replace(/ *\n */g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  function findSnippetRange(haystack, snippet) {
+    if (!haystack || !snippet) return null;
+    let idx = haystack.indexOf(snippet);
+    if (idx >= 0) return { start: idx, end: idx + snippet.length };
+
+    const normHay = normalizeForMatch(haystack);
+    const normNeedle = normalizeForMatch(snippet);
+    idx = normHay.indexOf(normNeedle);
+    if (idx < 0) {
+      const anchor = snippet.slice(0, Math.min(Math.max(12, snippet.length), 80)).trim();
+      if (!anchor) return null;
+      idx = haystack.indexOf(anchor);
+      if (idx >= 0) return { start: idx, end: Math.min(haystack.length, idx + snippet.length) };
+      return null;
+    }
+
+    let normPos = 0;
+    let origStart = -1;
+    for (let i = 0; i <= haystack.length && normPos <= idx; i += 1) {
+      if (normPos === idx) {
+        origStart = i;
+        break;
+      }
+      const ch = haystack[i];
+      if (ch === undefined) break;
+      if (ch === "\r" && haystack[i + 1] === "\n") {
+        normPos += 1;
+        i += 1;
+      } else if (ch === " " || ch === "\t") {
+        while (haystack[i + 1] === " " || haystack[i + 1] === "\t") i += 1;
+        normPos += 1;
+      } else {
+        normPos += 1;
+      }
+    }
+    if (origStart < 0) return null;
+
+    let consumed = 0;
+    let origEnd = origStart;
+    while (origEnd < haystack.length && consumed < normNeedle.length) {
+      const ch = haystack[origEnd];
+      if (ch === "\r" && haystack[origEnd + 1] === "\n") {
+        consumed += 1;
+        origEnd += 2;
+      } else if (ch === " " || ch === "\t") {
+        while (haystack[origEnd + 1] === " " || haystack[origEnd + 1] === "\t") origEnd += 1;
+        consumed += 1;
+        origEnd += 1;
+      } else {
+        consumed += 1;
+        origEnd += 1;
+      }
+    }
+    return { start: origStart, end: origEnd };
+  }
+
   function buildRevisionMarkup(content, revision) {
     if (!content) return "";
     if (!revision?.changes?.length) {
       return escapeHtml(content).replace(/\n/g, "<br>");
     }
-    let html = escapeHtml(content);
-    const sorted = [...revision.changes].sort((a, b) => {
-      const posA = content.indexOf(a.anchor || a.target || "");
-      const posB = content.indexOf(b.anchor || b.target || "");
-      return posB - posA;
-    });
-    sorted.forEach((change) => {
+
+    const spans = [];
+    revision.changes.forEach((change) => {
       const snippet = change.target || change.anchor;
       if (!snippet) return;
-      const escaped = escapeHtml(snippet);
-      if (!html.includes(escaped)) return;
-      const kind = escapeHtml(change.kind || "replace");
-      const id = escapeHtml(change.id || "");
-      html = html.replace(
-        escaped,
-        `<mark class="kc-rev kc-rev-${kind}" data-change-id="${id}" tabindex="0">${escaped}</mark>`,
-      );
+      let range = findSnippetRange(content, snippet);
+      if (!range && change.anchor && change.anchor !== snippet) {
+        range = findSnippetRange(content, change.anchor);
+      }
+      if (!range) return;
+      spans.push({ ...range, change });
     });
-    return html.replace(/\n/g, "<br>");
+
+    spans.sort((a, b) => a.start - b.start);
+    const merged = [];
+    spans.forEach((span) => {
+      const last = merged[merged.length - 1];
+      if (last && span.start < last.end) return;
+      merged.push(span);
+    });
+
+    const segments = [];
+    let cursor = 0;
+    merged.forEach(({ start, end, change }) => {
+      if (cursor < start) {
+        segments.push({ type: "text", text: content.slice(cursor, start) });
+      }
+      segments.push({ type: "mark", text: content.slice(start, end), change });
+      cursor = end;
+    });
+    if (cursor < content.length) {
+      segments.push({ type: "text", text: content.slice(cursor) });
+    }
+
+    return segments
+      .map((seg) => {
+        const escaped = escapeHtml(seg.text).replace(/\n/g, "<br>");
+        if (seg.type === "text") return escaped;
+        const kind = escapeHtml(seg.change.kind || "replace");
+        const id = escapeHtml(seg.change.id || "");
+        return `<mark class="kc-rev kc-rev-${kind}" data-change-id="${id}" tabindex="0">${escaped}</mark>`;
+      })
+      .join("");
   }
 
   function renderKcChangesList(container, revision) {
@@ -3280,7 +3370,7 @@
     async function loadContents({ append = false } = {}) {
       if (!append) offset = 0;
       const params = new URLSearchParams();
-      const status = statusFilter?.value ?? "pending";
+      const status = statusFilter?.value ?? "";
       if (status) params.set("status", status);
       if (sourceFilter?.value) params.set("source_id", sourceFilter.value);
       if (searchInput?.value.trim()) params.set("search", searchInput.value.trim());
@@ -3374,6 +3464,7 @@
     const textInput = document.getElementById("kc-submit-text");
     const useAiToggle = document.getElementById("kc-submit-use-ai");
     const presetsWrap = document.getElementById("kc-submit-presets");
+    const presetsSection = document.getElementById("kc-submit-presets-wrap");
     const submitBtn = document.getElementById("kc-submit-btn");
     const submitStatus = document.getElementById("kc-submit-status");
     const myList = document.getElementById("kc-my-list");
@@ -3381,7 +3472,7 @@
     const myCount = document.getElementById("kc-my-count");
 
     let presets = [];
-    let selectedPreset = "clarify";
+    let selectedPreset = "expand_notes";
 
     function renderCustomers(customers) {
       if (!customerSelect) return;
@@ -3405,12 +3496,12 @@
         btn.textContent = preset.label;
         presetsWrap.appendChild(btn);
       });
-      presetsWrap.classList.toggle("disabled", !useAiToggle?.checked);
     }
 
     function syncAiUi() {
       const enabled = Boolean(useAiToggle?.checked);
-      presetsWrap?.classList.toggle("disabled", !enabled);
+      presetsSection?.classList.toggle("hidden", !enabled);
+      if (presetsSection) presetsSection.setAttribute("aria-hidden", enabled ? "false" : "true");
       if (submitBtn) {
         submitBtn.textContent = enabled ? "KI starten & einreichen" : "Vorschlag einreichen";
       }
@@ -3488,7 +3579,8 @@
           },
         });
         form.reset();
-        if (useAiToggle) useAiToggle.checked = localStorage.getItem("kc-submit-use-ai") !== "0";
+        if (useAiToggle) useAiToggle.checked = localStorage.getItem("kc-submit-use-ai") === "1";
+        syncAiUi();
         showStatus(submitStatus, "Vorschlag eingereicht — wartet auf Freigabe.", "ok");
         await loadMySubmissions();
       } catch (err) {

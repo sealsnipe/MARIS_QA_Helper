@@ -220,7 +220,7 @@ class KnowledgeContentSubmitRequest(BaseModel):
     customer_id: str = Field(min_length=1, max_length=64)
     raw_text: str = Field(min_length=1)
     title: str | None = Field(default=None, max_length=200)
-    use_ai: bool = True
+    use_ai: bool = False
     preset: str | None = Field(default=None, max_length=64)
 
 
@@ -1861,7 +1861,7 @@ def api_tools_knowledge_center_my_contents(
 def api_tools_knowledge_center_contents(
     user: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
-    status: str | None = "pending",
+    status: str | None = None,
     source_id: str | None = None,
     search: str | None = None,
     limit: int = 50,

@@ -216,6 +216,47 @@ def test_my_contents_only_own(client, db_session):
     assert len(admin_mine.json()["contents"]) == 0
 
 
+def test_admin_list_contents_without_status_returns_all(client, db_session):
+    _seed(db_session)
+    login(client, "user@example.com", "secret123")
+
+    content_ids: list[str] = []
+    for index in range(3):
+        response = client.post(
+            "/api/tools/knowledge-center/submit",
+            json={
+                "customer_id": "bg-frankfurt",
+                "raw_text": f"Dies ist Rohtext Nummer {index} mit genügend Länge für die Einreichung.",
+                "use_ai": False,
+            },
+        )
+        assert response.status_code == 200
+        content_ids.append(response.json()["content"]["id"])
+
+    login(client, "admin@example.com", "secret123")
+    adopt = client.post(
+        f"/api/tools/knowledge-center/contents/{content_ids[0]}/adopt",
+        json={"customer_id": "bg-frankfurt"},
+    )
+    assert adopt.status_code == 200
+    reject = client.post(f"/api/tools/knowledge-center/contents/{content_ids[1]}/reject")
+    assert reject.status_code == 200
+
+    pending = client.get("/api/tools/knowledge-center/contents?status=pending")
+    assert pending.status_code == 200
+    assert pending.json()["total"] == 1
+
+    all_rows = client.get("/api/tools/knowledge-center/contents")
+    assert all_rows.status_code == 200
+    assert all_rows.json()["total"] == 3
+
+
+def test_ensure_builtin_sources_idempotent(db_session):
+    _seed(db_session)
+    ensure_builtin_knowledge_sources(db_session)
+    ensure_builtin_knowledge_sources(db_session)
+
+
 def test_knowledge_center_pages(client, db_session):
     _seed(db_session)
 

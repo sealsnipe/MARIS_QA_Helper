@@ -2196,10 +2196,99 @@ select:focus-visible,
   resize: vertical;
 }
 
-.kc-submit-ai-row {
+.kc-submit-content-label {
+  display: block;
+}
+
+.kc-submit-ai-toggle {
+  margin-top: 0.85rem;
+}
+
+.kc-submit-presets-wrap {
+  margin-top: 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 92%, var(--accent) 8%);
+}
+
+.kc-submit-presets-wrap.hidden {
+  display: none;
+}
+
+.kc-submit-presets-label {
+  margin: 0 0 0.6rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.kc-switch {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.kc-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.kc-switch-track {
+  flex: 0 0 auto;
+  position: relative;
+  width: 2.75rem;
+  height: 1.5rem;
+  margin-top: 0.1rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border) 70%, var(--text) 30%);
+  transition: background 0.2s ease;
+}
+
+.kc-switch-thumb {
+  position: absolute;
+  top: 0.15rem;
+  left: 0.15rem;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  transition: transform 0.2s ease;
+}
+
+.kc-switch input:checked + .kc-switch-track {
+  background: var(--accent);
+}
+
+.kc-switch input:checked + .kc-switch-track .kc-switch-thumb {
+  transform: translateX(1.25rem);
+}
+
+.kc-switch input:focus-visible + .kc-switch-track {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.kc-switch-copy {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.2rem;
+}
+
+.kc-switch-copy strong {
+  font-size: 0.98rem;
+}
+
+.kc-submit-ai-hint {
+  font-size: 0.88rem;
+  line-height: 1.35;
 }
 
 .kc-submit-presets {
@@ -2208,14 +2297,10 @@ select:focus-visible,
   gap: 0.5rem;
 }
 
-.kc-submit-presets.disabled {
-  opacity: 0.45;
-  pointer-events: none;
-}
-
 .kc-preset-btn.active {
   border-color: var(--accent);
   color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .kc-my-submissions {

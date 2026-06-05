@@ -5,7 +5,7 @@
 
 {% block content %}
 <section class="panel kc-panel full-page">
-  <p class="muted">Text für die Wissensdatenbank vorschlagen. Optional überarbeitet die KI den Inhalt — ein Admin prüft und übernimmt ihn ins Knowledge Center.</p>
+  <p class="muted">Text für die Wissensdatenbank vorschlagen. Optional überarbeitet die KI Meeting-Notizen oder Stichpunkte — ein Admin prüft und übernimmt den Vorschlag ins Knowledge Center.</p>
 
   <form id="kc-submit-form" class="ingest-form kc-submit-form">
     <div class="customer-form-row">
@@ -19,20 +19,26 @@
       </label>
     </div>
 
-    <label>
+    <label class="kc-submit-content-label">
       Inhalt
-      <textarea id="kc-submit-text" rows="12" required placeholder="Rohtext hier einfügen…"></textarea>
+      <textarea id="kc-submit-text" rows="12" required placeholder="Meeting-Notizen, Stichpunkte oder Rohtext…"></textarea>
     </label>
 
-    <div class="kc-submit-ai-row">
-      <label class="user-admin-checkbox">
-        <input type="checkbox" id="kc-submit-use-ai" checked>
-        KI-Überarbeitung
+    <div class="kc-submit-ai-toggle">
+      <label class="kc-switch">
+        <input type="checkbox" id="kc-submit-use-ai">
+        <span class="kc-switch-track" aria-hidden="true"><span class="kc-switch-thumb"></span></span>
+        <span class="kc-switch-copy">
+          <strong>KI-Überarbeitung</strong>
+          <span class="muted kc-submit-ai-hint">Aus: Text unverändert ins Review. An: Stil wählen und KI starten.</span>
+        </span>
       </label>
-      <p class="muted kc-submit-ai-hint">Aus: Text geht unverändert ins Review. An: Preset wählen und KI starten.</p>
     </div>
 
-    <div id="kc-submit-presets" class="kc-submit-presets" aria-label="KI-Presets"></div>
+    <div id="kc-submit-presets-wrap" class="kc-submit-presets-wrap hidden" aria-hidden="true">
+      <p class="kc-submit-presets-label">Stil der KI-Überarbeitung</p>
+      <div id="kc-submit-presets" class="kc-submit-presets" aria-label="KI-Presets"></div>
+    </div>
 
     <button type="submit" id="kc-submit-btn" class="primary">Vorschlag einreichen</button>
     <p id="kc-submit-status" class="status" aria-live="polite"></p>

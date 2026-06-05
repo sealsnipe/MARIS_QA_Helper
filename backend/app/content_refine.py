@@ -10,23 +10,34 @@ from sqlalchemy.orm import Session
 from app.chunking import MIN_TEXT_LENGTH, normalize_text, validate_ingest_text
 from app.llm import LLMBackend, LLMError, get_llm
 
+REFINE_PRESET_EXPAND = "expand_notes"
 REFINE_PRESET_CLARIFY = "clarify"
 REFINE_PRESET_STRUCTURE = "structure"
-REFINE_PRESET_SHORTEN = "shorten"
 REFINE_PRESET_GRAMMAR = "grammar"
 
 REFINE_PRESETS: dict[str, dict[str, str]] = {
+    REFINE_PRESET_EXPAND: {
+        "label": "Notizen ausformulieren",
+        "instruction": (
+            "Der Text stammt oft aus Meetings, Abstimmungen oder schnellen Notizen "
+            "(Stichpunkte, Kurzformulierungen, Telegrafstil). Formuliere klar und "
+            "vollständig aus — bleibe aber kurz, prägnant und elegant. Keine "
+            "Ausschweifungen oder Marketing-Sprache."
+        ),
+    },
     REFINE_PRESET_CLARIFY: {
         "label": "Klarer formulieren",
-        "instruction": "Formuliere verständlicher und präziser, ohne neue Fakten.",
+        "instruction": (
+            "Verbessere Verständlichkeit und Ausdruck. Unklare oder holprige Formulierungen "
+            "glätten — Länge und Informationsgehalt möglichst beibehalten."
+        ),
     },
     REFINE_PRESET_STRUCTURE: {
-        "label": "Als KB-Artikel strukturieren",
-        "instruction": "Strukturiere als KB-Artikel mit klaren Absätzen; ergänze passenden Titel und Summary.",
-    },
-    REFINE_PRESET_SHORTEN: {
-        "label": "Kürzen",
-        "instruction": "Verdichte den Text, entferne Redundanz, behalte alle Fakten.",
+        "label": "Strukturieren",
+        "instruction": (
+            "Ordne den Inhalt als KB-Artikel: sinnvolle Absätze, optional kurze "
+            "Zwischenüberschriften. Ergänze passenden Titel und Summary. Kompakt halten."
+        ),
     },
     REFINE_PRESET_GRAMMAR: {
         "label": "Rechtschreibung & Grammatik",
@@ -34,11 +45,14 @@ REFINE_PRESETS: dict[str, dict[str, str]] = {
     },
 }
 
-DEFAULT_REFINE_PRESET = REFINE_PRESET_CLARIFY
+DEFAULT_REFINE_PRESET = REFINE_PRESET_EXPAND
 MAX_CHANGE_RATIO = 0.45
 VALID_CHANGE_KINDS = frozenset({"replace", "split", "merge", "insert", "delete"})
 
 REFINE_SYSTEM_PROMPT = """Du überarbeitest Rohtext für eine interne Wissensdatenbank.
+Typische Eingabe: Meeting-Notizen, Abstimmungsprotokolle, Stichpunkte, Kurzformulierungen — nicht fertige Fachtexte.
+Ziel: klarer, besser lesbarer Ausdruck — kurz, prägnant, elegant. Keine neuen Fakten.
+
 Antworte ausschließlich mit validem JSON — kein Markdown außerhalb des JSON.
 
 Schema:
@@ -61,13 +75,14 @@ Schema:
 
 Regeln:
 - Keine neuen Fakten erfinden.
+- Stichpunkte dürfen zu kurzen Sätzen ausformuliert werden — Inhalt unverändert lassen.
 - Unveränderte Absätze wortgleich übernehmen.
 - Nur geänderte Stellen in changes[] — jede change braucht sources (außer insert) und target.
 - sources müssen exakte Substrings aus dem ORIGINAL sein (copy-paste).
 - target und anchor müssen Substrings aus content sein.
 - kind=split: ein Quell-Satz → mehrere Ziel-Sätze in target.
 - kind=merge: mehrere Quell-Sätze → ein Ziel-Satz in target.
-- Möglichst kleine, nachvollziehbare Änderungen."""
+- Möglichst kleine, nachvollziehbare Änderungen — der Nutzer muss jede Änderung im Diff nachvollziehen können."""
 
 
 class ContentRefineError(Exception):
@@ -258,15 +273,15 @@ def refine_content_with_llm(
     else:
         keywords = [str(item).strip() for item in keywords_raw if str(item).strip()]
 
-    revised = str(parsed.get("content", "")).strip()
+    revised_raw = str(parsed.get("content", "")).strip()
     try:
-        validate_ingest_text(revised)
+        normalized_revised = validate_ingest_text(revised_raw)
     except ValueError as exc:
         raise ContentRefineError(str(exc)) from exc
 
     revision = validate_revision(
         normalized_original,
-        revised,
+        normalized_revised,
         {"changes": parsed.get("changes") or []},
     )
 
@@ -274,7 +289,7 @@ def refine_content_with_llm(
         title=title,
         summary=summary,
         keywords=keywords,
-        content=revised,
+        content=normalized_revised,
         revision=revision,
     )
 

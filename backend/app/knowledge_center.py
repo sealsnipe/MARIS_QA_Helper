@@ -4,7 +4,7 @@ import json
 import uuid
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.chunking import validate_ingest_text
@@ -221,8 +221,15 @@ def _visible_customer_ids(db: Session, user: User) -> set[str]:
 
 def ensure_builtin_knowledge_sources(db: Session) -> None:
     for name, host_code in BUILTIN_SOURCES:
-        if get_source_by_host_code(db, host_code) is None:
+        if get_source_by_host_code(db, host_code) is not None:
+            continue
+        try:
             create_knowledge_source(db, name, host_code)
+        except KnowledgeCenterError as exc:
+            if exc.code == "source_exists":
+                db.rollback()
+                continue
+            raise
 
 
 def _require_admin(user: User) -> None:
@@ -270,7 +277,7 @@ def list_knowledge_contents(
     db: Session,
     user: User,
     *,
-    status: str | None = CONTENT_STATUS_PENDING,
+    status: str | None = None,
     source_id: str | None = None,
     search: str | None = None,
     limit: int = 50,
@@ -278,21 +285,22 @@ def list_knowledge_contents(
     mine_only: bool = False,
 ) -> tuple[list[dict], int]:
     if mine_only or not user.is_admin:
-        stmt = select(KnowledgeContent).where(KnowledgeContent.submitted_by == user.id)
+        conditions = [KnowledgeContent.submitted_by == user.id]
     else:
         visible_ids = _visible_customer_ids(db, user)
         if not visible_ids:
             return [], 0
-        stmt = select(KnowledgeContent).where(_content_visibility_filter(user, visible_ids))
+        conditions = [_content_visibility_filter(user, visible_ids)]
+
     if status:
         if status not in CONTENT_STATUSES:
             raise KnowledgeCenterError("invalid_status")
-        stmt = stmt.where(KnowledgeContent.status == status)
+        conditions.append(KnowledgeContent.status == status)
     if source_id:
-        stmt = stmt.where(KnowledgeContent.source_id == source_id)
+        conditions.append(KnowledgeContent.source_id == source_id)
     if search:
         needle = f"%{search.strip().lower()}%"
-        stmt = stmt.where(
+        conditions.append(
             or_(
                 KnowledgeContent.title.ilike(needle),
                 KnowledgeContent.summary.ilike(needle),
@@ -300,10 +308,15 @@ def list_knowledge_contents(
             )
         )
 
-    total = len(list(db.scalars(stmt)))
+    where_clause = conditions[0] if len(conditions) == 1 else and_(*conditions)
+    total = db.scalar(select(func.count()).select_from(KnowledgeContent).where(where_clause)) or 0
     rows = list(
         db.scalars(
-            stmt.order_by(KnowledgeContent.received_at.desc()).offset(offset).limit(limit)
+            select(KnowledgeContent)
+            .where(where_clause)
+            .order_by(KnowledgeContent.received_at.desc())
+            .offset(offset)
+            .limit(limit)
         )
     )
     return [content_to_dict(db, row) for row in rows], total
@@ -515,7 +528,7 @@ def submit_knowledge_content(
     customer_id: str,
     raw_text: str,
     title: str | None = None,
-    use_ai: bool = True,
+    use_ai: bool = False,
     preset: str | None = None,
 ) -> dict:
     ensure_builtin_knowledge_sources(db)
