@@ -100,6 +100,20 @@ from app.secrets_admin import (
     get_keys_status,
     update_secret,
 )
+from app.knowledge_center import (
+    KnowledgeCenterError,
+    adopt_knowledge_content,
+    content_to_dict,
+    create_knowledge_source,
+    delete_knowledge_source,
+    get_knowledge_content_for_user,
+    list_adoptable_customers,
+    list_knowledge_contents,
+    list_knowledge_sources,
+    reject_knowledge_content,
+    source_to_dict,
+    update_knowledge_source,
+)
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
@@ -185,6 +199,20 @@ class AdminKeysIntegrationUpdate(BaseModel):
     api_key: str | None = None
 
 
+class AdminKnowledgeSourceCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    host_code: str = Field(min_length=1, max_length=64)
+
+
+class AdminKnowledgeSourceUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    active: bool | None = None
+
+
+class KnowledgeContentAdoptRequest(BaseModel):
+    customer_id: str = Field(min_length=1, max_length=64)
+
+
 class DocumentUpdateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     text: str = Field(min_length=1)
@@ -235,7 +263,14 @@ def _admin_page_redirect(user: User) -> RedirectResponse | None:
 # Sidebar customer dropdown: scoped (chat/kb), admin_scoped (KB/prompts admin), global (no page effect).
 CUSTOMER_NAV_SCOPED_PAGES = frozenset({"chat", "kb", "tools_bild_zu_text"})
 CUSTOMER_NAV_ADMIN_SCOPED_PAGES = frozenset({"admin_knowledge", "admin_prompts"})
-CUSTOMER_NAV_GLOBAL_PAGES = frozenset({"customers", "admin_users", "admin_roles", "admin_keys"})
+CUSTOMER_NAV_GLOBAL_PAGES = frozenset({
+    "customers",
+    "admin_users",
+    "admin_roles",
+    "admin_keys",
+    "tools_kc_content",
+    "tools_kc_sources",
+})
 
 
 def customer_nav_mode(active_page: str) -> str:
@@ -422,6 +457,34 @@ def tools_bild_zu_text_page(
         request,
         "tools/bild_zu_text.html",
         _page_context(request, user, db, active_page="tools_bild_zu_text"),
+    )
+
+
+@router.get("/tools/knowledge-center", response_class=HTMLResponse)
+def tools_knowledge_center_content_page(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "tools/knowledge_center_content.html",
+        _page_context(request, user, db, active_page="tools_kc_content"),
+    )
+
+
+@router.get("/tools/knowledge-center/sources", response_class=HTMLResponse)
+def tools_knowledge_center_sources_page(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    if redirect := _admin_page_redirect(user):
+        return redirect
+    return templates.TemplateResponse(
+        request,
+        "tools/knowledge_center_sources.html",
+        _page_context(request, user, db, active_page="tools_kc_sources"),
     )
 
 
@@ -1676,3 +1739,106 @@ def api_admin_delete_user(
 ) -> dict:
     deactivate_admin_user(db, user_id, actor_id=admin.id)
     return {"deleted": True, "id": user_id}
+
+
+@router.get("/api/admin/knowledge-sources")
+def api_admin_list_knowledge_sources(
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    return {"sources": list_knowledge_sources(db)}
+
+
+@router.post("/api/admin/knowledge-sources")
+def api_admin_create_knowledge_source(
+    payload: AdminKnowledgeSourceCreateRequest,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    source = create_knowledge_source(db, payload.name, payload.host_code)
+    return {"source": source_to_dict(source)}
+
+
+@router.patch("/api/admin/knowledge-sources/{source_id}")
+def api_admin_update_knowledge_source(
+    source_id: str,
+    payload: AdminKnowledgeSourceUpdateRequest,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    source = update_knowledge_source(
+        db,
+        source_id,
+        name=payload.name,
+        active=payload.active,
+    )
+    return {"source": source_to_dict(source)}
+
+
+@router.delete("/api/admin/knowledge-sources/{source_id}")
+def api_admin_delete_knowledge_source(
+    source_id: str,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    delete_knowledge_source(db, source_id)
+    return {"deleted": True, "id": source_id}
+
+
+@router.get("/api/tools/knowledge-center/contents")
+def api_tools_knowledge_center_contents(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    status: str | None = "pending",
+    source_id: str | None = None,
+    search: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict:
+    contents, total = list_knowledge_contents(
+        db,
+        user,
+        status=status,
+        source_id=source_id,
+        search=search,
+        limit=limit,
+        offset=offset,
+    )
+    return {
+        "contents": contents,
+        "total": total,
+        "sources": list_knowledge_sources(db),
+        "customers": list_adoptable_customers(db, user),
+    }
+
+
+@router.get("/api/tools/knowledge-center/contents/{content_id}")
+def api_tools_knowledge_center_content_detail(
+    content_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    row = get_knowledge_content_for_user(db, user, content_id)
+    return {
+        "content": content_to_dict(db, row),
+        "customers": list_adoptable_customers(db, user),
+    }
+
+
+@router.post("/api/tools/knowledge-center/contents/{content_id}/adopt")
+def api_tools_knowledge_center_adopt(
+    content_id: str,
+    payload: KnowledgeContentAdoptRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    return adopt_knowledge_content(db, user, content_id, payload.customer_id)
+
+
+@router.post("/api/tools/knowledge-center/contents/{content_id}/reject")
+def api_tools_knowledge_center_reject(
+    content_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    return reject_knowledge_content(db, user, content_id)

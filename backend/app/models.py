@@ -160,3 +160,41 @@ class AppSecret(Base):
     value: Mapped[str] = mapped_column(Text, nullable=False, default="")
     updated_at: Mapped[str] = mapped_column(String, nullable=False)
     updated_by: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class KnowledgeSource(Base):
+    __tablename__ = "knowledge_sources"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    host_code: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    active: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)
+
+    contents: Mapped[list["KnowledgeContent"]] = relationship(back_populates="source")
+
+
+class KnowledgeContent(Base):
+    __tablename__ = "knowledge_contents"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    source_id: Mapped[str] = mapped_column(String, ForeignKey("knowledge_sources.id"), nullable=False)
+    suggested_customer_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("customers.id"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    keywords_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    source_ref: Mapped[str | None] = mapped_column(String, nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    adopted_customer_id: Mapped[str | None] = mapped_column(String, ForeignKey("customers.id"), nullable=True)
+    adopted_document_id: Mapped[str | None] = mapped_column(String, ForeignKey("documents.id"), nullable=True)
+    reviewed_by: Mapped[str | None] = mapped_column(String, ForeignKey("users.id"), nullable=True)
+    reviewed_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    received_at: Mapped[str] = mapped_column(String, nullable=False)
+
+    source: Mapped[KnowledgeSource] = relationship(back_populates="contents")

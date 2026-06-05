@@ -18,8 +18,38 @@ Kein WebSocket im MVP: sync JSON reicht für Tool-Calls.
 | Methode | Pfad | Auth |
 |---|---|---|
 | `POST` | `/api/v1/ask` | `Authorization: Bearer <INTEGRATION_API_TOKEN>` |
+| `POST` | `/api/v1/knowledge-content` | `Authorization: Bearer <INTEGRATION_API_TOKEN>` |
 
 OpenAPI: `http://localhost:8088/docs` (Tag **Integration**).
+
+---
+
+## Knowledge Center Ingest
+
+Worker liefern Content-Vorschläge an das Knowledge Center (Staging vor KB-Review):
+
+```json
+{
+  "host_code": "agent-alpha",
+  "items": [
+    {
+      "title": "Titel",
+      "summary": "Kurztext",
+      "content": "Volltext (min. 20 Zeichen)",
+      "keywords": ["a", "b"],
+      "source_ref": "https://…",
+      "customer_id": "bg-frankfurt",
+      "external_id": "dedup-key"
+    }
+  ]
+}
+```
+
+- `host_code` muss einer aktiven Source entsprechen (Admin: Tools → Knowledge Center → Sources).
+- `customer_id` optional — Vorschlag für Review; finale KB-Zuordnung wählt der Nutzer im Content Dashboard.
+- Duplikat `(source, external_id)`: bestehender **pending**-Eintrag wird aktualisiert.
+
+Antwort: `{ "created", "updated", "skipped", "errors" }`.
 
 ---
 

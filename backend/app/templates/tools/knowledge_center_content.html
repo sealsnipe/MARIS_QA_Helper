@@ -1,0 +1,42 @@
+{% extends "layout.html" %}
+
+{% block title %}Content Dashboard · Knowledge Center · MARIS - Q/A Helper{% endblock %}
+{% block page_title %}Content Dashboard{% endblock %}
+
+{% block content %}
+<section class="panel kc-panel full-page">
+  <p class="muted">Vorgeschlagene Inhalte aus externen Quellen. Prüfen und gezielt in die Wissensdatenbank eines Mandanten übernehmen.</p>
+
+  <div class="kc-toolbar">
+    <label class="kc-filter">
+      Status
+      <select id="kc-status-filter">
+        <option value="pending" selected>Offen</option>
+        <option value="adopted">Übernommen</option>
+        <option value="rejected">Abgelehnt</option>
+        <option value="">Alle</option>
+      </select>
+    </label>
+    <label class="kc-filter">
+      Quelle
+      <select id="kc-source-filter">
+        <option value="">Alle Quellen</option>
+      </select>
+    </label>
+    <label class="kc-filter kc-search-filter">
+      Suche
+      <input type="search" id="kc-search-input" placeholder="Titel, Summary, Text…" autocomplete="off">
+    </label>
+    <button type="button" class="secondary small" id="kc-refresh-btn">Aktualisieren</button>
+  </div>
+
+  <p id="kc-list-status" class="status" aria-live="polite"></p>
+
+  <div id="kc-content-grid" class="kc-content-grid" aria-live="polite"></div>
+  <p id="kc-empty" class="muted hidden">Keine Vorschläge für die aktuelle Filterung.</p>
+
+  <div class="kc-load-more-wrap hidden" id="kc-load-more-wrap">
+    <button type="button" class="secondary" id="kc-load-more-btn">Mehr laden</button>
+  </div>
+</section>
+{% endblock %}

@@ -16,6 +16,7 @@ from app.chats import (
 from app.customers import get_customer, is_customer_active
 from app.db import get_db
 from app.integration_auth import get_integration_user
+from app.knowledge_center import KnowledgeCenterError, ingest_knowledge_contents
 from app.models import Customer, User
 from app.retrieval import filter_sources_by_answer_citations
 
@@ -27,6 +28,21 @@ class IntegrationAskRequest(BaseModel):
     customer_id: str = Field(min_length=1, max_length=64)
     chat_id: str | None = None
     top_k: int | None = Field(default=None, ge=1, le=20)
+
+
+class IntegrationKnowledgeContentItem(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    summary: str = Field(default="", max_length=2000)
+    content: str = Field(min_length=1)
+    keywords: list[str] | str = Field(default_factory=list)
+    source_ref: str | None = Field(default=None, max_length=500)
+    customer_id: str | None = Field(default=None, max_length=64)
+    external_id: str | None = Field(default=None, max_length=200)
+
+
+class IntegrationKnowledgeContentRequest(BaseModel):
+    host_code: str = Field(min_length=1, max_length=64)
+    items: list[IntegrationKnowledgeContentItem] = Field(min_length=1)
 
 
 def _require_active_customer(db: Session, customer_id: str) -> Customer | JSONResponse:
@@ -91,3 +107,22 @@ def api_v1_ask(
         "chat_id": session.id,
         "customer_id": customer.id,
     }
+
+
+@router.post("/api/v1/knowledge-content")
+def api_v1_knowledge_content(
+    payload: IntegrationKnowledgeContentRequest,
+    _user: User = Depends(get_integration_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        return ingest_knowledge_contents(
+            db,
+            payload.host_code,
+            [item.model_dump() for item in payload.items],
+        )
+    except KnowledgeCenterError as exc:
+        body: dict[str, str] = {"error": exc.code}
+        if exc.detail:
+            body["detail"] = exc.detail
+        return JSONResponse(body, status_code=exc.status_code)

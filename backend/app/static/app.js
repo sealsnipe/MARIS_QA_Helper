@@ -2943,6 +2943,418 @@
     window.__refreshKeys = loadAndRender;
   }
 
+  function formatKcDate(iso) {
+    if (!iso) return "";
+    try {
+      return new Date(iso).toLocaleString("de-DE", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return iso;
+    }
+  }
+
+  function ensureKcDetailModal() {
+    let modal = document.getElementById("kc-detail-modal");
+    if (modal) return modal;
+
+    modal = document.createElement("div");
+    modal.id = "kc-detail-modal";
+    modal.className = "kc-detail-modal hidden";
+    modal.innerHTML = `
+      <div class="kc-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="kc-detail-title">
+        <div class="kc-detail-header">
+          <h2 id="kc-detail-title"></h2>
+          <button type="button" class="kc-detail-close" aria-label="Schließen">×</button>
+        </div>
+        <div class="kc-detail-meta" id="kc-detail-meta"></div>
+        <div class="kc-detail-keywords kc-card-keywords" id="kc-detail-keywords"></div>
+        <div class="kc-detail-summary hidden" id="kc-detail-summary"></div>
+        <div class="kc-detail-body" id="kc-detail-body"></div>
+        <p id="kc-detail-status" class="status" aria-live="polite"></p>
+        <div class="kc-detail-actions" id="kc-detail-actions">
+          <label class="kc-adopt-customer">
+            Ziel-Mandant für KB
+            <select id="kc-adopt-customer"></select>
+          </label>
+          <div class="kc-detail-buttons">
+            <button type="button" class="primary" id="kc-adopt-btn">In KB übernehmen</button>
+            <button type="button" class="secondary danger" id="kc-reject-btn">Ablehnen</button>
+            <button type="button" class="secondary" id="kc-detail-cancel-btn">Schließen</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const close = () => modal.classList.add("hidden");
+    modal.querySelector(".kc-detail-close")?.addEventListener("click", close);
+    modal.querySelector("#kc-detail-cancel-btn")?.addEventListener("click", close);
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) close();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !modal.classList.contains("hidden")) close();
+    });
+    return modal;
+  }
+
+  function initKnowledgeCenterContentPage() {
+    const grid = document.getElementById("kc-content-grid");
+    const emptyEl = document.getElementById("kc-empty");
+    const listStatus = document.getElementById("kc-list-status");
+    const statusFilter = document.getElementById("kc-status-filter");
+    const sourceFilter = document.getElementById("kc-source-filter");
+    const searchInput = document.getElementById("kc-search-input");
+    const refreshBtn = document.getElementById("kc-refresh-btn");
+    const loadMoreWrap = document.getElementById("kc-load-more-wrap");
+    const loadMoreBtn = document.getElementById("kc-load-more-btn");
+
+    const modal = ensureKcDetailModal();
+    const detailTitle = modal.querySelector("#kc-detail-title");
+    const detailMeta = modal.querySelector("#kc-detail-meta");
+    const detailKeywords = modal.querySelector("#kc-detail-keywords");
+    const detailSummary = modal.querySelector("#kc-detail-summary");
+    const detailBody = modal.querySelector("#kc-detail-body");
+    const detailStatus = modal.querySelector("#kc-detail-status");
+    const detailActions = modal.querySelector("#kc-detail-actions");
+    const adoptCustomer = modal.querySelector("#kc-adopt-customer");
+    const adoptBtn = modal.querySelector("#kc-adopt-btn");
+    const rejectBtn = modal.querySelector("#kc-reject-btn");
+
+    let customers = [];
+    let sources = [];
+    let contents = [];
+    let total = 0;
+    let offset = 0;
+    const pageSize = 50;
+    let activeContent = null;
+    let searchTimer = null;
+
+    function renderSourceFilterOptions() {
+      if (!sourceFilter) return;
+      const current = sourceFilter.value;
+      sourceFilter.innerHTML = '<option value="">Alle Quellen</option>';
+      sources.forEach((source) => {
+        const opt = document.createElement("option");
+        opt.value = source.id;
+        opt.textContent = `${source.name} (${source.host_code})`;
+        sourceFilter.appendChild(opt);
+      });
+      sourceFilter.value = current;
+    }
+
+    function renderCustomerOptions(selectedId) {
+      if (!adoptCustomer) return;
+      adoptCustomer.innerHTML = '<option value="">— Mandant wählen —</option>';
+      customers.forEach((customer) => {
+        const opt = document.createElement("option");
+        opt.value = customer.id;
+        opt.textContent = `${customer.name} (${customer.id})`;
+        adoptCustomer.appendChild(opt);
+      });
+      if (selectedId && customers.some((c) => c.id === selectedId)) {
+        adoptCustomer.value = selectedId;
+      }
+    }
+
+    function renderGrid() {
+      if (!grid) return;
+      grid.innerHTML = "";
+      if (emptyEl) emptyEl.classList.toggle("hidden", contents.length > 0);
+      if (loadMoreWrap) loadMoreWrap.classList.toggle("hidden", offset + contents.length >= total);
+
+      contents.forEach((item) => {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "kc-content-card";
+        card.dataset.contentId = item.id;
+        const keywords = (item.keywords || [])
+          .slice(0, 4)
+          .map((kw) => `<span class="kc-keyword-badge">${escapeHtml(kw)}</span>`)
+          .join("");
+        card.innerHTML = `
+          <div class="kc-card-title">${escapeHtml(item.title)}</div>
+          <div class="kc-card-summary">${escapeHtml(item.summary || "—")}</div>
+          <div class="kc-card-keywords">${keywords}</div>
+          <div class="kc-card-meta">
+            <span class="badge">${escapeHtml(item.source_name || item.host_code || "Quelle")}</span>
+            ${item.suggested_customer_name ? `<span class="badge user-slug-badge">${escapeHtml(item.suggested_customer_id)}</span>` : ""}
+            <span class="muted">${escapeHtml(formatKcDate(item.received_at))}</span>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function openDetail(item) {
+      activeContent = item;
+      if (detailTitle) detailTitle.textContent = item.title;
+      if (detailMeta) {
+        detailMeta.innerHTML = `
+          <span class="badge">${escapeHtml(item.source_name || "")}</span>
+          <span class="muted">Host: ${escapeHtml(item.host_code || "")}</span>
+          ${item.source_ref ? `<a href="${escapeHtml(item.source_ref)}" target="_blank" rel="noopener">Referenz</a>` : ""}
+          ${item.suggested_customer_name ? `<span>Vorschlag: ${escapeHtml(item.suggested_customer_name)}</span>` : ""}
+          <span class="muted">${escapeHtml(formatKcDate(item.received_at))}</span>
+        `;
+      }
+      if (detailKeywords) {
+        detailKeywords.innerHTML = (item.keywords || [])
+          .map((kw) => `<span class="kc-keyword-badge">${escapeHtml(kw)}</span>`)
+          .join("");
+      }
+      if (detailSummary) {
+        const summary = item.summary || "";
+        detailSummary.textContent = summary;
+        detailSummary.classList.toggle("hidden", !summary);
+      }
+      if (detailBody) detailBody.textContent = item.content || "";
+      showStatus(detailStatus, "", "");
+      renderCustomerOptions(item.suggested_customer_id || "");
+
+      const isPending = item.status === "pending";
+      if (detailActions) detailActions.classList.toggle("hidden", !isPending);
+      if (adoptBtn) adoptBtn.disabled = !isPending;
+      if (rejectBtn) rejectBtn.disabled = !isPending;
+      if (adoptCustomer) adoptCustomer.disabled = !isPending;
+
+      modal.classList.remove("hidden");
+    }
+
+    async function loadContents({ append = false } = {}) {
+      if (!append) offset = 0;
+      const params = new URLSearchParams();
+      const status = statusFilter?.value ?? "pending";
+      if (status) params.set("status", status);
+      if (sourceFilter?.value) params.set("source_id", sourceFilter.value);
+      if (searchInput?.value.trim()) params.set("search", searchInput.value.trim());
+      params.set("limit", String(pageSize));
+      params.set("offset", String(offset));
+
+      showStatus(listStatus, "Lade Inhalte…", "");
+      try {
+        const data = await api(`/api/tools/knowledge-center/contents?${params.toString()}`);
+        customers = data.customers || [];
+        sources = data.sources || [];
+        renderSourceFilterOptions();
+        const batch = data.contents || [];
+        total = data.total ?? batch.length;
+        contents = append ? contents.concat(batch) : batch;
+        if (append) offset += batch.length;
+        else offset = batch.length;
+        renderGrid();
+        showStatus(listStatus, total ? `${total} Eintrag${total === 1 ? "" : "e"}` : "", "ok");
+      } catch (err) {
+        showStatus(listStatus, err.detail || err.code || "Laden fehlgeschlagen.", "error");
+      }
+    }
+
+    grid?.addEventListener("click", (event) => {
+      const card = event.target.closest(".kc-content-card");
+      if (!card) return;
+      const item = contents.find((row) => row.id === card.dataset.contentId);
+      if (item) openDetail(item);
+    });
+
+    statusFilter?.addEventListener("change", () => loadContents().catch(() => {}));
+    sourceFilter?.addEventListener("change", () => loadContents().catch(() => {}));
+    refreshBtn?.addEventListener("click", () => loadContents().catch(() => {}));
+    loadMoreBtn?.addEventListener("click", () => loadContents({ append: true }).catch(() => {}));
+    searchInput?.addEventListener("input", () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => loadContents().catch(() => {}), 300);
+    });
+
+    adoptBtn?.addEventListener("click", async () => {
+      if (!activeContent) return;
+      const customerId = adoptCustomer?.value || "";
+      if (!customerId) {
+        showStatus(detailStatus, "Bitte Ziel-Mandant wählen.", "error");
+        return;
+      }
+      adoptBtn.disabled = true;
+      showStatus(detailStatus, "Übernehme in KB…", "");
+      try {
+        const result = await api(`/api/tools/knowledge-center/contents/${activeContent.id}/adopt`, {
+          method: "POST",
+          body: { customer_id: customerId },
+        });
+        modal.classList.add("hidden");
+        showStatus(listStatus, `In KB übernommen (${result.customer_id}).`, "ok");
+        await loadContents();
+      } catch (err) {
+        showStatus(detailStatus, err.detail || err.code || "Übernahme fehlgeschlagen.", "error");
+      } finally {
+        adoptBtn.disabled = false;
+      }
+    });
+
+    rejectBtn?.addEventListener("click", async () => {
+      if (!activeContent) return;
+      rejectBtn.disabled = true;
+      showStatus(detailStatus, "Wird abgelehnt…", "");
+      try {
+        await api(`/api/tools/knowledge-center/contents/${activeContent.id}/reject`, {
+          method: "POST",
+          body: {},
+        });
+        modal.classList.add("hidden");
+        showStatus(listStatus, "Vorschlag abgelehnt.", "ok");
+        await loadContents();
+      } catch (err) {
+        showStatus(detailStatus, err.detail || err.code || "Ablehnen fehlgeschlagen.", "error");
+      } finally {
+        rejectBtn.disabled = false;
+      }
+    });
+
+    loadContents().catch(() => {});
+  }
+
+  function initKnowledgeCenterSourcesPage() {
+    const tbody = document.getElementById("kc-source-table-body");
+    const emptyEl = document.getElementById("kc-source-empty");
+    const countEl = document.getElementById("kc-source-count");
+    const listStatus = document.getElementById("kc-source-list-status");
+    const createForm = document.getElementById("kc-source-create-form");
+    const createName = document.getElementById("kc-source-create-name");
+    const createHostCode = document.getElementById("kc-source-create-host-code");
+    const createStatus = document.getElementById("kc-source-create-status");
+
+    function renderSources(sources) {
+      if (!tbody) return;
+      tbody.innerHTML = "";
+      const rows = sources || [];
+      if (countEl) countEl.textContent = `(${rows.length})`;
+      if (emptyEl) emptyEl.classList.toggle("hidden", rows.length > 0);
+
+      rows.forEach((source) => {
+        const row = document.createElement("tr");
+        row.dataset.sourceId = source.id;
+        row.innerHTML = `
+          <td><span class="kc-source-name-display">${escapeHtml(source.name)}</span></td>
+          <td><code>${escapeHtml(source.host_code)}</code></td>
+          <td>${source.active ? "Ja" : "Nein"}</td>
+          <td class="user-actions-cell">
+            <div class="row-actions">
+              <button type="button" class="icon-btn secondary kc-source-edit-btn" aria-label="Bearbeiten">${ICON_EDIT}</button>
+              <button type="button" class="icon-btn danger kc-source-delete-btn" aria-label="Entfernen">${ICON_TRASH}</button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(row);
+
+        const editRow = document.createElement("tr");
+        editRow.className = "kc-source-edit-row hidden";
+        editRow.dataset.sourceId = source.id;
+        editRow.innerHTML = `
+          <td colspan="4">
+            <div class="ingest-form">
+              <div class="customer-form-row">
+                <label>Name<input type="text" class="kc-source-edit-name" value="${escapeHtml(source.name)}" maxlength="120"></label>
+                <label class="user-admin-checkbox"><input type="checkbox" class="kc-source-edit-active" ${source.active ? "checked" : ""}> Aktiv</label>
+              </div>
+              <p class="muted">Host-Code: <code>${escapeHtml(source.host_code)}</code> (unveränderlich)</p>
+              <div class="customer-actions">
+                <button type="button" class="secondary small kc-source-save-btn">Speichern</button>
+                <button type="button" class="secondary small kc-source-cancel-btn">Abbrechen</button>
+              </div>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(editRow);
+      });
+    }
+
+    async function loadSources() {
+      const data = await api("/api/admin/knowledge-sources");
+      renderSources(data.sources || []);
+    }
+
+    createForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const name = createName?.value.trim() || "";
+      const hostCode = createHostCode?.value.trim().toLowerCase() || "";
+      if (!name || !hostCode) return;
+      showStatus(createStatus, "Wird angelegt…", "");
+      try {
+        await api("/api/admin/knowledge-sources", {
+          method: "POST",
+          body: { name, host_code: hostCode },
+        });
+        createForm.reset();
+        showStatus(createStatus, "Quelle angelegt.", "ok");
+        await loadSources();
+      } catch (err) {
+        showStatus(createStatus, err.detail || err.code || "Anlegen fehlgeschlagen.", "error");
+      }
+    });
+
+    tbody?.addEventListener("click", async (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+
+      if (target.closest(".kc-source-edit-btn")) {
+        const row = target.closest("tr:not(.kc-source-edit-row)");
+        if (!row) return;
+        const sourceId = row.dataset.sourceId;
+        tbody.querySelectorAll(".kc-source-edit-row").forEach((el) => el.classList.add("hidden"));
+        tbody.querySelector(`tr.kc-source-edit-row[data-source-id="${sourceId}"]`)?.classList.remove("hidden");
+        return;
+      }
+
+      if (target.closest(".kc-source-cancel-btn")) {
+        target.closest("tr.kc-source-edit-row")?.classList.add("hidden");
+        return;
+      }
+
+      if (target.closest(".kc-source-save-btn")) {
+        const editRow = target.closest("tr.kc-source-edit-row");
+        if (!editRow) return;
+        const sourceId = editRow.dataset.sourceId;
+        const name = editRow.querySelector(".kc-source-edit-name")?.value.trim() || "";
+        const active = Boolean(editRow.querySelector(".kc-source-edit-active")?.checked);
+        if (!name) {
+          showStatus(listStatus, "Name ist Pflicht.", "error");
+          return;
+        }
+        try {
+          await api(`/api/admin/knowledge-sources/${sourceId}`, {
+            method: "PATCH",
+            body: { name, active },
+          });
+          editRow.classList.add("hidden");
+          showStatus(listStatus, "Quelle gespeichert.", "ok");
+          await loadSources();
+        } catch (err) {
+          showStatus(listStatus, err.detail || err.code || "Speichern fehlgeschlagen.", "error");
+        }
+        return;
+      }
+
+      if (target.closest(".kc-source-delete-btn")) {
+        const row = target.closest("tr:not(.kc-source-edit-row)");
+        if (!row) return;
+        const sourceId = row.dataset.sourceId;
+        if (!window.confirm("Quelle wirklich löschen?")) return;
+        try {
+          await api(`/api/admin/knowledge-sources/${sourceId}`, { method: "DELETE" });
+          showStatus(listStatus, "Quelle gelöscht.", "ok");
+          await loadSources();
+        } catch (err) {
+          showStatus(listStatus, err.detail || err.code || "Löschen fehlgeschlagen.", "error");
+        }
+      }
+    });
+
+    loadSources().catch(() => {});
+  }
+
   syncActiveCustomerFromSelect();
   setCustomerUiEnabled(Boolean(activeCustomerId));
   initChatSidebar();
@@ -2953,6 +3365,8 @@
   if (page === "chat") initChatPage();
   if (page === "kb") initKbPage();
   if (page === "tools_bild_zu_text") initImageToTextTool();
+  if (page === "tools_kc_content") initKnowledgeCenterContentPage();
+  if (page === "tools_kc_sources") initKnowledgeCenterSourcesPage();
   if (page === "admin_knowledge") initAdminKnowledgePage();
   if (page === "admin_prompts") initAdminPromptsPage();
   if (page === "admin_users") initUsersPage();

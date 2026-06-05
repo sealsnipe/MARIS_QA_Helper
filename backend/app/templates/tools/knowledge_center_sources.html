@@ -1,0 +1,44 @@
+{% extends "layout.html" %}
+
+{% block title %}Sources · Knowledge Center · MARIS - Q/A Helper{% endblock %}
+{% block page_title %}Sources{% endblock %}
+
+{% block content %}
+<section class="panel customer-admin-panel">
+  <p class="muted">Quellen für eingehende Content-Vorschläge. Der <strong>Host-Code</strong> wird von Workern im API-Payload referenziert und ist nach Anlage unveränderlich.</p>
+
+  <form id="kc-source-create-form" class="ingest-form customer-create-form">
+    <h2>Neue Quelle</h2>
+    <div class="customer-form-row">
+      <label>
+        Name
+        <input type="text" id="kc-source-create-name" maxlength="120" placeholder="z. B. Jira Sync Agent" required>
+      </label>
+      <label>
+        Host-Code
+        <input type="text" id="kc-source-create-host-code" maxlength="64" pattern="[a-z0-9_-]+" placeholder="z. B. jira-sync" required>
+      </label>
+      <button type="submit" id="kc-source-create-submit">Quelle anlegen</button>
+    </div>
+    <p id="kc-source-create-status" class="status" aria-live="polite"></p>
+  </form>
+
+  <div class="customer-list-wrap">
+    <h2>Quellen <span id="kc-source-count" class="muted">(0)</span></h2>
+    <table class="customer-table" id="kc-source-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Host-Code</th>
+          <th>Aktiv</th>
+          <th>Aktionen</th>
+        </tr>
+      </thead>
+      <tbody id="kc-source-table-body"></tbody>
+    </table>
+    <p id="kc-source-empty" class="muted">Noch keine Quellen.</p>
+  </div>
+
+  <p id="kc-source-list-status" class="status" aria-live="polite"></p>
+</section>
+{% endblock %}
