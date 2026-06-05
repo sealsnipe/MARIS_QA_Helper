@@ -173,7 +173,7 @@ body {
   border-left: 1px solid var(--border);
 }
 
-.nav-group.expanded .nav-submenu {
+.nav-group.expanded > .nav-submenu {
   display: flex;
 }
 
