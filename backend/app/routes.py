@@ -106,12 +106,15 @@ from app.knowledge_center import (
     content_to_dict,
     create_knowledge_source,
     delete_knowledge_source,
+    ensure_builtin_knowledge_sources,
     get_knowledge_content_for_user,
+    get_submit_context,
     list_adoptable_customers,
     list_knowledge_contents,
     list_knowledge_sources,
     reject_knowledge_content,
     source_to_dict,
+    submit_knowledge_content,
     update_knowledge_source,
 )
 
@@ -213,6 +216,14 @@ class KnowledgeContentAdoptRequest(BaseModel):
     customer_id: str = Field(min_length=1, max_length=64)
 
 
+class KnowledgeContentSubmitRequest(BaseModel):
+    customer_id: str = Field(min_length=1, max_length=64)
+    raw_text: str = Field(min_length=1)
+    title: str | None = Field(default=None, max_length=200)
+    use_ai: bool = True
+    preset: str | None = Field(default=None, max_length=64)
+
+
 class DocumentUpdateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     text: str = Field(min_length=1)
@@ -269,6 +280,7 @@ CUSTOMER_NAV_GLOBAL_PAGES = frozenset({
     "admin_roles",
     "admin_keys",
     "tools_kc_content",
+    "tools_kc_submit",
     "tools_kc_sources",
 })
 
@@ -461,15 +473,31 @@ def tools_bild_zu_text_page(
 
 
 @router.get("/tools/knowledge-center", response_class=HTMLResponse)
-def tools_knowledge_center_content_page(
+def tools_knowledge_center_dashboard_page(
     request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
+    if not user.is_admin:
+        return RedirectResponse(url="/tools/knowledge-center/submit", status_code=status.HTTP_302_FOUND)
     return templates.TemplateResponse(
         request,
         "tools/knowledge_center_content.html",
         _page_context(request, user, db, active_page="tools_kc_content"),
+    )
+
+
+@router.get("/tools/knowledge-center/submit", response_class=HTMLResponse)
+def tools_knowledge_center_submit_page(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    ensure_builtin_knowledge_sources(db)
+    return templates.TemplateResponse(
+        request,
+        "tools/knowledge_center_submit.html",
+        _page_context(request, user, db, active_page="tools_kc_submit"),
     )
 
 
@@ -1785,9 +1813,53 @@ def api_admin_delete_knowledge_source(
     return {"deleted": True, "id": source_id}
 
 
+@router.get("/api/tools/knowledge-center/submit-context")
+def api_tools_knowledge_center_submit_context(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    return get_submit_context(db, user)
+
+
+@router.post("/api/tools/knowledge-center/submit")
+def api_tools_knowledge_center_submit(
+    payload: KnowledgeContentSubmitRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    return submit_knowledge_content(
+        db,
+        user,
+        customer_id=payload.customer_id,
+        raw_text=payload.raw_text,
+        title=payload.title,
+        use_ai=payload.use_ai,
+        preset=payload.preset,
+    )
+
+
+@router.get("/api/tools/knowledge-center/my-contents")
+def api_tools_knowledge_center_my_contents(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    status: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> dict:
+    contents, total = list_knowledge_contents(
+        db,
+        user,
+        status=status,
+        limit=limit,
+        offset=offset,
+        mine_only=True,
+    )
+    return {"contents": contents, "total": total}
+
+
 @router.get("/api/tools/knowledge-center/contents")
 def api_tools_knowledge_center_contents(
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
     status: str | None = "pending",
     source_id: str | None = None,
@@ -1819,9 +1891,10 @@ def api_tools_knowledge_center_content_detail(
     db: Session = Depends(get_db),
 ) -> dict:
     row = get_knowledge_content_for_user(db, user, content_id)
+    customers = list_adoptable_customers(db, user) if user.is_admin else []
     return {
         "content": content_to_dict(db, row),
-        "customers": list_adoptable_customers(db, user),
+        "customers": customers,
     }
 
 
@@ -1829,7 +1902,7 @@ def api_tools_knowledge_center_content_detail(
 def api_tools_knowledge_center_adopt(
     content_id: str,
     payload: KnowledgeContentAdoptRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ) -> dict:
     return adopt_knowledge_content(db, user, content_id, payload.customer_id)
@@ -1838,7 +1911,7 @@ def api_tools_knowledge_center_adopt(
 @router.post("/api/tools/knowledge-center/contents/{content_id}/reject")
 def api_tools_knowledge_center_reject(
     content_id: str,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ) -> dict:
     return reject_knowledge_content(db, user, content_id)

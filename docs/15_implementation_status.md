@@ -38,7 +38,7 @@ Abgleich zwischen **Planungsdocs** (`docs/01–14`, Stand teils 2026-06-02) und 
 | **Slug-Rename Migration** | Entscheidungsvorlage `14` | ✅ SQLite + Qdrant + Uploads |
 | **Vision-OCR / Bilder** | Roadmap | ✅ Inspect, selektive OCR, inline DOCX, Thumbnails, Strg+V |
 | **UI Tools-Sektion** | — | ✅ Sidebar "Tools" mit "Bild zu Text" |
-| **Knowledge Center** | — | ✅ Content Dashboard + Sources, Ingest `/api/v1/knowledge-content`, KB-Übernahme |
+| **Knowledge Center** | — | ✅ Content vorschlagen (User), Dashboard + Sources (Admin), KI-Presets, Diff-Review |
 | **Duplikat-Erkennung (Stufe 1)** | Phase 3 | ✅ Exakter `content_sha256`, Inspect-Warnung, Upload mit Bestätigung |
 | **Duplikat-Erkennung (Stufe 2)** | Phase 3 | ✅ Document-Fingerprint in Qdrant, `similar[]` im Inspect, UI-Warnung |
 

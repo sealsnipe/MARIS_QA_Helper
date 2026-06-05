@@ -65,6 +65,18 @@ def _migrate_schema(engine) -> None:
                         "ON documents (customer_id, content_sha256)"
                     )
                 )
+    if "knowledge_contents" in table_names:
+        columns = {col["name"] for col in inspector.get_columns("knowledge_contents")}
+        migrations = {
+            "original_content": "ALTER TABLE knowledge_contents ADD COLUMN original_content TEXT",
+            "revision_json": "ALTER TABLE knowledge_contents ADD COLUMN revision_json TEXT",
+            "refine_preset": "ALTER TABLE knowledge_contents ADD COLUMN refine_preset VARCHAR",
+            "submitted_by": "ALTER TABLE knowledge_contents ADD COLUMN submitted_by VARCHAR",
+        }
+        for col, sql in migrations.items():
+            if col not in columns:
+                with engine.begin() as conn:
+                    conn.execute(text(sql))
 
 
 def init_db() -> None:

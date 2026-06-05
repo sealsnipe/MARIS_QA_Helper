@@ -40,6 +40,9 @@ async def lifespan(_app: FastAPI):
     with db_module.SessionLocal() as db:
         ensure_global_customer(db)
         ensure_default_global_prompt(db)
+        from app.knowledge_center import ensure_builtin_knowledge_sources
+
+        ensure_builtin_knowledge_sources(db)
     yield
 
 

@@ -2943,6 +2943,112 @@
     window.__refreshKeys = loadAndRender;
   }
 
+  function kcStatusLabel(status) {
+    if (status === "pending") return "Offen";
+    if (status === "adopted") return "Übernommen";
+    if (status === "rejected") return "Abgelehnt";
+    return status || "";
+  }
+
+  function kcChangeKindLabel(kind) {
+    if (kind === "split") return "Split";
+    if (kind === "merge") return "Merge";
+    if (kind === "insert") return "Neu";
+    if (kind === "delete") return "Entfernt";
+    return "Ersetzt";
+  }
+
+  function buildRevisionMarkup(content, revision) {
+    if (!content) return "";
+    if (!revision?.changes?.length) {
+      return escapeHtml(content).replace(/\n/g, "<br>");
+    }
+    let html = escapeHtml(content);
+    const sorted = [...revision.changes].sort((a, b) => {
+      const posA = content.indexOf(a.anchor || a.target || "");
+      const posB = content.indexOf(b.anchor || b.target || "");
+      return posB - posA;
+    });
+    sorted.forEach((change) => {
+      const snippet = change.target || change.anchor;
+      if (!snippet) return;
+      const escaped = escapeHtml(snippet);
+      if (!html.includes(escaped)) return;
+      const kind = escapeHtml(change.kind || "replace");
+      const id = escapeHtml(change.id || "");
+      html = html.replace(
+        escaped,
+        `<mark class="kc-rev kc-rev-${kind}" data-change-id="${id}" tabindex="0">${escaped}</mark>`,
+      );
+    });
+    return html.replace(/\n/g, "<br>");
+  }
+
+  function renderKcChangesList(container, revision) {
+    if (!container) return;
+    const changes = revision?.changes || [];
+    if (!changes.length) {
+      container.innerHTML = '<p class="muted">Keine strukturierten Änderungen — reiner Textvergleich.</p>';
+      return;
+    }
+    container.innerHTML = changes
+      .map((change) => {
+        const sources = (change.sources || [])
+          .map((src) => `<li>${escapeHtml(src)}</li>`)
+          .join("");
+        return `
+          <article class="kc-change-item">
+            <div class="kc-change-item-head">
+              <span class="badge kc-rev-badge kc-rev-${escapeHtml(change.kind || "replace")}">${escapeHtml(kcChangeKindLabel(change.kind))}</span>
+              ${change.note ? `<span class="muted">${escapeHtml(change.note)}</span>` : ""}
+            </div>
+            ${sources ? `<div><strong>Quelle:</strong><ul class="kc-change-sources">${sources}</ul></div>` : ""}
+            ${change.target ? `<div><strong>Neu:</strong><p>${escapeHtml(change.target)}</p></div>` : ""}
+          </article>
+        `;
+      })
+      .join("");
+  }
+
+  function bindKcRevisionPopover(container) {
+    if (!container || container.dataset.kcPopoverBound) return;
+    container.dataset.kcPopoverBound = "1";
+    let popover = document.getElementById("kc-revision-popover");
+    if (!popover) {
+      popover = document.createElement("div");
+      popover.id = "kc-revision-popover";
+      popover.className = "kc-revision-popover hidden";
+      document.body.appendChild(popover);
+    }
+
+    const hide = () => popover.classList.add("hidden");
+
+    container.addEventListener("mouseover", (event) => {
+      const mark = event.target.closest(".kc-rev");
+      if (!mark || !container.contains(mark)) return;
+      const changeId = mark.dataset.changeId;
+      const item = (window.__kcActiveRevisionChanges || []).find((row) => row.id === changeId);
+      if (!item) return;
+      const sources = (item.sources || [])
+        .map((src) => `<li>${escapeHtml(src)}</li>`)
+        .join("");
+      popover.innerHTML = `
+        <strong>${escapeHtml(kcChangeKindLabel(item.kind))}</strong>
+        ${sources ? `<ul>${sources}</ul>` : "<p class='muted'>Neu hinzugefügt</p>"}
+        ${item.note ? `<p class="muted">${escapeHtml(item.note)}</p>` : ""}
+      `;
+      const rect = mark.getBoundingClientRect();
+      popover.style.left = `${Math.min(rect.left, window.innerWidth - 320)}px`;
+      popover.style.top = `${rect.bottom + 8}px`;
+      popover.classList.remove("hidden");
+    });
+    container.addEventListener("mouseout", (event) => {
+      if (event.relatedTarget && popover.contains(event.relatedTarget)) return;
+      hide();
+    });
+    popover.addEventListener("mouseleave", hide);
+  }
+
   function formatKcDate(iso) {
     if (!iso) return "";
     try {
@@ -2974,7 +3080,14 @@
         <div class="kc-detail-meta" id="kc-detail-meta"></div>
         <div class="kc-detail-keywords kc-card-keywords" id="kc-detail-keywords"></div>
         <div class="kc-detail-summary hidden" id="kc-detail-summary"></div>
+        <div class="kc-detail-tabs" id="kc-detail-tabs">
+          <button type="button" class="secondary small kc-tab-btn active" data-kc-tab="revised">Überarbeitet</button>
+          <button type="button" class="secondary small kc-tab-btn" data-kc-tab="original">Original</button>
+          <button type="button" class="secondary small kc-tab-btn" data-kc-tab="changes">Änderungen</button>
+        </div>
         <div class="kc-detail-body" id="kc-detail-body"></div>
+        <div class="kc-detail-body hidden" id="kc-detail-original"></div>
+        <div class="kc-detail-changes hidden" id="kc-detail-changes"></div>
         <p id="kc-detail-status" class="status" aria-live="polite"></p>
         <div class="kc-detail-actions" id="kc-detail-actions">
           <label class="kc-adopt-customer">
@@ -3020,6 +3133,9 @@
     const detailKeywords = modal.querySelector("#kc-detail-keywords");
     const detailSummary = modal.querySelector("#kc-detail-summary");
     const detailBody = modal.querySelector("#kc-detail-body");
+    const detailOriginal = modal.querySelector("#kc-detail-original");
+    const detailChanges = modal.querySelector("#kc-detail-changes");
+    const detailTabs = modal.querySelector("#kc-detail-tabs");
     const detailStatus = modal.querySelector("#kc-detail-status");
     const detailActions = modal.querySelector("#kc-detail-actions");
     const adoptCustomer = modal.querySelector("#kc-adopt-customer");
@@ -3084,6 +3200,8 @@
           <div class="kc-card-meta">
             <span class="badge">${escapeHtml(item.source_name || item.host_code || "Quelle")}</span>
             ${item.suggested_customer_name ? `<span class="badge user-slug-badge">${escapeHtml(item.suggested_customer_id)}</span>` : ""}
+            ${item.submitted_by_email ? `<span class="muted">${escapeHtml(item.submitted_by_email)}</span>` : ""}
+            ${item.has_revision ? `<span class="badge">KI-Diff</span>` : ""}
             <span class="muted">${escapeHtml(formatKcDate(item.received_at))}</span>
           </div>
         `;
@@ -3091,15 +3209,33 @@
       });
     }
 
+    function setKcDetailTab(tab) {
+      detailTabs?.querySelectorAll(".kc-tab-btn").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.kcTab === tab);
+      });
+      detailBody?.classList.toggle("hidden", tab !== "revised");
+      detailOriginal?.classList.toggle("hidden", tab !== "original");
+      detailChanges?.classList.toggle("hidden", tab !== "changes");
+    }
+
+    detailTabs?.addEventListener("click", (event) => {
+      const btn = event.target.closest(".kc-tab-btn");
+      if (!btn) return;
+      setKcDetailTab(btn.dataset.kcTab || "revised");
+    });
+
     function openDetail(item) {
       activeContent = item;
+      window.__kcActiveRevisionChanges = item.revision?.changes || [];
       if (detailTitle) detailTitle.textContent = item.title;
       if (detailMeta) {
         detailMeta.innerHTML = `
           <span class="badge">${escapeHtml(item.source_name || "")}</span>
           <span class="muted">Host: ${escapeHtml(item.host_code || "")}</span>
+          ${item.submitted_by_email ? `<span>Eingereicht von ${escapeHtml(item.submitted_by_email)}</span>` : ""}
           ${item.source_ref ? `<a href="${escapeHtml(item.source_ref)}" target="_blank" rel="noopener">Referenz</a>` : ""}
           ${item.suggested_customer_name ? `<span>Vorschlag: ${escapeHtml(item.suggested_customer_name)}</span>` : ""}
+          ${item.revision?.stats?.change_ratio != null ? `<span>Änderung: ${Math.round(item.revision.stats.change_ratio * 100)}%</span>` : ""}
           <span class="muted">${escapeHtml(formatKcDate(item.received_at))}</span>
         `;
       }
@@ -3113,7 +3249,22 @@
         detailSummary.textContent = summary;
         detailSummary.classList.toggle("hidden", !summary);
       }
-      if (detailBody) detailBody.textContent = item.content || "";
+      if (detailBody) {
+        if (item.has_revision && item.revision) {
+          detailBody.innerHTML = buildRevisionMarkup(item.content || "", item.revision);
+          bindKcRevisionPopover(detailBody);
+        } else {
+          detailBody.textContent = item.content || "";
+        }
+      }
+      if (detailOriginal) {
+        detailOriginal.textContent = item.original_content || item.content || "";
+      }
+      renderKcChangesList(detailChanges, item.revision);
+      setKcDetailTab("revised");
+      if (detailTabs) {
+        detailTabs.classList.toggle("hidden", !item.has_revision);
+      }
       showStatus(detailStatus, "", "");
       renderCustomerOptions(item.suggested_customer_id || "");
 
@@ -3214,6 +3365,142 @@
     });
 
     loadContents().catch(() => {});
+  }
+
+  function initKnowledgeCenterSubmitPage() {
+    const form = document.getElementById("kc-submit-form");
+    const customerSelect = document.getElementById("kc-submit-customer");
+    const titleInput = document.getElementById("kc-submit-title");
+    const textInput = document.getElementById("kc-submit-text");
+    const useAiToggle = document.getElementById("kc-submit-use-ai");
+    const presetsWrap = document.getElementById("kc-submit-presets");
+    const submitBtn = document.getElementById("kc-submit-btn");
+    const submitStatus = document.getElementById("kc-submit-status");
+    const myList = document.getElementById("kc-my-list");
+    const myEmpty = document.getElementById("kc-my-empty");
+    const myCount = document.getElementById("kc-my-count");
+
+    let presets = [];
+    let selectedPreset = "clarify";
+
+    function renderCustomers(customers) {
+      if (!customerSelect) return;
+      customerSelect.innerHTML = '<option value="">— Mandant wählen —</option>';
+      (customers || []).forEach((customer) => {
+        const opt = document.createElement("option");
+        opt.value = customer.id;
+        opt.textContent = `${customer.name} (${customer.id})`;
+        customerSelect.appendChild(opt);
+      });
+    }
+
+    function renderPresets() {
+      if (!presetsWrap) return;
+      presetsWrap.innerHTML = "";
+      presets.forEach((preset) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = `secondary small kc-preset-btn${preset.id === selectedPreset ? " active" : ""}`;
+        btn.dataset.presetId = preset.id;
+        btn.textContent = preset.label;
+        presetsWrap.appendChild(btn);
+      });
+      presetsWrap.classList.toggle("disabled", !useAiToggle?.checked);
+    }
+
+    function syncAiUi() {
+      const enabled = Boolean(useAiToggle?.checked);
+      presetsWrap?.classList.toggle("disabled", !enabled);
+      if (submitBtn) {
+        submitBtn.textContent = enabled ? "KI starten & einreichen" : "Vorschlag einreichen";
+      }
+    }
+
+    async function loadContext() {
+      const data = await api("/api/tools/knowledge-center/submit-context");
+      presets = data.presets || [];
+      if (presets.length && !presets.some((row) => row.id === selectedPreset)) {
+        selectedPreset = presets[0].id;
+      }
+      renderCustomers(data.customers || []);
+      renderPresets();
+      syncAiUi();
+    }
+
+    async function loadMySubmissions() {
+      const data = await api("/api/tools/knowledge-center/my-contents?limit=20");
+      const rows = data.contents || [];
+      if (myCount) myCount.textContent = `(${data.total ?? rows.length})`;
+      if (myEmpty) myEmpty.classList.toggle("hidden", rows.length > 0);
+      if (!myList) return;
+      myList.innerHTML = rows
+        .map(
+          (item) => `
+          <article class="kc-my-item">
+            <div>
+              <strong>${escapeHtml(item.title)}</strong>
+              <div class="muted">${escapeHtml(item.suggested_customer_name || item.suggested_customer_id || "")} · ${escapeHtml(kcStatusLabel(item.status))}</div>
+            </div>
+            <span class="muted">${escapeHtml(formatKcDate(item.received_at))}</span>
+          </article>
+        `,
+        )
+        .join("");
+    }
+
+    const savedAi = localStorage.getItem("kc-submit-use-ai");
+    if (savedAi != null && useAiToggle) useAiToggle.checked = savedAi === "1";
+    const savedPreset = localStorage.getItem("kc-submit-preset");
+    if (savedPreset) selectedPreset = savedPreset;
+
+    useAiToggle?.addEventListener("change", () => {
+      localStorage.setItem("kc-submit-use-ai", useAiToggle.checked ? "1" : "0");
+      syncAiUi();
+    });
+
+    presetsWrap?.addEventListener("click", (event) => {
+      const btn = event.target.closest(".kc-preset-btn");
+      if (!btn || !useAiToggle?.checked) return;
+      selectedPreset = btn.dataset.presetId || selectedPreset;
+      localStorage.setItem("kc-submit-preset", selectedPreset);
+      renderPresets();
+    });
+
+    form?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const customerId = customerSelect?.value || "";
+      const rawText = textInput?.value.trim() || "";
+      if (!customerId || !rawText) {
+        showStatus(submitStatus, "Mandant und Inhalt sind Pflicht.", "error");
+        return;
+      }
+      if (submitBtn) submitBtn.disabled = true;
+      showStatus(submitStatus, useAiToggle?.checked ? "KI überarbeitet…" : "Wird eingereicht…", "");
+      try {
+        await api("/api/tools/knowledge-center/submit", {
+          method: "POST",
+          body: {
+            customer_id: customerId,
+            raw_text: rawText,
+            title: titleInput?.value.trim() || null,
+            use_ai: Boolean(useAiToggle?.checked),
+            preset: selectedPreset,
+          },
+        });
+        form.reset();
+        if (useAiToggle) useAiToggle.checked = localStorage.getItem("kc-submit-use-ai") !== "0";
+        showStatus(submitStatus, "Vorschlag eingereicht — wartet auf Freigabe.", "ok");
+        await loadMySubmissions();
+      } catch (err) {
+        showStatus(submitStatus, err.detail || err.code || "Einreichung fehlgeschlagen.", "error");
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
+      }
+    });
+
+    loadContext()
+      .then(() => loadMySubmissions())
+      .catch(() => {});
   }
 
   function initKnowledgeCenterSourcesPage() {
@@ -3366,6 +3653,7 @@
   if (page === "kb") initKbPage();
   if (page === "tools_bild_zu_text") initImageToTextTool();
   if (page === "tools_kc_content") initKnowledgeCenterContentPage();
+  if (page === "tools_kc_submit") initKnowledgeCenterSubmitPage();
   if (page === "tools_kc_sources") initKnowledgeCenterSourcesPage();
   if (page === "admin_knowledge") initAdminKnowledgePage();
   if (page === "admin_prompts") initAdminPromptsPage();

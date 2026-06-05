@@ -2190,3 +2190,133 @@ select:focus-visible,
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+
+.kc-submit-form textarea {
+  min-height: 220px;
+  resize: vertical;
+}
+
+.kc-submit-ai-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.kc-submit-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.kc-submit-presets.disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.kc-preset-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.kc-my-submissions {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.kc-my-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.kc-my-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.kc-detail-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.kc-detail-tabs.hidden {
+  display: none;
+}
+
+.kc-tab-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.kc-detail-changes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 40vh;
+  overflow: auto;
+}
+
+.kc-change-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+}
+
+.kc-change-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.kc-change-sources {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.kc-rev {
+  background: rgba(255, 196, 76, 0.35);
+  border-radius: 3px;
+  cursor: help;
+}
+
+.kc-rev-split {
+  background: rgba(76, 139, 245, 0.28);
+}
+
+.kc-rev-merge {
+  background: rgba(168, 112, 255, 0.28);
+}
+
+.kc-rev-insert {
+  background: rgba(76, 200, 120, 0.28);
+}
+
+.kc-revision-popover {
+  position: fixed;
+  z-index: 1200;
+  width: min(20rem, calc(100vw - 2rem));
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-bg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.kc-revision-popover.hidden {
+  display: none;
+}
+
+.kc-revision-popover ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+}

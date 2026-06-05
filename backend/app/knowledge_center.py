@@ -17,6 +17,13 @@ from app.customers import (
     user_has_customer,
     validate_customer_slug,
 )
+from app.content_refine import (
+    DEFAULT_REFINE_PRESET,
+    ContentRefineError,
+    list_refine_presets,
+    refine_content_with_llm,
+    revision_from_json,
+)
 from app.ingestion import IngestionError, ingest_text
 from app.models import KnowledgeContent, KnowledgeSource, User, utc_now_iso
 
@@ -24,6 +31,14 @@ CONTENT_STATUS_PENDING = "pending"
 CONTENT_STATUS_ADOPTED = "adopted"
 CONTENT_STATUS_REJECTED = "rejected"
 CONTENT_STATUSES = frozenset({CONTENT_STATUS_PENDING, CONTENT_STATUS_ADOPTED, CONTENT_STATUS_REJECTED})
+
+HOST_CODE_USER_SUBMIT = "user-submit"
+HOST_CODE_CHAT_REFINE = "chat-refine"
+
+BUILTIN_SOURCES: tuple[tuple[str, str], ...] = (
+    ("Direkt eingereicht", HOST_CODE_USER_SUBMIT),
+    ("KI-Überarbeitung", HOST_CODE_CHAT_REFINE),
+)
 
 
 class KnowledgeCenterError(Exception):
@@ -84,12 +99,18 @@ def source_to_dict(source: KnowledgeSource) -> dict:
     }
 
 
+def revision_to_dict(raw: str | None) -> dict | None:
+    return revision_from_json(raw)
+
+
 def content_to_dict(db: Session, content: KnowledgeContent) -> dict:
     source = db.get(KnowledgeSource, content.source_id)
     suggested = (
         get_customer(db, content.suggested_customer_id) if content.suggested_customer_id else None
     )
     adopted = get_customer(db, content.adopted_customer_id) if content.adopted_customer_id else None
+    submitter = db.get(User, content.submitted_by) if content.submitted_by else None
+    revision = revision_from_json(content.revision_json)
     return {
         "id": content.id,
         "source_id": content.source_id,
@@ -101,6 +122,15 @@ def content_to_dict(db: Session, content: KnowledgeContent) -> dict:
         "summary": content.summary,
         "keywords": _keywords_from_json(content.keywords_json),
         "content": content.content,
+        "original_content": content.original_content,
+        "revision": revision,
+        "refine_preset": content.refine_preset,
+        "submitted_by": content.submitted_by,
+        "submitted_by_email": submitter.email if submitter else None,
+        "has_revision": bool(
+            content.original_content
+            and content.original_content.strip() != content.content.strip()
+        ),
         "source_ref": content.source_ref,
         "external_id": content.external_id,
         "status": content.status,
@@ -189,22 +219,51 @@ def _visible_customer_ids(db: Session, user: User) -> set[str]:
     return {customer.id for customer in list_effective_tenant_customers_for_user(db, user)}
 
 
+def ensure_builtin_knowledge_sources(db: Session) -> None:
+    for name, host_code in BUILTIN_SOURCES:
+        if get_source_by_host_code(db, host_code) is None:
+            create_knowledge_source(db, name, host_code)
+
+
+def _require_admin(user: User) -> None:
+    if not user.is_admin:
+        raise KnowledgeCenterError("forbidden", status_code=403)
+
+
+def _validate_submit_customer(db: Session, user: User, customer_id: str) -> str:
+    slug = customer_id.strip().lower()
+    if is_global_customer(slug):
+        raise KnowledgeCenterError("forbidden_customer", status_code=403)
+    if not user_has_customer(db, user.id, slug):
+        raise KnowledgeCenterError("forbidden_customer", status_code=403)
+    customer = get_customer(db, slug)
+    if customer is None or not is_customer_active(customer):
+        raise KnowledgeCenterError("unknown_customer", status_code=404)
+    return slug
+
+
 def _content_visible_to_user(db: Session, user: User, content: KnowledgeContent) -> bool:
-    visible_ids = _visible_customer_ids(db, user)
-    if not visible_ids:
-        return False
-    if content.suggested_customer_id is None:
+    if user.is_admin:
+        visible_ids = _visible_customer_ids(db, user)
+        if not visible_ids:
+            return False
+        if content.suggested_customer_id is None:
+            return True
+        return content.suggested_customer_id in visible_ids
+    if content.submitted_by == user.id:
         return True
-    return content.suggested_customer_id in visible_ids
+    return False
 
 
 def _content_visibility_filter(user: User, visible_ids: set[str]):
-    if not visible_ids:
-        return KnowledgeContent.id.is_(None)
-    return or_(
-        KnowledgeContent.suggested_customer_id.is_(None),
-        KnowledgeContent.suggested_customer_id.in_(visible_ids),
-    )
+    if user.is_admin:
+        if not visible_ids:
+            return KnowledgeContent.id.is_(None)
+        return or_(
+            KnowledgeContent.suggested_customer_id.is_(None),
+            KnowledgeContent.suggested_customer_id.in_(visible_ids),
+        )
+    return KnowledgeContent.submitted_by == user.id
 
 
 def list_knowledge_contents(
@@ -216,12 +275,15 @@ def list_knowledge_contents(
     search: str | None = None,
     limit: int = 50,
     offset: int = 0,
+    mine_only: bool = False,
 ) -> tuple[list[dict], int]:
-    visible_ids = _visible_customer_ids(db, user)
-    if not visible_ids:
-        return [], 0
-
-    stmt = select(KnowledgeContent).where(_content_visibility_filter(user, visible_ids))
+    if mine_only or not user.is_admin:
+        stmt = select(KnowledgeContent).where(KnowledgeContent.submitted_by == user.id)
+    else:
+        visible_ids = _visible_customer_ids(db, user)
+        if not visible_ids:
+            return [], 0
+        stmt = select(KnowledgeContent).where(_content_visibility_filter(user, visible_ids))
     if status:
         if status not in CONTENT_STATUSES:
             raise KnowledgeCenterError("invalid_status")
@@ -382,6 +444,7 @@ def adopt_knowledge_content(
     content_id: str,
     customer_id: str,
 ) -> dict:
+    _require_admin(user)
     row = get_knowledge_content_for_user(db, user, content_id)
     if row.status != CONTENT_STATUS_PENDING:
         raise KnowledgeCenterError("invalid_status", status_code=409)
@@ -424,6 +487,7 @@ def adopt_knowledge_content(
 
 
 def reject_knowledge_content(db: Session, user: User, content_id: str) -> dict:
+    _require_admin(user)
     row = get_knowledge_content_for_user(db, user, content_id)
     if row.status != CONTENT_STATUS_PENDING:
         raise KnowledgeCenterError("invalid_status", status_code=409)
@@ -442,3 +506,90 @@ def list_adoptable_customers(db: Session, user: User) -> list[dict]:
         for customer in list_effective_tenant_customers_for_user(db, user)
         if customer.id != GLOBAL_CUSTOMER_ID
     ]
+
+
+def submit_knowledge_content(
+    db: Session,
+    user: User,
+    *,
+    customer_id: str,
+    raw_text: str,
+    title: str | None = None,
+    use_ai: bool = True,
+    preset: str | None = None,
+) -> dict:
+    ensure_builtin_knowledge_sources(db)
+    slug = _validate_submit_customer(db, user, customer_id)
+
+    try:
+        normalized_raw = validate_ingest_text(raw_text)
+    except ValueError as exc:
+        raise KnowledgeCenterError(str(exc)) from exc
+
+    title_hint = (title or "").strip()
+    preset_id = (preset or DEFAULT_REFINE_PRESET).strip().lower()
+
+    original_content = normalized_raw
+    revision_json: str | None = None
+    refine_preset: str | None = None
+    keywords: list[str] = []
+    summary = ""
+    final_title = title_hint or "Wissensbeitrag"
+    final_content = normalized_raw
+    host_code = HOST_CODE_USER_SUBMIT
+
+    if use_ai:
+        host_code = HOST_CODE_CHAT_REFINE
+        refine_preset = preset_id
+        try:
+            refined = refine_content_with_llm(
+                db,
+                original_text=normalized_raw,
+                title_hint=title_hint or None,
+                preset_id=preset_id,
+            )
+        except ContentRefineError as exc:
+            raise KnowledgeCenterError(exc.code, status_code=400, detail=exc.detail) from exc
+        final_title = refined.title
+        summary = refined.summary
+        keywords = refined.keywords
+        final_content = refined.content
+        revision_json = json.dumps(refined.revision, ensure_ascii=False)
+    else:
+        if len(final_title) > 200 or not final_title:
+            final_title = final_title[:200] if final_title else "Wissensbeitrag"
+        summary = normalized_raw[:300]
+
+    source = get_source_by_host_code(db, host_code)
+    if source is None or not source.active:
+        raise KnowledgeCenterError("source_inactive", status_code=503)
+
+    now = utc_now_iso()
+    row = KnowledgeContent(
+        id=str(uuid.uuid4()),
+        source_id=source.id,
+        suggested_customer_id=slug,
+        title=final_title,
+        summary=summary,
+        keywords_json=_keywords_to_json(keywords),
+        content=final_content,
+        original_content=original_content,
+        revision_json=revision_json,
+        refine_preset=refine_preset,
+        submitted_by=user.id,
+        status=CONTENT_STATUS_PENDING,
+        created_at=now,
+        received_at=now,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"content": content_to_dict(db, row)}
+
+
+def get_submit_context(db: Session, user: User) -> dict:
+    ensure_builtin_knowledge_sources(db)
+    return {
+        "customers": list_adoptable_customers(db, user),
+        "presets": list_refine_presets(),
+    }

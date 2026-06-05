@@ -37,12 +37,16 @@
 | POST | `/api/chat` | JSON | ✅ | ✅ | Frage stellen (Agent); optional `chat_id` |
 | POST | `/api/v1/ask` | JSON | Bearer | Body | **Integration:** Frage stellen (externe Agenten) |
 | POST | `/api/v1/knowledge-content` | JSON | Bearer | — | **Integration:** Content-Vorschläge für Knowledge Center |
-| GET | `/tools/knowledge-center` | HTML | ✅ | — | Content Dashboard (Knowledge Center) |
+| GET | `/tools/knowledge-center/submit` | HTML | ✅ | — | Content vorschlagen (User) |
+| GET | `/tools/knowledge-center` | HTML | ✅ Admin | — | Content Dashboard (Review) |
 | GET | `/tools/knowledge-center/sources` | HTML | ✅ Admin | — | Knowledge Center Sources |
-| GET | `/api/tools/knowledge-center/contents` | JSON | ✅ | — | Content-Vorschläge listen/filtern |
+| GET | `/api/tools/knowledge-center/submit-context` | JSON | ✅ | — | Mandanten + KI-Presets für Submit |
+| POST | `/api/tools/knowledge-center/submit` | JSON | ✅ | Body | Vorschlag einreichen (optional KI) |
+| GET | `/api/tools/knowledge-center/my-contents` | JSON | ✅ | — | Eigene Vorschläge (User) |
+| GET | `/api/tools/knowledge-center/contents` | JSON | ✅ Admin | — | Review-Queue |
 | GET | `/api/tools/knowledge-center/contents/{id}` | JSON | ✅ | — | Content-Detail |
-| POST | `/api/tools/knowledge-center/contents/{id}/adopt` | JSON | ✅ | Body | In KB übernehmen (Ziel-Mandant im Body) |
-| POST | `/api/tools/knowledge-center/contents/{id}/reject` | JSON | ✅ | — | Vorschlag ablehnen |
+| POST | `/api/tools/knowledge-center/contents/{id}/adopt` | JSON | ✅ Admin | Body | In KB übernehmen |
+| POST | `/api/tools/knowledge-center/contents/{id}/reject` | JSON | ✅ Admin | — | Vorschlag ablehnen |
 | GET/POST/PATCH/DELETE | `/api/admin/knowledge-sources[/{id}]` | JSON | ✅ Admin | — | Knowledge Center Sources CRUD |
 | GET | `/chat` | HTML | ✅ | ✅ | Chat (Sidebar-Historie) |
 | GET | `/kb` | HTML | ✅ | ✅ | Wissensbasis (Nutzer) |

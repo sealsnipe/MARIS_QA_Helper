@@ -1,0 +1,47 @@
+{% extends "layout.html" %}
+
+{% block title %}Content vorschlagen · Knowledge Center · MARIS - Q/A Helper{% endblock %}
+{% block page_title %}Content vorschlagen{% endblock %}
+
+{% block content %}
+<section class="panel kc-panel full-page">
+  <p class="muted">Text für die Wissensdatenbank vorschlagen. Optional überarbeitet die KI den Inhalt — ein Admin prüft und übernimmt ihn ins Knowledge Center.</p>
+
+  <form id="kc-submit-form" class="ingest-form kc-submit-form">
+    <div class="customer-form-row">
+      <label>
+        Ziel-Mandant (Vorschlag)
+        <select id="kc-submit-customer" required></select>
+      </label>
+      <label>
+        Titel <span class="muted">(optional)</span>
+        <input type="text" id="kc-submit-title" maxlength="200" placeholder="Wird von der KI ergänzt, falls leer">
+      </label>
+    </div>
+
+    <label>
+      Inhalt
+      <textarea id="kc-submit-text" rows="12" required placeholder="Rohtext hier einfügen…"></textarea>
+    </label>
+
+    <div class="kc-submit-ai-row">
+      <label class="user-admin-checkbox">
+        <input type="checkbox" id="kc-submit-use-ai" checked>
+        KI-Überarbeitung
+      </label>
+      <p class="muted kc-submit-ai-hint">Aus: Text geht unverändert ins Review. An: Preset wählen und KI starten.</p>
+    </div>
+
+    <div id="kc-submit-presets" class="kc-submit-presets" aria-label="KI-Presets"></div>
+
+    <button type="submit" id="kc-submit-btn" class="primary">Vorschlag einreichen</button>
+    <p id="kc-submit-status" class="status" aria-live="polite"></p>
+  </form>
+
+  <div class="kc-my-submissions">
+    <h2>Meine Vorschläge <span id="kc-my-count" class="muted">(0)</span></h2>
+    <div id="kc-my-list" class="kc-my-list"></div>
+    <p id="kc-my-empty" class="muted">Noch keine Vorschläge eingereicht.</p>
+  </div>
+</section>
+{% endblock %}

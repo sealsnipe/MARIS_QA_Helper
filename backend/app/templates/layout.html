@@ -47,14 +47,15 @@
 
         <div class="nav-section">
           <div class="nav-heading">Tools</div>
-          {% set kc_nav_pages = ['tools_kc_content', 'tools_kc_sources'] %}
+          {% set kc_nav_pages = ['tools_kc_content', 'tools_kc_submit', 'tools_kc_sources'] %}
           <div class="nav-group kc-nav-group expanded" id="kc-nav-group">
-            <a href="/tools/knowledge-center" class="nav-link {% if active_page == 'tools_kc_content' %}active{% elif active_page in kc_nav_pages %}active-parent{% endif %}">
+            <a href="/tools/knowledge-center/submit" class="nav-link {% if active_page == 'tools_kc_submit' %}active{% elif active_page in kc_nav_pages %}active-parent{% endif %}">
               Knowledge Center
             </a>
             <div class="nav-submenu" id="kc-nav-submenu">
-              <a href="/tools/knowledge-center" class="nav-link nav-sublink {% if active_page == 'tools_kc_content' %}active{% endif %}">Content Dashboard</a>
+              <a href="/tools/knowledge-center/submit" class="nav-link nav-sublink {% if active_page == 'tools_kc_submit' %}active{% endif %}">Content vorschlagen</a>
               {% if is_admin %}
+              <a href="/tools/knowledge-center" class="nav-link nav-sublink {% if active_page == 'tools_kc_content' %}active{% endif %}">Content Dashboard</a>
               <a href="/tools/knowledge-center/sources" class="nav-link nav-sublink {% if active_page == 'tools_kc_sources' %}active{% endif %}">Sources</a>
               {% endif %}
             </div>
