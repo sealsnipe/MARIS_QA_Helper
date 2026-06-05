@@ -33,6 +33,7 @@ from app.customers import (
     customer_to_dict,
     deactivate_tenant_customer,
     get_customer,
+    is_customer_active,
     is_global_customer,
     list_assigned_customer_ids,
     list_customers_for_nav,
@@ -304,10 +305,25 @@ def _page_context(
     active_page: str,
 ) -> dict:
     customers = list_customers_for_nav(db, user)
+    nav_mode = customer_nav_mode(active_page)
     active_customer_id = request.session.get("customer_id")
     active_customer = get_customer(db, active_customer_id) if active_customer_id else None
+
+    nav_ids = {customer.id for customer in customers}
+    if active_customer_id:
+        session_invalid = (
+            active_customer is None
+            or not is_customer_active(active_customer)
+            or not user_has_customer(db, user.id, active_customer_id)
+        )
+        if session_invalid:
+            request.session.pop("customer_id", None)
+            active_customer_id = None
+            active_customer = None
+        elif active_customer_id not in nav_ids and active_customer is not None:
+            customers = [active_customer, *customers]
+
     admin_customers = list_tenant_customers(db)
-    nav_mode = customer_nav_mode(active_page)
     return {
         "user": user,
         "customers": customers,

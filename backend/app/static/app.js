@@ -136,9 +136,20 @@
   function syncActiveCustomerFromSelect() {
     if (!customerSelect) return;
     if (customerSelect.tagName === "SELECT") {
+      let value = customerSelect.value || "";
+      if (!value && boot.activeCustomerId) {
+        const match = customerSelect.querySelector(`option[value="${boot.activeCustomerId}"]`);
+        if (match) {
+          customerSelect.value = boot.activeCustomerId;
+          value = boot.activeCustomerId;
+        }
+      }
+      activeCustomerId = value;
       const option = customerSelect.selectedOptions[0];
-      activeCustomerId = customerSelect.value || "";
-      activeCustomerName = option && option.value ? option.textContent.trim() : "";
+      activeCustomerName =
+        option && option.value
+          ? option.textContent.trim()
+          : customerLabels[activeCustomerId] || boot.activeCustomerName || "";
     } else {
       activeCustomerId = customerSelect.value || "";
     }
