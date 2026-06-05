@@ -26,21 +26,17 @@
   }
 
   let refreshAdminKnowledgeDocuments = null;
+  let refreshAdminPromptsPage = null;
 
   function syncAdminPageScopeFromSidebar(customerId) {
-    const scope = adminScopeFromCustomerId(customerId);
     if (page === "admin_knowledge") {
       syncActiveCustomerFromSelect();
       refreshAdminKnowledgeDocuments?.().catch(() => {});
       return;
     }
     if (page === "admin_prompts") {
-      const promptScope = document.getElementById("prompt-scope");
-      if (!promptScope) return;
-      if (promptScope.querySelector(`option[value="${scope}"]`)) {
-        promptScope.value = scope;
-        promptScope.dispatchEvent(new Event("change"));
-      }
+      syncActiveCustomerFromSelect();
+      refreshAdminPromptsPage?.().catch(() => {});
     }
   }
 
@@ -1998,32 +1994,25 @@
   }
 
   function initAdminPromptsPage() {
-    const promptScope = document.getElementById("prompt-scope");
     const promptContent = document.getElementById("prompt-content");
     const promptForm = document.getElementById("prompt-form");
     const promptStatus = document.getElementById("prompt-status");
 
-    if (customerNavMode === "admin_scoped" && promptScope) {
-      const initialScope = adminScopeFromCustomerId(activeCustomerId);
-      if (promptScope.querySelector(`option[value="${initialScope}"]`)) {
-        promptScope.value = initialScope;
-      }
+    function currentScope() {
+      return adminScopeFromCustomerId(activeCustomerId || globalCustomerId);
     }
 
     async function loadPrompt() {
-      const scope = promptScope?.value || "global";
+      const scope = currentScope();
       const query = scope === "global" ? "" : `?customer_id=${encodeURIComponent(scope)}`;
       const data = await api(`/api/admin/system-prompt${query}`);
       if (promptContent) promptContent.value = data.content || "";
     }
-
-    promptScope?.addEventListener("change", () => {
-      loadPrompt().catch(() => showStatus(promptStatus, "Prompt konnte nicht geladen werden.", "error"));
-    });
+    refreshAdminPromptsPage = loadPrompt;
 
     promptForm?.addEventListener("submit", async (event) => {
       event.preventDefault();
-      const scope = promptScope?.value || "global";
+      const scope = currentScope();
       showStatus(promptStatus, "Speichern…");
       try {
         await api("/api/admin/system-prompt", {

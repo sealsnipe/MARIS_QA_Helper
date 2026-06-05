@@ -4,20 +4,7 @@
 {% block page_title %}Systemprompts{% endblock %}
 
 {% block content %}
-<div class="admin-toolbar">
-  <label>
-    System-Prompt für
-    <select id="prompt-scope" class="customer-select">
-      <option value="global">Global (alle Kunden)</option>
-      {% for customer in admin_customers %}
-      <option value="{{ customer.id }}">{{ customer.name }}</option>
-      {% endfor %}
-    </select>
-  </label>
-</div>
-
 <section class="panel chat-panel full-page">
-  <h2>System-Prompt</h2>
   <p class="muted">Globaler Prompt gilt für alle Kunden. Kundenspezifischer Prompt wird ergänzend angehängt.</p>
   <form id="prompt-form" class="ingest-form">
     <label>
