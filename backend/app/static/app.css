@@ -1142,7 +1142,8 @@ select:focus-visible,
 }
 
 .user-customer-row-body {
-  display: flex;
+  display: grid;
+  grid-template-columns: 8rem minmax(0, 1fr);
   align-items: center;
   gap: 0.65rem;
   flex: 1;
@@ -1164,7 +1165,7 @@ select:focus-visible,
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex-shrink: 0;
+  vertical-align: middle;
 }
 
 .role-options-panel {
