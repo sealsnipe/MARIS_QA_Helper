@@ -258,8 +258,10 @@ def _image_id(image: EmbeddedImage) -> str:
 
 
 def _extract_standalone_image(content: bytes, extension: str) -> list[EmbeddedImage]:
-    if len(content) < MIN_IMAGE_BYTES:
-        return []
+    """For standalone uploaded image files: always return the content as selectable image
+    (no MIN size filter). User-provided image files are always intentional content, even if
+    small file size. (MIN + meaningful still apply to embedded images inside PDF/DOCX.)
+    """
     return [
         EmbeddedImage(
             index=1,

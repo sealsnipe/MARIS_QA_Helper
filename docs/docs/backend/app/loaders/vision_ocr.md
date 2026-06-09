@@ -30,6 +30,10 @@ Inline-Zusammensetzung via `compose_docx_text` inkl. Platzhalter für nicht-OCR-
 
 Hängt OCR-Blöcke und Platzhalter in Dokumentreihenfolge an PDF-Text an.
 
+### `_extract_standalone_image(content, extension) -> list[EmbeddedImage]`
+
+Für reine Bild-Uploads (PNG etc.): gibt immer das Bild als wählbares zurück (kein MIN_SIZE Filter mehr). Standalone User-Bilder zählen immer (konsistent zu geändertem Verhalten in image_inspect._inspect_image_file). MIN+Heuristik weiterhin nur für eingebettete Container-Bilder.
+
 ## Env
 
 `VISION_ENABLED`, `VISION_MODEL`, `VISION_MAX_IMAGES`, `LLM_AUTH_MODE`
@@ -37,3 +41,7 @@ Hängt OCR-Blöcke und Platzhalter in Dokumentreihenfolge an PDF-Text an.
 ## Siehe auch
 
 [`loaders/docx_content.md`](./docx_content.md), [`document_assets.md`](../document_assets.md), [`llm.md`](../llm.md)
+
+## Änderungen (F1)
+
+Standalone <1KB PNGs werden jetzt korrekt als has_images + mit Preview-Images-List für die UI erkannt (Inspect + Einpflegen Flow).

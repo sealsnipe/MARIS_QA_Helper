@@ -18,3 +18,4 @@ Tests für selektive Vision-OCR (image ids aus UI, transcribe nur gewählte, com
 - run_vision_ocr mit/ohne selected ids.
 - compose_*: nur transcribierte Blöcke.
 - Fallbacks bei no vision.
+- _png_bytes fixture: noise (os.urandom) embedded images in DOCX, damit Inspektion sie als meaningful erkennt (nicht als low-info filtert).

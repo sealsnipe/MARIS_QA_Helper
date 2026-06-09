@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from io import BytesIO
 from pathlib import Path
 
@@ -12,9 +13,25 @@ from app.upload import inspect_upload, parse_transcribe_image_ids
 from app.tests.conftest import create_customer
 
 
-def _png_bytes(width: int = 200, height: int = 200) -> bytes:
+def _png_bytes(width: int = 240, height: int = 240) -> bytes:
+    """Blocky random-color image so the downsampled 32x32 gray in _is_meaningful_image still
+    has sufficient variance (>180 strict) and unique colors. Pure per-pixel os.urandom noise
+    gets smoothed too much by LANCZOS resize and would be (incorrectly for test) filtered.
+    Block structure survives downsampling and represents "realistic embedded figure".
+    """
+    im = Image.new("RGB", (width, height))
+    block = 8
+    for y in range(0, height, block):
+        for x in range(0, width, block):
+            r = int.from_bytes(os.urandom(1), "big")
+            g = int.from_bytes(os.urandom(1), "big")
+            b = int.from_bytes(os.urandom(1), "big")
+            for yy in range(block):
+                for xx in range(block):
+                    if y + yy < height and x + xx < width:
+                        im.putpixel((x + xx, y + yy), (r, g, b))
     buffer = BytesIO()
-    Image.new("RGB", (width, height), color="blue").save(buffer, format="PNG")
+    im.save(buffer, format="PNG")
     return buffer.getvalue()
 
 

@@ -14,6 +14,8 @@ Tests für Bild-Inspektion (PDF/DOCX/IMAGE): embedded images count, pages, OCR r
 
 ## (Optional) Tests
 
-- inspect_document_*: image_count, has_images, pages_with_images.
+- inspect_document_*: image_count, has_images, pages_with_images. (Standalone small valid PNGs accepted; embedded use noise fixtures for meaningful content.)
+- `test_embedded_mini_solid_image_in_docx_is_filtered`: explizit dokumentiert Filter von einfarbigen Mini-Bildern (embedded).
 - save_embedded, build_preview_data_url.
 - Non-image files → 0.
+- Fixtures: noise PNGs via `os.urandom` + `Image.frombytes` für embedded DOCX-Tests (≥200x200, high var → pass _is_meaningful).

@@ -247,6 +247,8 @@ def _inspect_docx(content: bytes) -> ImageInspectResult:
         blob = rel.target_part.blob
         if len(blob) < MIN_IMAGE_BYTES:
             continue
+        if not _is_meaningful_image(blob):  # filter low-info embedded (e.g. mini deco); realistic content passes
+            continue
         image_count += 1
     return ImageInspectResult(
         has_images=image_count > 0,
@@ -257,17 +259,24 @@ def _inspect_docx(content: bytes) -> ImageInspectResult:
 
 
 def _inspect_image_file(content: bytes, extension: str) -> ImageInspectResult:
+    """Standalone image files (user uploads) are always treated as images if PIL can open+verify them.
+    No MIN size filter here — a small but valid PNG/JPG uploaded explicitly is meaningful content.
+    (Embedded images in PDF/DOCX still use MIN + _is_meaningful_image to drop backgrounds/deco.)
+    """
     file_type = extension.lstrip(".") or "image"
-    if len(content) < MIN_IMAGE_BYTES:
+    try:
+        with PILImage.open(io.BytesIO(content)) as im:
+            im.verify()
+        return ImageInspectResult(
+            has_images=True,
+            image_count=1,
+            file_type=file_type,
+            text_extractable=False,
+        )
+    except Exception:
         return ImageInspectResult(
             has_images=False,
             image_count=0,
             file_type=file_type,
             text_extractable=False,
         )
-    return ImageInspectResult(
-        has_images=True,
-        image_count=1,
-        file_type=file_type,
-        text_extractable=False,
-    )
