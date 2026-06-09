@@ -107,9 +107,9 @@ Typischer Request-Flow: Session-Auth via `get_current_user` → optional Mandant
 
 ### `login(request, email, password, db)` — `POST /login`
 
-**Beschreibung:** Authentifiziert per E-Mail/Passwort, setzt Session `user_id`; bei genau einem Mandanten auch `customer_id`. In-Memory Sliding-Window Rate-Limit (F5): max 10 Fehlversuche / 60s pro (IP, norm email); 11. → `?error=rate_limited`; Erfolg resettet Zähler.
+**Beschreibung:** Authentifiziert per E-Mail/Passwort, setzt Session `user_id`; bei genau einem Mandanten auch `customer_id`. In-Memory Sliding-Window Rate-Limit (nachgeschärft Runde 2 / F5): Check vor `verify_password` (auch korrektes PW wird im Fenster geblockt); `>= 10` → sofort `rate_limited` (kein Argon2/DB-Lookup für gesperrte Keys); Pruning bei >1000 Einträgen (abgelaufene Keys per Comprehension entfernt); `_login_rate_key` Helper (request.client.host or "unknown", Reverse-Proxy-Semantik im Docstring dokumentiert — Limit wirkt faktisch per E-Mail, MVP-limitiert).
 
-**Ablauf:** Rate-Check bei Bad-PW → ggf. rate redirect; sonst Fehler → `/login?error=1`; Erfolg → `/chat`.
+**Ablauf:** Rate-Check (vor PW) → ggf. rate redirect; sonst Fehler → `/login?error=1`; Erfolg → pop + Session → `/chat`.
 
 ---
 

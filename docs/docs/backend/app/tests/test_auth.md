@@ -102,4 +102,6 @@ Keine Modulebenen-Symbole außer Testfunktionen.
 | `test_login_failure_shows_generic_error` | Generische Login-Fehlermeldung |
 | `test_login_success_sets_session` | Session + `/api/me` |
 | `test_logout_clears_session` | Session nach Logout weg |
-| `test_login_rate_limit_after_many_fails` | 10 fails normal error=1; 11th rate_limited; success nach Rate resettet Zähler (F5) |
+| `test_login_rate_limit_blocks_correct_password_in_window` | Nach 10 Fails blockt der 11. Versuch auch bei korrektem PW (`rate_limited`); Kern der Runde-2 Nachbesserung (N1). |
+| `test_login_rate_limit_reset_after_window_or_success` | Fenster-Ablauf (künstlich) oder Erfolg poppt den Key; anschließender korrekter Login klappt. |
+| `test_login_rate_limit_pruning` | Bei >1000 Einträgen werden abgelaufene Keys per Comprehension entfernt (Spam-Schutz). |
