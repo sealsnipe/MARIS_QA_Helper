@@ -159,6 +159,8 @@ def create_tenant_customer(db: Session, customer_id: str, name: str) -> Customer
         if link is None:
             db.add(UserCustomer(user_id=admin.id, customer_id=slug))
 
+    db.flush()  # make admin UserCustomer links visible to assign_new_customer_to_auto_roles (which may overlap on admins that belong to auto-roles)
+
     assign_new_customer_to_auto_roles(db, slug)
     db.commit()
     db.refresh(row)

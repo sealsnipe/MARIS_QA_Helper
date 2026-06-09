@@ -210,3 +210,4 @@ def assign_new_customer_to_auto_roles(db: Session, customer_id: str) -> None:
             membership = db.get(UserCustomer, {"user_id": user_id, "customer_id": customer_id})
             if membership is None:
                 db.add(UserCustomer(user_id=user_id, customer_id=customer_id))
+                db.flush()  # make it visible to subsequent iterations (same user may be in multiple auto-roles)
