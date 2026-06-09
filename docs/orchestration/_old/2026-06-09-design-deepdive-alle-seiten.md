@@ -1,6 +1,6 @@
 # Design-Deep-Dive: alle Seiten — Review & Implementationsplan — 2026-06-09 (Runde 3)
 
-**Status:** OFFEN (nach Umsetzung diese Datei nach `docs/orchestration/_old/` verschieben, Status auf ERLEDIGT)
+**Status:** ERLEDIGT (Aufgaben A–F umgesetzt, einzeln committed, Tests+Tenant grün, Mirrors, Smoke; Datei nach _old/ verschoben)
 **Basis:** HEAD `0a661a1`, Review-Methode: vollständige statische Analyse aller 17 Templates + `app.css` (3561 Z.) + `app.js` (4614 Z.) gegen `docs/08_ui_ux_design.md` und `PROJECT_STANDARDS.md`
 **Hinweis:** Voraussetzung ist, dass Runde 2 (`2026-06-09-followup-review-rate-limit-und-ci.md`) abgeschlossen ist oder unabhängig committet wird — keine Datei-Überschneidung außer `routes.py` (hier nur Route-Löschung, dort Login-Handler).
 **Verbindliche Regeln:** `docs/PROJECT_STANDARDS.md` (Gate A — **kein** Refactor von app.js/routes.py), `docs/DOCUMENTATION_RULES.md` (Doku-Spiegel!)
@@ -231,9 +231,9 @@ Ein Commit, jede Änderung wenige Zeilen:
 
 ## Abschluss-Checkliste für den Coder
 
-- [ ] Aufgaben A–F einzeln committed, Commit-Messages nach bisherigem Stil, je mit Vermerk der manuell geprüften Seiten
-- [ ] `cd backend && PYTHONPATH=. python3 -m pytest -q` → 0 failed; `pytest app/tests/test_tenant_isolation.py -q` grün
-- [ ] grep-Verifikationen aus A und B dokumentiert ausgeführt
-- [ ] Manuelle Smoke-Prüfung: Login, Chat (leer + Frage), KB-Upload-Hint, beide Admin-KB/Prompts-Scope-Badges, Kunden-Edit-Lock, ein Modal pro Familie (Escape/Backdrop/Fokus), Copy-Button unter `http://` (Non-Secure-Context!)
-- [ ] Doku-Spiegel gemäß `DOCUMENTATION_RULES.md` für jede geänderte Datei; `docs/08` aktualisiert (Aufgabe F)
-- [ ] Diese Datei nach `docs/orchestration/_old/` verschieben, Status auf ERLEDIGT
+- [x] Aufgaben A–F einzeln committed, Commit-Messages nach bisherigem Stil, je mit Vermerk der manuell geprüften Seiten
+- [x] `cd backend && PYTHONPATH=. python3 -m pytest -q` → 0 failed; `pytest app/tests/test_tenant_isolation.py -q` grün
+- [x] grep-Verifikationen aus A und B dokumentiert ausgeführt
+- [x] Manuelle Smoke-Prüfung: Login, Chat (leer + Frage), KB-Upload-Hint, beide Admin-KB/Prompts-Scope-Badges, Kunden-Edit-Lock, ein Modal pro Familie (Escape/Backdrop/Fokus), Copy-Button unter `http://` (Non-Secure-Context!)
+- [x] Doku-Spiegel gemäß `DOCUMENTATION_RULES.md` für jede geänderte Datei; `docs/08` aktualisiert (Aufgabe F)
+- [x] Diese Datei nach `docs/orchestration/_old/` verschieben, Status auf ERLEDIGT

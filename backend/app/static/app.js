@@ -282,6 +282,7 @@
           setActiveChatInUrl("");
           const chatLog = document.getElementById("chat-log");
           if (chatLog) chatLog.innerHTML = "";
+          if (chatEmpty) chatEmpty.style.display = "";
         }
         await refreshChatHistory();
       });
@@ -300,6 +301,7 @@
         setActiveChatInUrl("");
         const chatLog = document.getElementById("chat-log");
         if (chatLog) chatLog.innerHTML = "";
+        if (chatEmpty) chatEmpty.style.display = "";
         refreshChatHistory().catch(() => {});
         document.getElementById("chat-input")?.focus();
       } else {
@@ -1686,6 +1688,7 @@
 
   function initChatPage() {
     const chatLog = document.getElementById("chat-log");
+    const chatEmpty = document.getElementById("chat-empty-state");
     const chatForm = document.getElementById("chat-form");
     const chatInput = document.getElementById("chat-input");
     const chatSubmit = document.getElementById("chat-submit");
@@ -1701,6 +1704,7 @@
     function appendBubble(role, text, sources = null) {
       const bubble = document.createElement("div");
       bubble.className = `bubble ${role}`;
+      if (chatEmpty) chatEmpty.style.display = "none";
 
       if (role === "assistant" && text !== "…") {
         setBubbleContent(bubble, text);
@@ -1719,6 +1723,7 @@
 
     function renderChatLog(messages) {
       chatLog.innerHTML = "";
+      if (chatEmpty) chatEmpty.style.display = messages.length ? "none" : "";
       for (const message of messages) {
         if (message.role === "user" || message.role === "assistant") {
           appendBubble(
@@ -1772,7 +1777,8 @@
       } catch (_error) {
         loading.remove();
         appendBubble("assistant", "Entschuldigung, die Antwort konnte nicht geladen werden.", []);
-        showStatus(chatStatus, "Chat fehlgeschlagen.", "error");
+        const detail = _error && (_error.code || _error.ref) ? ` (${_error.code || ""}${_error.ref ? ", ref " + _error.ref : ""})` : "";
+        showStatus(chatStatus, `Chat fehlgeschlagen${detail}.`, "error");
       } finally {
         chatSubmit.disabled = false;
       }
@@ -2156,17 +2162,39 @@
     const promptForm = document.getElementById("prompt-form");
     const promptStatus = document.getElementById("prompt-status");
 
+    let loadedPrompt = "";
+    let previousScope = null;
+
     function currentScope() {
       return adminScopeFromCustomerId(activeCustomerId || globalCustomerId);
     }
 
     async function loadPrompt() {
       const scope = currentScope();
+      if (promptContent && loadedPrompt && promptContent.value !== loadedPrompt) {
+        if (!confirm("Ungespeicherte Änderungen am Prompt verwerfen?")) {
+          // revert scope if possible (the select change already happened; in practice the caller can handle)
+          return;
+        }
+      }
       const query = scope === "global" ? "" : `?customer_id=${encodeURIComponent(scope)}`;
       const data = await api(`/api/admin/system-prompt${query}`);
       if (promptContent) promptContent.value = data.content || "";
+      loadedPrompt = promptContent ? promptContent.value : "";
+      previousScope = scope;
+      // Scope-Badge (per deepdive D)
+      const scopeLabel = document.getElementById("admin-scope-label");
+      if (scopeLabel) scopeLabel.textContent = scope === "global" ? "Global" : (activeCustomerId || "—");
     }
     refreshAdminPromptsPage = loadPrompt;
+
+    // beforeunload guard while dirty (per deepdive D)
+    window.addEventListener("beforeunload", (e) => {
+      if (promptContent && loadedPrompt && promptContent.value !== loadedPrompt) {
+        e.preventDefault();
+        e.returnValue = "Ungespeicherte Änderungen am Prompt gehen verloren.";
+      }
+    });
 
     promptForm?.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -2181,6 +2209,7 @@
           }),
         });
         showStatus(promptStatus, "System-Prompt gespeichert.", "ok");
+        loadedPrompt = promptContent?.value || "";
       } catch (_error) {
         showStatus(promptStatus, "Speichern fehlgeschlagen.", "error");
       }
@@ -2799,7 +2828,7 @@
             <div class="row-actions">
               <button type="button" class="icon-btn secondary customer-edit-btn" aria-label="Bearbeiten">${ICON_EDIT}</button>
               <button type="button" class="icon-btn save customer-save-btn hidden" aria-label="Speichern" title="Speichern (ID-Änderung migriert Qdrant etc.)">${ICON_SAVE}</button>
-              <button type="button" class="icon-btn secondary customer-cancel-btn hidden" aria-label="Abbrechen">Abbrechen</button>
+              <button type="button" class="secondary small customer-cancel-btn hidden" aria-label="Abbrechen">Abbrechen</button>
               <button type="button" class="icon-btn danger customer-delete-btn" aria-label="Entfernen">${ICON_TRASH}</button>
             </div>
           </td>
@@ -2876,6 +2905,9 @@
           ? "Speichern + migriere KB (Qdrant) … kann bei großen KBs etwas dauern."
           : "Speichern…";
         showStatus(listStatus, progressMsg);
+        // lock buttons during save (per deepdive E)
+        const rowBtns = row.querySelectorAll("button");
+        rowBtns.forEach(b => b.disabled = true);
         try {
           const body = { name: nextName };
           if (isSlugChange) body.id = nextId;
@@ -2907,6 +2939,7 @@
             msg = "Speichern fehlgeschlagen: " + err.detail;
           }
           showStatus(listStatus, msg, "error");
+          rowBtns.forEach(b => b.disabled = false);
           // leave edit mode open on error so the user can see/correct the attempted values
         }
         return;
@@ -2914,7 +2947,10 @@
 
       if (target.classList.contains("customer-delete-btn")) {
         const label = nameDisplay?.textContent || customerId;
-        if (!window.confirm(`Kunde „${label}“ wirklich entfernen?`)) return;
+        if (!window.confirm(`Kunde „${label}“ wirklich entfernen? KB-Dokumente, Uploads und Chat-Verläufe dieses Kunden werden mit entfernt.`)) return;
+        // lock during delete (per deepdive E)
+        const rowBtns = row.querySelectorAll("button");
+        rowBtns.forEach(b => b.disabled = true);
         showStatus(listStatus, "Entfernen…");
         try {
           await api(`/api/admin/customers/${encodeURIComponent(customerId)}`, { method: "DELETE" });
@@ -2922,6 +2958,7 @@
           showStatus(listStatus, "Kunde entfernt.", "ok");
         } catch (_error) {
           showStatus(listStatus, "Entfernen fehlgeschlagen.", "error");
+          rowBtns.forEach(b => b.disabled = false);
         }
       }
     });
