@@ -1,4 +1,36 @@
-from app.retrieval import filter_sources_by_answer_citations
+from app.customers import collection_name
+from app.ingestion import ingest_text
+from app.retrieval import filter_sources_by_answer_citations, search_knowledge_base
+from app.tests.conftest import create_customer
+
+
+def test_search_excludes_fingerprint_points(db_session, fake_vector_store, fake_embeddings):
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    document = ingest_text(
+        db_session,
+        customer_id="bg-ludwigshafen",
+        title="Rufbereitschaft",
+        text="Vergütung der 24/7-Rufbereitschaft mit genügend Zeichen für den Fingerprint-Filter-Test.",
+        embeddings=fake_embeddings,
+        vector_store=fake_vector_store,
+    ).document
+
+    # FakeEmbeddings liefert identische Vektoren → Fingerprint-Punkt hätte ohne
+    # Filter denselben Score wie die Chunks und würde in den Treffern landen.
+    bucket = fake_vector_store.collections[collection_name("bg-ludwigshafen")]
+    assert any(payload.get("kind") == "document_fingerprint" for _, payload in bucket.values())
+
+    hits = search_knowledge_base(
+        "bg-ludwigshafen",
+        "Vergütung Rufbereitschaft",
+        top_k=10,
+        min_score=0.0,
+        embeddings=fake_embeddings,
+        vector_store=fake_vector_store,
+    )
+
+    assert len(hits) == document.chunk_count
+    assert all(hit.text.strip() for hit in hits)
 
 
 def test_filter_sources_keeps_only_cited_numbers():

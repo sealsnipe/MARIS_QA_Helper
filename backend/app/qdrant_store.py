@@ -84,6 +84,14 @@ class QdrantVectorStore:
             collection_name=name,
             query=query_vector,
             limit=top_k,
+            query_filter=qmodels.Filter(
+                must_not=[
+                    qmodels.FieldCondition(
+                        key="kind",
+                        match=qmodels.MatchValue(value="document_fingerprint"),
+                    )
+                ]
+            ),
             with_payload=True,
         ).points
         hits: list[SearchHit] = []
@@ -229,6 +237,7 @@ class InMemoryVectorStore:
         scored = [
             SearchHit(score=cosine(query_vector, vector), payload=payload)
             for vector, payload in bucket.values()
+            if payload.get("kind") != "document_fingerprint"
         ]
         scored.sort(key=lambda hit: hit.score, reverse=True)
         return scored[:top_k]
