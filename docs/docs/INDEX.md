@@ -61,14 +61,14 @@
 | [backend/app/static/vendor/purify.min.md](./backend/app/static/vendor/purify.min.md) | `purify.min.js` |
 | [backend/app/system_prompts.md](./backend/app/system_prompts.md) | `backend/app/system_prompts.py` |
 | [backend/app/templates/admin_knowledge.md](./backend/app/templates/admin_knowledge.md) | `admin_knowledge.html` |
-| [backend/app/templates/admin_keys.md](./backend/app/templates/admin_keys.md) | `admin_keys.html` |
+
 | [backend/app/templates/admin_prompts.md](./backend/app/templates/admin_prompts.md) | `admin_prompts.html` |
 | [backend/app/templates/admin_roles.md](./backend/app/templates/admin_roles.md) | `admin_roles.html` |
 | [backend/app/templates/admin_users.md](./backend/app/templates/admin_users.md) | `admin_users.html` |
 | [backend/app/templates/base.md](./backend/app/templates/base.md) | `base.html` |
 | [backend/app/templates/chat.md](./backend/app/templates/chat.md) | `chat.html` |
 | [backend/app/templates/customers.md](./backend/app/templates/customers.md) | `customers.html` |
-| [backend/app/templates/index.md](./backend/app/templates/index.md) | `index.html` |
+
 | [backend/app/templates/kb.md](./backend/app/templates/kb.md) | `kb.html` |
 | [backend/app/templates/layout.md](./backend/app/templates/layout.md) | `layout.html` |
 | [backend/app/templates/login.md](./backend/app/templates/login.md) | `login.html` |

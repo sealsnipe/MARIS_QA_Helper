@@ -724,19 +724,6 @@ def admin_keys_assignments_page(
     )
 
 
-@router.get("/admin/keys/legacy", response_class=HTMLResponse)
-def admin_keys_legacy_page(
-    request: Request,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> Response:
-    if redirect := _admin_page_redirect(user):
-        return redirect
-    return templates.TemplateResponse(
-        request,
-        "admin_keys.html",
-        _page_context(request, user, db, active_page="admin_keys"),
-    )
 
 
 @router.get("/api/customers")

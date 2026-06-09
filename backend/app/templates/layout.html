@@ -63,7 +63,7 @@
         <div class="nav-section">
           <div class="nav-heading">Einstellungen</div>
           {% if is_admin %}
-          {% set admin_nav_pages = ['customers', 'admin_knowledge', 'admin_prompts', 'admin_users', 'admin_roles', 'admin_keys', 'admin_keys_presets', 'admin_keys_assignments'] %}
+          {% set admin_nav_pages = ['customers', 'admin_knowledge', 'admin_prompts', 'admin_users', 'admin_roles', 'admin_keys_presets', 'admin_keys_assignments'] %}
           {% set user_nav_pages = ['admin_users', 'admin_roles'] %}
           {% set keys_nav_pages = ['admin_keys_presets', 'admin_keys_assignments'] %}
           <div class="nav-group {% if active_page in admin_nav_pages %}expanded{% endif %}" id="admin-nav-group">
