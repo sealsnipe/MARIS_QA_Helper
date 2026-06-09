@@ -107,9 +107,9 @@ Typischer Request-Flow: Session-Auth via `get_current_user` → optional Mandant
 
 ### `login(request, email, password, db)` — `POST /login`
 
-**Beschreibung:** Authentifiziert per E-Mail/Passwort, setzt Session `user_id`; bei genau einem Mandanten auch `customer_id`.
+**Beschreibung:** Authentifiziert per E-Mail/Passwort, setzt Session `user_id`; bei genau einem Mandanten auch `customer_id`. In-Memory Sliding-Window Rate-Limit (F5): max 10 Fehlversuche / 60s pro (IP, norm email); 11. → `?error=rate_limited`; Erfolg resettet Zähler.
 
-**Ablauf:** Fehler → `/login?error=1`; Erfolg → `/chat`.
+**Ablauf:** Rate-Check bei Bad-PW → ggf. rate redirect; sonst Fehler → `/login?error=1`; Erfolg → `/chat`.
 
 ---
 

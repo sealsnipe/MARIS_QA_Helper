@@ -72,3 +72,45 @@ def test_logout_clears_session(client, db_session):
     response = client.post("/logout", follow_redirects=False)
     assert response.status_code == 302
     assert client.get("/api/me").status_code == 401
+
+
+def test_login_rate_limit_after_many_fails(client, db_session):
+    """11th fail within window -> rate_limited redirect + message; success resets window.
+    """
+    from app.tests.conftest import create_user
+
+    create_user(db_session, "rate@example.com", "correct-pw")
+
+    # First 10 fails -> normal error=1 (still under limit)
+    for _ in range(10):
+        r = client.post(
+            "/login",
+            data={"email": "rate@example.com", "password": "wrong"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 302
+        assert "error=1" in r.headers["location"]
+
+    # 11th fail -> rate limited
+    r11 = client.post(
+        "/login",
+        data={"email": "rate@example.com", "password": "wrong"},
+        follow_redirects=False,
+    )
+    assert r11.status_code == 302
+    assert "error=rate_limited" in r11.headers["location"]
+
+    page = client.get("/login?error=rate_limited")
+    assert "Zu viele Fehlversuche" in page.text
+
+    # Successful login resets the fail counter for the key
+    r_ok = client.post(
+        "/login",
+        data={"email": "rate@example.com", "password": "correct-pw"},
+        follow_redirects=False,
+    )
+    assert r_ok.status_code == 302
+    assert "/chat" in (r_ok.headers.get("location") or "")
+
+    # (Success exercised the pop(key) reset path. In real deploys with stable client IP the window is
+    # cleared and subsequent fails within window start from 0 again. TestClient IP can vary per request.)

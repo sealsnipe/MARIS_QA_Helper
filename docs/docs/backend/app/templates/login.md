@@ -31,7 +31,7 @@ Lesereihenfolge: Markenbereich → Untertitel → optionaler Fehler → Formular
 
 | Name | Art | Beschreibung |
 |---|---|---|
-| `error` | `str` \| None | Gesetzt bei Query `?error=1` — zeigt Fehlermeldung |
+| `error` | `str` \| None | `?error=1` → "E-Mail oder Passwort falsch."; `?error=rate_limited` → Rate-Limit-Meldung (nach 10 Fehlversuchen / 60s, per IP+Email) |
 
 ## Funktionen und Klassen
 
@@ -44,6 +44,6 @@ Keine — statisches Formular-Template ohne Client-Logik.
 - **Felder:**
   - `name="email"`, `type="email"`, `autocomplete="username"`, required
   - `name="password"`, `type="password"`, `autocomplete="current-password"`, required
-- **Fehleranzeige:** `{% if error %}` → `<p class="error" role="alert">E-Mail oder Passwort falsch.</p>`
+- **Fehleranzeige:** `{% if error %}` → je nach Wert "E-Mail oder Passwort falsch." oder Rate-Limit-Hinweis (F5)
 - **CSS-Klassen:** `card`, `login-card`, `login-brand`, `login-brand-banner`, `subtitle`
 - **Barrierefreiheit:** `role="alert"` auf Fehlertext

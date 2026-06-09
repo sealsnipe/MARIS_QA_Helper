@@ -11,7 +11,13 @@
   <p class="subtitle">Support-Wissensassistent</p>
 
   {% if error %}
-  <p class="error" role="alert">E-Mail oder Passwort falsch.</p>
+  <p class="error" role="alert">
+    {% if error == "rate_limited" %}
+      Zu viele Fehlversuche. Bitte kurz warten und erneut versuchen.
+    {% else %}
+      E-Mail oder Passwort falsch.
+    {% endif %}
+  </p>
   {% endif %}
 
   <form method="post" action="/login" class="form">

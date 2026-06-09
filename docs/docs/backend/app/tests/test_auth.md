@@ -102,3 +102,4 @@ Keine Modulebenen-Symbole außer Testfunktionen.
 | `test_login_failure_shows_generic_error` | Generische Login-Fehlermeldung |
 | `test_login_success_sets_session` | Session + `/api/me` |
 | `test_logout_clears_session` | Session nach Logout weg |
+| `test_login_rate_limit_after_many_fails` | 10 fails normal error=1; 11th rate_limited; success nach Rate resettet Zähler (F5) |

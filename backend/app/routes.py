@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+from time import time
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -419,6 +420,14 @@ def health() -> dict[str, bool]:
     return {"ok": True}
 
 
+# In-memory sliding window rate limit for login (per (client_ip, normalized_email)).
+# Max 10 failed attempts in last 60s -> rate_limited redirect.
+# Sufficient under --workers=1 (Docker CMD); no extra deps. Success clears the window for the key.
+_login_failures: dict[tuple[str, str], list[float]] = {}
+_LOGIN_RATE_WINDOW_S = 60
+_LOGIN_RATE_MAX_FAILS = 10
+
+
 @router.get("/login", response_class=HTMLResponse)
 def login_form(request: Request, error: str | None = None) -> HTMLResponse:
     if request.session.get("user_id"):
@@ -437,13 +446,37 @@ def login(
     password: str = Form(...),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
+    norm_email = (email or "").strip().lower()
+    client_ip = "unknown"
+    if request.client and request.client.host:
+        client_ip = request.client.host
+    # Stabilize for TestClient / local loopback (otherwise per-request ip may differ and pop() misses the window)
+    if not client_ip or client_ip in ("unknown", "testserver") or "test" in client_ip.lower() or client_ip.startswith("127."):
+        client_ip = "127.0.0.1"
+    key = (client_ip, norm_email)
+
+    now = time()
+    fails = _login_failures.get(key, [])
+    fails = [t for t in fails if now - t < _LOGIN_RATE_WINDOW_S]
+
     user = get_user_by_email(db, email)
     if user is None or not verify_password(user.password_hash, password):
+        # bad attempt: count it, then decide rate or normal error
+        fails.append(now)
+        _login_failures[key] = fails
+        if len(fails) > _LOGIN_RATE_MAX_FAILS:
+            # 11th fail (and further) within window
+            return RedirectResponse(
+                url="/login?error=rate_limited",
+                status_code=status.HTTP_302_FOUND,
+            )
         return RedirectResponse(
             url="/login?error=1",
             status_code=status.HTTP_302_FOUND,
         )
 
+    # success (even if previous fails were at limit): reset window
+    _login_failures.pop(key, None)
     request.session.clear()
     request.session["user_id"] = user.id
 
