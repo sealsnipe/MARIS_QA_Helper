@@ -170,6 +170,7 @@ class LlmPreset(Base):
     provider: Mapped[str] = mapped_column(String, nullable=False)
     model_id: Mapped[str] = mapped_column(String, nullable=False)
     oauth_token_path: Mapped[str] = mapped_column(String, nullable=False)
+    oauth_token: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON token payload for persistence across restarts/rebuilds
     oauth_account_label: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[str] = mapped_column(String, nullable=False)
     updated_at: Mapped[str] = mapped_column(String, nullable=False)

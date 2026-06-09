@@ -315,7 +315,10 @@ _similarity_backend: LLMBackend | None = None
 
 
 def _build_backend_from_preset(preset) -> LLMBackend:
+    from app.llm_presets import ensure_oauth_token_file
+
     settings = get_settings()
+    ensure_oauth_token_file(preset)  # hydrate file from DB token if needed (after rebuild)
     auth_path = Path(preset.oauth_token_path)
     if preset.provider == "openai":
         return CodexOAuthLLM(
@@ -417,6 +420,22 @@ def _oauth_auth_headers(auth_path: Path, base_url: str, *, accept_json: bool) ->
     except ImportError as exc:
         raise LLMError("oauth_codex_missing") from exc
 
+    # hydrate codex token file from DB secret if missing (after container rebuild)
+    try:
+        from app.secrets_admin import get_effective_secret
+        from app.oauth_token_store import save_oauth_tokens
+        import json
+
+        token_json = get_effective_secret(None, "codex_oauth_token")
+        if token_json and (not auth_path.exists() or auth_path.stat().st_size < 10):
+            try:
+                data = json.loads(token_json)
+                save_oauth_tokens(auth_path, data)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     client = Client(
         token_store=FileTokenStore(path=auth_path),
         base_url=base_url.rstrip("/"),
@@ -461,6 +480,9 @@ def _vision_auth_context(db: Session | None) -> tuple[str, str, Path, str]:
     ensure_legacy_migration(db)
     preset = resolve_preset_for_slot(db, "vision")
     if preset is not None:
+        from app.llm_presets import ensure_oauth_token_file
+
+        ensure_oauth_token_file(preset)
         base = settings.CODEX_BASE_URL if preset.provider == "openai" else settings.XAI_BASE_URL
         return preset.provider, preset.model_id, Path(preset.oauth_token_path), base
     return _vision_auth_context_legacy(db)

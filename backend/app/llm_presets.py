@@ -8,10 +8,13 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+import json
+from pathlib import Path
+
 from app.config import get_settings
 from app.llm_catalog import LLM_SLOTS, get_catalog, is_valid_provider_model
 from app.models import LlmPreset, LlmSlotBinding, utc_now_iso
-from app.oauth_token_store import oauth_tokens_configured
+from app.oauth_token_store import oauth_tokens_configured, save_oauth_tokens, load_oauth_tokens
 
 
 class LlmPresetsError(Exception):
@@ -33,9 +36,55 @@ def preset_token_path(preset_id: str) -> Path:
     return oauth_dir() / f"{preset_id}.json"
 
 
+def ensure_oauth_token_file(preset: LlmPreset) -> None:
+    """If the token lives in the DB column (persisted), but the file is missing
+    (e.g. after Docker rebuild or container recreation), recreate the file from DB.
+    This makes OAuth survive restarts/rebuilds without requiring re-login.
+    """
+    token_json = getattr(preset, "oauth_token", None)
+    if not token_json:
+        return
+    target = Path(preset.oauth_token_path)
+    if target.exists() and target.stat().st_size > 10:
+        return
+    try:
+        data = json.loads(token_json)
+        save_oauth_tokens(target, data)
+    except Exception:
+        # will surface as auth error on next use, which is fine
+        pass
+
+
+def save_oauth_token(db: Session, preset_id: str, payload: dict[str, Any]) -> None:
+    """Persist the OAuth token payload both to the file (for current auth code)
+    and to the DB column (so it survives container rebuilds/restarts).
+    """
+    if not payload:
+        return
+    row = get_preset(db, preset_id)
+    row.oauth_token = json.dumps(payload, ensure_ascii=True)
+    db.commit()
+    db.refresh(row)
+    # keep file in sync for code that reads the Path
+    target = Path(row.oauth_token_path)
+    save_oauth_tokens(target, payload)
+
+
+def load_oauth_token_for_preset(row: LlmPreset) -> dict[str, Any]:
+    """Prefer DB-stored token (survives restarts), fall back to file."""
+    token_json = getattr(row, "oauth_token", None)
+    if token_json:
+        try:
+            return json.loads(token_json)
+        except Exception:
+            pass
+    return load_oauth_tokens(Path(row.oauth_token_path))
+
+
 def _preset_to_dict(row: LlmPreset) -> dict[str, Any]:
     path = Path(row.oauth_token_path)
-    configured = oauth_tokens_configured(path)
+    # configured if token in DB (new persistent storage) or legacy file
+    configured = bool(getattr(row, "oauth_token", None)) or oauth_tokens_configured(path)
     return {
         "id": row.id,
         "name": row.name,
@@ -265,6 +314,7 @@ def ensure_legacy_migration(db: Session) -> None:
 
             data = json.loads(target.read_text(encoding="utf-8"))
             preset.oauth_account_label = data.get("account_id")
+            preset.oauth_token = json.dumps(data, ensure_ascii=True)
         except Exception:
             pass
         db.add(preset)

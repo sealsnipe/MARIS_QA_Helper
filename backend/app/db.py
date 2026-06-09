@@ -93,6 +93,12 @@ def _migrate_schema(engine) -> None:
                 with engine.begin() as conn:
                     conn.execute(text(sql))
 
+    if "llm_presets" in table_names:
+        columns = {col["name"] for col in inspector.get_columns("llm_presets")}
+        if "oauth_token" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE llm_presets ADD COLUMN oauth_token TEXT"))
+
 
 def init_db() -> None:
     import app.models  # noqa: F401 — register all ORM tables before create_all

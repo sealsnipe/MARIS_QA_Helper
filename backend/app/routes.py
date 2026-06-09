@@ -1843,6 +1843,12 @@ def api_admin_preset_oauth_poll(
             if res.get("status") != "complete":
                 return {"status": res.get("status", "pending")}
             acc = exchange_and_save(res["authorization_code"], res["code_verifier"], target)
+            # also persist token to DB column so it survives container rebuilds/restarts
+            from app.oauth_token_store import load_oauth_tokens
+            from app.llm_presets import save_oauth_token
+
+            data = load_oauth_tokens(target)
+            save_oauth_token(db, preset_id, data)
             preset_row = mark_preset_oauth(db, preset_id, acc.get("account_id"), _admin.email)
             return {"status": "complete", "preset": preset_row}
 
@@ -1863,6 +1869,12 @@ def api_admin_preset_oauth_poll(
                         return {"status": "complete", "preset": preset_row}
                 return {"status": res.get("status", "pending"), "detail": detail}
             acc = xai_save(res["tokens"], target)
+            # also persist token to DB column so it survives container rebuilds/restarts
+            from app.oauth_token_store import load_oauth_tokens
+            from app.llm_presets import save_oauth_token
+
+            data = load_oauth_tokens(target)
+            save_oauth_token(db, preset_id, data)
             preset_row = mark_preset_oauth(db, preset_id, acc.get("account_label"), _admin.email)
             return {"status": "complete", "preset": preset_row}
 
@@ -1974,6 +1986,10 @@ def api_admin_oauth_poll(
         # if similarity is in custom, also point it to oauth (reuses same file)
         if (get_effective_secret(db, "similarity_mode") or "same_as_chat") == "custom":
             update_secret(db, "similarity_auth_mode", "chatgpt_oauth", _admin.email)
+        # also persist the token payload to DB secret so it survives rebuilds (in addition to any host mount)
+        from app.oauth_token_store import load_oauth_tokens
+        data = load_oauth_tokens(target)
+        update_secret(db, "codex_oauth_token", json.dumps(data), _admin.email)
         status = get_keys_status(db)
         status["oauth_account_id"] = acc.get("account_id")
         return {"status": "complete", "keys": status}
