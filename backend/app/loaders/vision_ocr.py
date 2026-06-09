@@ -284,7 +284,11 @@ def _extract_pdf_images(content: bytes) -> list[EmbeddedImage]:
         for image in page.images:
             if len(image.data) < MIN_IMAGE_BYTES:
                 continue
-            if not _is_meaningful_image(image.data):
+            # Use lenient check here so that image-based pages (scanned docs, slides)
+            # have their content images extracted and available for OCR selection.
+            # The inspection step (with per-page text awareness) decides whether a page
+            # "has images" that should be offered to the user.
+            if not _is_meaningful_image(image.data, strict=False):
                 continue
             images.append(
                 EmbeddedImage(

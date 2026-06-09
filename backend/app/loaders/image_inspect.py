@@ -15,46 +15,58 @@ MIN_IMAGE_BYTES = 1024  # base size filter; stricter content checks below
 IMAGE_FILE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif"})
 
 
-def _is_meaningful_image(data: bytes) -> bool:
+def _is_meaningful_image(data: bytes, *, strict: bool = True) -> bool:
     """Heuristic to decide if an embedded PDF/DOCX image is real content worth Vision-OCR.
 
-    Filters out:
-    - Tiny icons/decorations
-    - Page background "paper" textures or low-information gradients (common in designed PDFs)
-    - Very uniform or low-detail images
+    - strict=True (default, used on pages that have vector text): very strict filter to avoid
+      page background textures, watermarks, subtle gradients that are common in "designed" text PDFs.
+    - strict=False (used on pages without extractable text layer): more lenient so that scanned
+      documents, image-based slides, or full-page text-as-image are still offered for OCR.
 
-    A page with only such "background images" should not be treated as having images for OCR purposes.
-    Real screenshots, diagrams, photos, figures will pass.
+    Real screenshots, diagrams, photos, figures, and page-filling content images should pass.
     """
     if len(data) < MIN_IMAGE_BYTES:
         return False
     try:
         with PILImage.open(io.BytesIO(data)) as im:
             w, h = im.size
-            if w < 160 or h < 160:
+            if w < 120 or h < 120:
                 return False
 
-            # Low variance / low information test (grayscale small sample)
+            # Quick low-info test
             gray = im.convert("L").resize((32, 32), PILImage.LANCZOS)
             pixels = list(gray.getdata())
             if not pixels:
                 return False
             mean = sum(pixels) / len(pixels)
             var = sum((p - mean) ** 2 for p in pixels) / len(pixels)
-            if var < 180:  # quite flat (solid bg, light gradient, watermark)
-                return False
 
-            # Color diversity on very small RGB sample
-            rgb_small = im.convert("RGB").resize((16, 16))
-            unique_colors = len(set(rgb_small.getdata()))
-            if unique_colors < 10:
-                return False
-
-            return True
+            if strict:
+                # Strict mode: for pages with text layer → only real embedded figures
+                if var < 180:
+                    return False
+                rgb_small = im.convert("RGB").resize((16, 16))
+                unique_colors = len(set(rgb_small.getdata()))
+                if unique_colors < 10:
+                    return False
+                return True
+            else:
+                # Lenient mode: for image-based pages (scanned / pure image PDFs)
+                # Include full-page content even if it's mostly text or has moderate flat areas
+                if w > 350 and h > 450:
+                    # Large image (likely the main page content)
+                    if var > 25:  # allow sparse text on white
+                        return True
+                # Fallback to normal checks but lower thresholds
+                if var < 80:
+                    return False
+                rgb_small = im.convert("RGB").resize((16, 16))
+                unique_colors = len(set(rgb_small.getdata()))
+                if unique_colors < 6:
+                    return False
+                return True
     except Exception:
-        # If we can't parse the image bytes, fall back to generous size threshold
-        # (real content images are usually larger anyway)
-        return len(data) > 12000
+        return len(data) > 8000
 
 
 @dataclass
@@ -106,13 +118,17 @@ def _inspect_pdf(content: bytes) -> ImageInspectResult:
     image_count = 0
     text_extractable = False
     for page_number, page in enumerate(reader.pages, start=1):
-        if (page.extract_text() or "").strip():
+        page_text = (page.extract_text() or "").strip()
+        if page_text:
             text_extractable = True
         page_images = 0
+        is_text_page = bool(page_text)
         for image in page.images:
             if len(image.data) < MIN_IMAGE_BYTES:
                 continue
-            if not _is_meaningful_image(image.data):
+            # On pages with extractable text layer: be strict (filter backgrounds)
+            # On pages without text layer (scanned/image PDFs): be lenient so content images are offered for OCR
+            if not _is_meaningful_image(image.data, strict=is_text_page):
                 continue
             page_images += 1
         if page_images:
