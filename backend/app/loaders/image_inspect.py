@@ -5,13 +5,56 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from docx import Document as DocxDocument
+from PIL import Image as PILImage
 from pypdf import PdfReader
 
 from app.loaders.errors import LoaderError
 
-MIN_IMAGE_BYTES = 500
+MIN_IMAGE_BYTES = 1024  # base size filter; stricter content checks below
 
 IMAGE_FILE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif"})
+
+
+def _is_meaningful_image(data: bytes) -> bool:
+    """Heuristic to decide if an embedded PDF/DOCX image is real content worth Vision-OCR.
+
+    Filters out:
+    - Tiny icons/decorations
+    - Page background "paper" textures or low-information gradients (common in designed PDFs)
+    - Very uniform or low-detail images
+
+    A page with only such "background images" should not be treated as having images for OCR purposes.
+    Real screenshots, diagrams, photos, figures will pass.
+    """
+    if len(data) < MIN_IMAGE_BYTES:
+        return False
+    try:
+        with PILImage.open(io.BytesIO(data)) as im:
+            w, h = im.size
+            if w < 160 or h < 160:
+                return False
+
+            # Low variance / low information test (grayscale small sample)
+            gray = im.convert("L").resize((32, 32), PILImage.LANCZOS)
+            pixels = list(gray.getdata())
+            if not pixels:
+                return False
+            mean = sum(pixels) / len(pixels)
+            var = sum((p - mean) ** 2 for p in pixels) / len(pixels)
+            if var < 180:  # quite flat (solid bg, light gradient, watermark)
+                return False
+
+            # Color diversity on very small RGB sample
+            rgb_small = im.convert("RGB").resize((16, 16))
+            unique_colors = len(set(rgb_small.getdata()))
+            if unique_colors < 10:
+                return False
+
+            return True
+    except Exception:
+        # If we can't parse the image bytes, fall back to generous size threshold
+        # (real content images are usually larger anyway)
+        return len(data) > 12000
 
 
 @dataclass
@@ -68,6 +111,8 @@ def _inspect_pdf(content: bytes) -> ImageInspectResult:
         page_images = 0
         for image in page.images:
             if len(image.data) < MIN_IMAGE_BYTES:
+                continue
+            if not _is_meaningful_image(image.data):
                 continue
             page_images += 1
         if page_images:

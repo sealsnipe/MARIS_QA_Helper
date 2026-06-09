@@ -18,7 +18,7 @@ from app.document_assets import (
     save_document_image,
 )
 from app.llm import LLMError, transcribe_image
-from app.loaders.image_inspect import MIN_IMAGE_BYTES, IMAGE_FILE_EXTENSIONS
+from app.loaders.image_inspect import MIN_IMAGE_BYTES, IMAGE_FILE_EXTENSIONS, _is_meaningful_image
 
 OCR_PROMPT = """\
 Du transkribierst Bilder für eine Wissensdatenbank. Entscheide SELBST, welcher Fall zutrifft — der Nutzer wählt nicht.
@@ -283,6 +283,8 @@ def _extract_pdf_images(content: bytes) -> list[EmbeddedImage]:
     for page_number, page in enumerate(reader.pages, start=1):
         for image in page.images:
             if len(image.data) < MIN_IMAGE_BYTES:
+                continue
+            if not _is_meaningful_image(image.data):
                 continue
             images.append(
                 EmbeddedImage(

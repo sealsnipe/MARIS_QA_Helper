@@ -1369,6 +1369,13 @@
   }) {
     let selectedFile = null;
     let fileInspection = null;
+    let pendingInspection = false;
+
+    function updateSubmitEnabled() {
+      if (!submitBtn) return;
+      const hasContent = !!(textInput?.value.trim() || selectedFile);
+      submitBtn.disabled = !hasContent || pendingInspection;
+    }
 
     const warningEl = document.createElement("p");
     warningEl.className = "image-warning-banner hidden";
@@ -1428,10 +1435,20 @@
       dropzone?.classList.toggle("has-file", Boolean(file));
       dropzone?.setAttribute("aria-label", file ? "Ausgewählte Datei entfernen" : "Datei auswählen");
 
-      if (!file) return;
+      if (!file) {
+        pendingInspection = false;
+        updateSubmitEnabled();
+        return;
+      }
 
       const lowerName = file.name.toLowerCase();
-      if (!INSPECTABLE_FILE_PATTERN.test(lowerName)) return;
+      if (!INSPECTABLE_FILE_PATTERN.test(lowerName)) {
+        updateSubmitEnabled();
+        return;
+      }
+
+      pendingInspection = true;
+      if (submitBtn) submitBtn.disabled = true;
 
       const formData = new FormData();
       formData.append("file", file);
@@ -1444,6 +1461,9 @@
       } catch (_error) {
         warningEl.textContent = "Datei konnte nicht geprüft werden.";
         warningEl.classList.remove("hidden");
+      } finally {
+        pendingInspection = false;
+        updateSubmitEnabled();
       }
     };
 
@@ -1452,6 +1472,7 @@
     }, () => Boolean(selectedFile));
 
     textInput?.addEventListener("input", () => {
+      updateSubmitEnabled();
       if (textInspectTimer) window.clearTimeout(textInspectTimer);
       textInspectTimer = window.setTimeout(() => {
         runTextInspect(textInput.value.trim()).catch(() => {});
@@ -1496,8 +1517,10 @@
       const file = fileFromClipboard(event.clipboardData);
       if (!file) return;
       event.preventDefault();
-      setFile(file).catch(() => {});
+      setFile(file).catch(() => {}).finally(() => updateSubmitEnabled());
     });
+
+    updateSubmitEnabled();
 
     form?.addEventListener("submit", async (event) => {
       event.preventDefault();
