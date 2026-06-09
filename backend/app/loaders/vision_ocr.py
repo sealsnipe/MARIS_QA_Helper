@@ -18,7 +18,13 @@ from app.document_assets import (
     save_document_image,
 )
 from app.llm import LLMError, transcribe_image
-from app.loaders.image_inspect import MIN_IMAGE_BYTES, IMAGE_FILE_EXTENSIONS, _is_meaningful_image
+from app.loaders.image_inspect import (
+    MIN_IMAGE_BYTES,
+    IMAGE_FILE_EXTENSIONS,
+    _is_meaningful_image,
+    _has_pdfimages,
+    _extract_images_pdfimages,
+)
 
 OCR_PROMPT = """\
 Du transkribierst Bilder für eine Wissensdatenbank. Entscheide SELBST, welcher Fall zutrifft — der Nutzer wählt nicht.
@@ -277,6 +283,67 @@ def _mime_from_extension(extension: str) -> str:
 
 
 def _extract_pdf_images(content: bytes) -> list[EmbeddedImage]:
+    """
+    Extract embedded images. Prefers pdfimages (from poppler-utils) when available
+    for original embedded quality (no resampling, native formats/resolution) -- 
+    this is one of the highest-ROI techniques from industry tools (pdfimages is
+    the gold standard for embedded image extraction).
+    Falls back to pypdf. Applies our meaningful heuristic for the use-case.
+    """
+    # Try pdfimages first for best quality extraction
+    if _has_pdfimages():
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_pdf:
+                tmp_pdf.write(content)
+                pdf_path = Path(tmp_pdf.name)
+            out_dir = Path(tempfile.mkdtemp())
+            extracted_paths = _extract_images_pdfimages(pdf_path, out_dir)
+            images: list[EmbeddedImage] = []
+            index = 1
+            for img_path in extracted_paths:
+                try:
+                    data = img_path.read_bytes()
+                    if len(data) < MIN_IMAGE_BYTES:
+                        continue
+                    if not _is_meaningful_image(data, strict=False):
+                        continue
+                    mime = _guess_mime(data, img_path.name)
+                    # Try to infer page from filename (pdfimages uses -<page>-<num>)
+                    page = None
+                    name_parts = img_path.stem.split("-")
+                    if len(name_parts) > 1:
+                        try:
+                            page = int(name_parts[-2]) if name_parts[-2].isdigit() else None
+                        except ValueError:
+                            pass
+                    images.append(
+                        EmbeddedImage(
+                            index=index,
+                            page=page,
+                            data=data,
+                            mime_type=mime,
+                            image_id=f"img_{index:03d}",
+                        )
+                    )
+                    index += 1
+                except Exception:
+                    continue
+                finally:
+                    try:
+                        img_path.unlink()
+                    except Exception:
+                        pass
+            try:
+                pdf_path.unlink()
+                out_dir.rmdir()
+            except Exception:
+                pass
+            if images:
+                return images
+        except Exception:
+            pass  # fall back to pypdf
+
+    # Fallback to pypdf (current approach, enhanced)
     reader = PdfReader(io.BytesIO(content))
     images: list[EmbeddedImage] = []
     index = 1
