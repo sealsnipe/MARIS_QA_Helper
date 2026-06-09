@@ -23,6 +23,8 @@ Runbook-Querschnitt: [`system/11_operations_runbook.md`](../system/11_operations
 - **WSL:** Docker Desktop WSL-Integration (Dev) oder Engine-Install im Wizard.
 - (Für Tests ohne Container: Python 3.12.)
 
+**Optional für beste Embed-Bildqualität (Vision-OCR):** `poppler-utils` (stellt `pdfimages` bereit). In Docker (Backend-Image) automatisch installiert. Lokal/Dev: `apt-get install -y poppler-utils`. Ohne: pypdf-Fallback (funktioniert, aber resampled Qualität).
+
 ## 3. Environment-Variablen
 `.env` aus `.env.example`. Pflicht ohne sinnvollen Default markiert.
 

@@ -52,7 +52,7 @@ Per-page Text-Erkennung zur Wahl strict/lenient; zählen nur meaningful images; 
 
 ### Hilfsfunktionen für pdfimages (poppler-utils)
 
-`_has_pdfimages`, `_list_pdf_images_pdfimages`, `_extract_images_pdfimages` — für originale Embed-Qualität (besser als pypdf Resample) im Vision-OCR Pfad (genutzt von vision_ocr.py). In _inspect_pdf aktuell noch teilweise inert (wird in späterer Aufgabe aufgeräumt).
+`_has_pdfimages`, `_extract_images_pdfimages` — für originale Embed-Qualität (besser als pypdf Resample) im Vision-OCR Pfad (genutzt von vision_ocr.py). Der tote Code in `_inspect_pdf` (Temp-PDF + _list) wurde entfernt; Inspektion nutzt nur noch pypdf + _is_meaningful_image. `_list...` ersatzlos gelöscht (ungenutzt).
 
 ## Abhängigkeiten und Traces (aktualisiert)
 

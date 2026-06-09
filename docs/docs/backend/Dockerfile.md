@@ -9,10 +9,11 @@ Multi-Stage-freies Container-Image für die FastAPI-Anwendung. Baut ein schlanke
 ## Ablauf (kurz)
 
 1. Basis: `python:3.12-slim`, Arbeitsverzeichnis `/app`.
-2. `backend/pyproject.toml` kopieren; Python-Pakete per `pip install` (FastAPI, SQLAlchemy, Qdrant, OpenAI, Argon2, PDF/DOCX, pytest, …).
-3. Anwendungscode: `backend/app` → `/app/app`, `scripts/` → `/app/scripts`.
-4. `PYTHONPATH=/app`, Port 8088 exponiert.
-5. Start: `uvicorn app.main:app --host 0.0.0.0 --port 8088 --workers 1`.
+2. `apt-get` install poppler-utils (für pdfimages / originale Embed-Qualität im Vision-OCR-Pfad; Fallback pypdf immer verfügbar).
+3. `backend/pyproject.toml` kopieren; Python-Pakete per `pip install` (FastAPI, SQLAlchemy, Qdrant, OpenAI, Argon2, PDF/DOCX, pytest, …).
+4. Anwendungscode: `backend/app` → `/app/app`, `scripts/` → `/app/scripts`.
+5. `PYTHONPATH=/app`, Port 8088 exponiert.
+6. Start: `uvicorn app.main:app --host 0.0.0.0 --port 8088 --workers 1`.
 
 ## Konfiguration / Parameter
 
@@ -23,6 +24,7 @@ Multi-Stage-freies Container-Image für die FastAPI-Anwendung. Baut ein schlanke
 | `ENV PYTHONPATH` | `/app` | Import-Pfad für `app.*` |
 | `EXPOSE` | `8088` | HTTP-Port |
 | `CMD` | Uvicorn 1 Worker | Einstieg `app.main:app` |
+| poppler-utils (apt) | installiert | pdfimages für bessere Embed-Extraktion (optional, pypdf-Fallback) |
 | Umgebung | `.env` via Compose | Nicht im Image — vom Host/Compose gemountet |
 
 Runtime-Konfiguration (DB, Qdrant, API-Keys) kommt aus `.env`, nicht aus dem Dockerfile.

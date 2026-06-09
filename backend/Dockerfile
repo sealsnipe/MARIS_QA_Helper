@@ -2,6 +2,13 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# poppler-utils provides pdfimages (used by vision_ocr extract for original-quality
+# embedded images without resampling). Optional at runtime (pypdf fallback always
+# available); installed for the high-fidelity path in production containers.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY backend/pyproject.toml .
 RUN pip install --no-cache-dir \
     "fastapi>=0.115" \

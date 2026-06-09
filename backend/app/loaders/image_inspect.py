@@ -3,7 +3,6 @@ from __future__ import annotations
 import io
 import shutil
 import subprocess
-import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -21,46 +20,6 @@ def _has_pdfimages() -> bool:
     """Check if pdfimages (from poppler-utils) is available for superior embedded image extraction."""
     return shutil.which("pdfimages") is not None
 
-def _list_pdf_images_pdfimages(pdf_path: Path) -> list[dict]:
-    """
-    Use pdfimages -list for high-quality metadata on embedded images (original resolution, no resampling).
-    Returns list of dicts with page, width, height, color, size_bytes, etc.
-    This is often better than pypdf alone for image fidelity and properties.
-    """
-    if not _has_pdfimages():
-        return []
-    try:
-        result = subprocess.run(
-            ["pdfimages", "-list", str(pdf_path)],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if result.returncode != 0:
-            return []
-        lines = result.stdout.strip().splitlines()
-        images = []
-        # pdfimages -list output: page num type width height color comp bpc enc interp objectID x-ppi y-ppi size ratio
-        for line in lines[2:]:  # skip header
-            parts = line.split()
-            if len(parts) < 12:
-                continue
-            try:
-                img_info = {
-                    "page": int(parts[0]),
-                    "num": int(parts[1]),
-                    "type": parts[2],
-                    "width": int(parts[3]),
-                    "height": int(parts[4]),
-                    "color": parts[5],
-                    "size_bytes": int(parts[10].rstrip("BKMG")) * (1024 ** {"B": 0, "K": 1, "M": 2, "G": 3}.get(parts[10][-1], 0)) if parts[10][-1] in "BKMG" else int(parts[10]),
-                }
-                images.append(img_info)
-            except (ValueError, IndexError):
-                continue
-        return images
-    except Exception:
-        return []
 
 def _extract_images_pdfimages(pdf_path: Path, output_dir: Path, prefix: str = "img") -> list[Path]:
     """
@@ -188,20 +147,6 @@ def _inspect_pdf(content: bytes) -> ImageInspectResult:
     image_count = 0
     text_extractable = False
 
-    # Use pdfimages (poppler) if available for superior embedded image metadata
-    # (original res, accurate sizes, no resampling artifacts). High value, low cost.
-    pdf_path = None
-    pdfimages_info = []
-    if _has_pdfimages():
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-            tmp.write(content)
-            pdf_path = Path(tmp.name)
-        pdfimages_info = _list_pdf_images_pdfimages(pdf_path)
-        # Group by page for quick lookup
-        images_by_page = {}
-        for img in pdfimages_info:
-            images_by_page.setdefault(img["page"], []).append(img)
-
     for page_number, page in enumerate(reader.pages, start=1):
         page_text = (page.extract_text() or "").strip()
         if page_text:
@@ -209,7 +154,8 @@ def _inspect_pdf(content: bytes) -> ImageInspectResult:
         page_images = 0
         is_text_page = bool(page_text)
 
-        # pypdf loop for actual data + our heuristic (enhanced with pdfimages metadata if available)
+        # pypdf loop + our heuristic is the sole inspection logic for has_images / count / pages.
+        # (pdfimages is used only for high-quality *extraction* in the Vision-OCR path in vision_ocr.py)
         for image in page.images:
             if len(image.data) < MIN_IMAGE_BYTES:
                 continue
@@ -221,12 +167,6 @@ def _inspect_pdf(content: bytes) -> ImageInspectResult:
         if page_images:
             pages_with_images.append(page_number)
             image_count += page_images
-
-    if pdf_path:
-        try:
-            pdf_path.unlink()
-        except Exception:
-            pass
 
     return ImageInspectResult(
         has_images=image_count > 0,
