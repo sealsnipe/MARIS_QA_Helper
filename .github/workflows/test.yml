@@ -32,5 +32,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Docker build (backend image)
-        run: docker build -t maris-qa-helper-test ./backend
+      - name: Docker build (backend image, repo-root context wie docker-compose)
+        run: docker build -f backend/Dockerfile -t maris-qa-helper-test .

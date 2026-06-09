@@ -28,3 +28,4 @@ Zusätzlich optionaler Job `docker-smoke` zum Bauen des Backend-Images (fängt D
 - [`docs/10_testing_strategy.md`](../../10_testing_strategy.md)
 - `backend/Dockerfile` (poppler, pytest im Image — separate Dedup später)
 - Review 2026-06-09 (F6 CI als Gegenmaßnahme zu wiederholten Regressionen)
+- Runde 2 (Follow-up): docker-smoke Job auf korrekten Repo-Root-Kontext (`.`) + `-f backend/Dockerfile` korrigiert (vorher `./backend` Kontext passte nicht zu den COPY-Pfaden im Dockerfile).
