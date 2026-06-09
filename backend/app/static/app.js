@@ -2867,12 +2867,16 @@
         showStatus(createStatus, "Kunde angelegt.", "ok");
         await loadCustomers();
       } catch (error) {
-        const message =
-          error.code === "customer_exists"
-            ? "Kunden-ID existiert bereits."
-            : error.code === "invalid_customer_id"
-              ? "Ungültige Kunden-ID (nur a-z, 0-9, -, _)."
-              : "Anlegen fehlgeschlagen.";
+        let message = "Anlegen fehlgeschlagen.";
+        if (error.code === "customer_exists") {
+          message = "Kunden-ID existiert bereits.";
+        } else if (error.code === "invalid_customer_id") {
+          message = "Ungültige Kunden-ID (nur a-z, 0-9, -, _).";
+        } else if (error.detail) {
+          message = `Anlegen fehlgeschlagen: ${error.detail}`;
+        } else if (error.status) {
+          message = `Anlegen fehlgeschlagen (Status ${error.status}). Siehe Server-Logs für Details.`;
+        }
         showStatus(createStatus, message, "error");
       }
     });

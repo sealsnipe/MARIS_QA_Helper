@@ -41,6 +41,13 @@ def _migrate_schema(engine) -> None:
                 conn.execute(
                     text("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
                 )
+    if "roles" in table_names:
+        columns = {col["name"] for col in inspector.get_columns("roles")}
+        if "auto_add_new_customers" not in columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE roles ADD COLUMN auto_add_new_customers INTEGER NOT NULL DEFAULT 0")
+                )
     if "customers" in table_names:
         columns = {col["name"] for col in inspector.get_columns("customers")}
         if "active" not in columns:

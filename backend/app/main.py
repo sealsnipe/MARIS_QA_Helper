@@ -190,3 +190,26 @@ async def upload_error_handler(_request: Request, exc: UploadError):
     if exc.detail:
         body["detail"] = exc.detail
     return JSONResponse(body, status_code=status_code)
+
+
+# Generic handler so API clients (incl. frontend fetches) never receive HTML error pages.
+# Unhandled exceptions (e.g. missing columns on old DBs, unexpected DB errors, etc.)
+# during /api/... calls will now return proper JSON with "internal_error".
+# The real exception is logged on the server so we can diagnose 500s.
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled exception during request to %s", request.url.path)
+    if str(request.url.path).startswith("/api/"):
+        # Always JSON for API routes so the frontend can show a useful message
+        # and we don't get "Unexpected token '<'" parse errors in the browser console.
+        return JSONResponse(
+            {"error": "internal_error", "detail": str(exc)},
+            status_code=500,
+        )
+    # For non-API requests let the normal error page / debug page be produced.
+    raise exc
