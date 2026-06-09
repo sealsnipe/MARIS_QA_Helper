@@ -2164,7 +2164,7 @@
   const ICON_TRASH =
     '<svg class="icon-btn-svg" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
   const ICON_SAVE =
-    '<svg class="icon-btn-svg" viewBox="0 0 24 24" aria-hidden="true" style="color:#2e7d32"><path fill="currentColor" d="M17 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm0 16H7v-2h10v2zm-2-8H7V5h8v2H9v2h6v2z"/></svg>';
+    '<svg class="icon-btn-svg" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M17 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm0 16H7v-2h10v2zm-2-8H7V5h8v2H9v2h6v2z"/></svg>';
 
   function readCheckboxValues(container, namePrefix) {
     if (!container) return [];

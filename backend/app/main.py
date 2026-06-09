@@ -47,7 +47,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="SUP_QA_Helper", lifespan=lifespan)
+app = FastAPI(title="MARIS Q/A Helper", lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.SESSION_SECRET,

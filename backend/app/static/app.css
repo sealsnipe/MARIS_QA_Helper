@@ -1125,7 +1125,7 @@ select:focus-visible,
   padding: 0.45rem 0.6rem;
   font-size: 0.78rem;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--text-muted);
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
@@ -1171,7 +1171,7 @@ select:focus-visible,
 
 .customer-meta {
   font-size: 0.7rem;
-  color: var(--muted);
+  color: var(--text-muted);
   white-space: nowrap;
 }
 
@@ -1200,6 +1200,15 @@ select:focus-visible,
 
 .customer-table .icon-btn.save:hover {
   background: rgba(34, 197, 94, 0.12);
+}
+
+.icon-btn.save .icon-btn-svg {
+  color: var(--ok);
+}
+
+.bild-tool-subheader {
+  margin-top: 0.25rem;
+  margin-bottom: 0.5rem;
 }
 
 .customer-empty {
@@ -1472,7 +1481,7 @@ select:focus-visible,
   display: none;
 }
 #oauth-dialog .modal-dialog {
-  background: var(--panel);
+  background: var(--panel-bg);
   border: 1px solid var(--border);
   padding: 1rem 1.25rem;
   border-radius: 8px;
@@ -1776,7 +1785,7 @@ select:focus-visible,
 .section-header-label {
   font-weight: 600;
   font-size: 0.92rem;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .info-tip {
@@ -1786,12 +1795,12 @@ select:focus-visible,
   width: 1.05rem;
   height: 1.05rem;
   border-radius: 999px;
-  border: 1px solid var(--muted);
+  border: 1px solid var(--text-muted);
   font-size: 0.65rem;
   font-weight: 700;
   font-style: italic;
   font-family: Georgia, serif;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: help;
   user-select: none;
   position: relative;
@@ -3313,7 +3322,7 @@ select:focus-visible,
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .kc-switch {
