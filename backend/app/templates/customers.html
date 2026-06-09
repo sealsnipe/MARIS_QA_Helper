@@ -5,7 +5,13 @@
 
 {% block content %}
 <section class="panel customer-admin-panel">
-  <p class="muted">Mandanten anlegen, umbenennen (ID + Name) oder deaktivieren. Beim Ändern der Kunden-ID (Slug) werden KB (Qdrant), Uploads und Chat-Verläufe automatisch migriert. Du siehst währenddessen „… migriere KB (Qdrant) …“; bei Erfolg eine explizite Bestätigung („KB … migriert“) und die Liste aktualisiert sich — das ist die visuelle Rückmeldung, dass die Qdrant-Collection umgehängt wurde. Aktive Nutzer-Sessions mit altem Slug werden beim nächsten Zugriff bereinigt.</p>
+  <div class="section-header-with-info">
+    <span class="section-header-label">Verhalten bei Anlegen, Umbenennen und Deaktivieren</span>
+    <span class="info-tip"
+          data-tip="Mandanten anlegen, umbenennen (ID + Name) oder deaktivieren.&#10;Beim Ändern der Kunden-ID (Slug) werden KB (Qdrant), Uploads und Chat-Verläufe automatisch migriert. Du siehst währenddessen „… migriere KB (Qdrant) …“; bei Erfolg eine explizite Bestätigung („KB … migriert“) und die Liste aktualisiert sich — das ist die visuelle Rückmeldung, dass die Qdrant-Collection umgehängt wurde. Aktive Nutzer-Sessions mit altem Slug werden beim nächsten Zugriff bereinigt.">
+      i
+    </span>
+  </div>
 
   <form id="customer-create-form" class="ingest-form customer-create-form">
     <h2>Neuer Kunde</h2>

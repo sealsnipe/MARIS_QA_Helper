@@ -2891,6 +2891,26 @@
     loadCustomers().catch(() => showStatus(listStatus, "Kunden konnten nicht geladen werden.", "error"));
   }
 
+  // Global handler for all info-tip icons (hover tooltip + click to focus + optional hint)
+  document.querySelectorAll('.info-tip').forEach((tip) => {
+    tip.setAttribute('tabindex', '0');
+    tip.addEventListener('click', () => {
+      tip.focus();
+      // If there's a status element nearby in common admin pages, flash a hint
+      const statusEl = document.querySelector('#customer-list-status, #user-list-status, #role-list-status, #prompt-status, #kc-source-list-status');
+      if (statusEl) {
+        const original = statusEl.textContent;
+        statusEl.textContent = 'Mehr Infos im Tooltip (Hover oder Fokus).';
+        setTimeout(() => {
+          if (statusEl.textContent.includes('Tooltip')) {
+            statusEl.textContent = original;
+          }
+        }, 2800);
+      }
+    });
+  });
+
+
   function initKeysPage() {
     const tbody = document.getElementById("keys-table-body");
     const emptyEl = document.getElementById("keys-empty");
