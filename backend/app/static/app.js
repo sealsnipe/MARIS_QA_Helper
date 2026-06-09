@@ -2711,21 +2711,25 @@
       rows.forEach((customer) => {
         const row = document.createElement("tr");
         row.dataset.customerId = customer.id;
+        const created = customer.created_at ? new Date(customer.created_at).toLocaleDateString('de-DE') : '';
         row.innerHTML = `
           <td>
-            <code class="customer-id-display">${escapeHtml(customer.id)}</code>
-            <input type="text" class="customer-id-input hidden" value="${escapeHtml(customer.id)}" maxlength="64">
+            <div class="customer-id-cell">
+              <code class="customer-id-display">${escapeHtml(customer.id)}</code>
+              ${created ? `<span class="customer-meta">${created}</span>` : ''}
+            </div>
+            <input type="text" class="customer-id-input hidden" value="${escapeHtml(customer.id)}" maxlength="64" placeholder="neue slug">
           </td>
           <td>
             <span class="customer-name-display">${escapeHtml(customer.name)}</span>
             <input type="text" class="customer-name-input hidden" value="${escapeHtml(customer.name)}" maxlength="200">
           </td>
           <td>
-            <div class="customer-actions">
-              <button type="button" class="secondary small customer-edit-btn">Bearbeiten</button>
-              <button type="button" class="secondary small customer-save-btn hidden">Speichern</button>
-              <button type="button" class="secondary small customer-cancel-btn hidden">Abbrechen</button>
-              <button type="button" class="danger small customer-delete-btn">Entfernen</button>
+            <div class="row-actions">
+              <button type="button" class="icon-btn secondary customer-edit-btn" aria-label="Bearbeiten">${ICON_EDIT}</button>
+              <button type="button" class="icon-btn save customer-save-btn hidden" aria-label="Speichern" title="Speichern (ID-Änderung migriert Qdrant etc.)">${ICON_SAVE}</button>
+              <button type="button" class="icon-btn secondary customer-cancel-btn hidden" aria-label="Abbrechen">Abbrechen</button>
+              <button type="button" class="icon-btn danger customer-delete-btn" aria-label="Entfernen">${ICON_TRASH}</button>
             </div>
           </td>
         `;
@@ -2753,6 +2757,7 @@
       const cancelBtn = row.querySelector(".customer-cancel-btn");
 
       if (target.classList.contains("customer-edit-btn")) {
+        row.classList.add('editing');
         idDisplay?.classList.add("hidden");
         idInput?.classList.remove("hidden");
         nameDisplay?.classList.add("hidden");
@@ -2766,6 +2771,7 @@
       }
 
       if (target.classList.contains("customer-cancel-btn")) {
+        row.classList.remove('editing');
         if (idInput instanceof HTMLInputElement && idDisplay) {
           idInput.value = idDisplay.textContent || "";
         }
@@ -2812,6 +2818,7 @@
             okMsg = `Kunde umbenannt zu „${returned.id}“. KB (Qdrant-Collection kb_${returned.id}) erfolgreich migriert.`;
           }
           showStatus(listStatus, okMsg, "ok");
+          row.classList.remove('editing');
           // Full refresh so the updated list (new slug, new name) is visible — clear visual confirmation.
           await loadCustomers();
         } catch (err) {
