@@ -74,14 +74,17 @@ def test_logout_clears_session(client, db_session):
     assert client.get("/api/me").status_code == 401
 
 
-def test_login_rate_limit_after_many_fails(client, db_session):
-    """11th fail within window -> rate_limited redirect + message; success resets window.
+def test_login_rate_limit_blocks_correct_password_in_window(client, db_session):
+    """Core of N1 fix: after 10 fails, even a correct password on the 11th attempt
+    must be rate_limited (no verify_password happens for locked keys).
     """
     from app.tests.conftest import create_user
+    from app import routes as routes_mod
 
+    routes_mod._login_failures.clear()
     create_user(db_session, "rate@example.com", "correct-pw")
 
-    # First 10 fails -> normal error=1 (still under limit)
+    # 10 fails with wrong pw
     for _ in range(10):
         r = client.post(
             "/login",
@@ -91,10 +94,10 @@ def test_login_rate_limit_after_many_fails(client, db_session):
         assert r.status_code == 302
         assert "error=1" in r.headers["location"]
 
-    # 11th fail -> rate limited
+    # 11th attempt with CORRECT password must still be rate_limited
     r11 = client.post(
         "/login",
-        data={"email": "rate@example.com", "password": "wrong"},
+        data={"email": "rate@example.com", "password": "correct-pw"},
         follow_redirects=False,
     )
     assert r11.status_code == 302
@@ -103,7 +106,33 @@ def test_login_rate_limit_after_many_fails(client, db_session):
     page = client.get("/login?error=rate_limited")
     assert "Zu viele Fehlversuche" in page.text
 
-    # Successful login resets the fail counter for the key
+    routes_mod._login_failures.clear()
+
+
+def test_login_rate_limit_reset_after_window_or_success(client, db_session):
+    """Window expiry or success must reset the counter so next correct login works."""
+    from app.tests.conftest import create_user
+    from app import routes as routes_mod
+    import time as _time
+
+    routes_mod._login_failures.clear()
+    create_user(db_session, "rate@example.com", "correct-pw")
+
+    # Cause 5 fails
+    for _ in range(5):
+        client.post(
+            "/login",
+            data={"email": "rate@example.com", "password": "wrong"},
+            follow_redirects=False,
+        )
+
+    # Artificially expire the window for this key (backdate timestamps)
+    key = next((k for k in routes_mod._login_failures if k[1] == "rate@example.com"), None)
+    if key:
+        old_ts = routes_mod._login_failures[key]
+        routes_mod._login_failures[key] = [t - 61 for t in old_ts]
+
+    # Correct password after expiry must succeed and pop the key
     r_ok = client.post(
         "/login",
         data={"email": "rate@example.com", "password": "correct-pw"},
@@ -111,6 +140,36 @@ def test_login_rate_limit_after_many_fails(client, db_session):
     )
     assert r_ok.status_code == 302
     assert "/chat" in (r_ok.headers.get("location") or "")
+    assert key not in routes_mod._login_failures or len(routes_mod._login_failures.get(key, [])) == 0
 
-    # (Success exercised the pop(key) reset path. In real deploys with stable client IP the window is
-    # cleared and subsequent fails within window start from 0 again. TestClient IP can vary per request.)
+    routes_mod._login_failures.clear()
+
+
+def test_login_rate_limit_pruning(client, db_session):
+    """Global prune when > PRUNE_THRESHOLD old entries; a request causes shrink."""
+    from app import routes as routes_mod
+    from app.tests.conftest import create_user
+    import time as _time
+
+    routes_mod._login_failures.clear()
+    create_user(db_session, "prune@example.com", "pw")
+
+    # Inject many expired entries to exceed threshold
+    now = _time.time()
+    for i in range(routes_mod._LOGIN_RATE_PRUNE_THRESHOLD + 50):
+        fake_key = (f"ip{i}", f"spam{i}@example.com")
+        routes_mod._login_failures[fake_key] = [now - 100]  # all expired
+
+    assert len(routes_mod._login_failures) > routes_mod._LOGIN_RATE_PRUNE_THRESHOLD
+
+    # A normal (even failing) request should trigger prune on entry
+    client.post(
+        "/login",
+        data={"email": "prune@example.com", "password": "wrong"},
+        follow_redirects=False,
+    )
+
+    # After prune the dict must have shrunk (old spam keys removed)
+    assert len(routes_mod._login_failures) <= routes_mod._LOGIN_RATE_PRUNE_THRESHOLD + 5
+
+    routes_mod._login_failures.clear()

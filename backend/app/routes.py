@@ -421,11 +421,26 @@ def health() -> dict[str, bool]:
 
 
 # In-memory sliding window rate limit for login (per (client_ip, normalized_email)).
-# Max 10 failed attempts in last 60s -> rate_limited redirect.
-# Sufficient under --workers=1 (Docker CMD); no extra deps. Success clears the window for the key.
+# 10 failed attempts in last 60s -> rate_limited (blocks even correct passwords in the window).
+# Sufficient under --workers=1 (Docker CMD); no extra deps.
+# Behind reverse proxy the key uses the proxy IP, so the limit is effectively per e-mail.
+# This is an accepted MVP limitation (no X-Forwarded-For parsing without trusted-proxy config).
 _login_failures: dict[tuple[str, str], list[float]] = {}
 _LOGIN_RATE_WINDOW_S = 60
 _LOGIN_RATE_MAX_FAILS = 10
+_LOGIN_RATE_PRUNE_THRESHOLD = 1000
+
+
+def _login_rate_key(request: Request, norm_email: str) -> tuple[str, str]:
+    """Return stable (ip, email) key for rate limiting.
+
+    Uses request.client.host (or "unknown") directly.
+    The comment above explains the reverse-proxy semantics.
+    """
+    client_ip = "unknown"
+    if request.client and request.client.host:
+        client_ip = request.client.host
+    return (client_ip, norm_email)
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -446,36 +461,43 @@ def login(
     password: str = Form(...),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
+    global _login_failures
     norm_email = (email or "").strip().lower()
-    client_ip = "unknown"
-    if request.client and request.client.host:
-        client_ip = request.client.host
-    # Stabilize for TestClient / local loopback (otherwise per-request ip may differ and pop() misses the window)
-    if not client_ip or client_ip in ("unknown", "testserver") or "test" in client_ip.lower() or client_ip.startswith("127."):
-        client_ip = "127.0.0.1"
-    key = (client_ip, norm_email)
+    key = _login_rate_key(request, norm_email)
 
     now = time()
+
+    # Prune to prevent unbounded growth from spam (e.g. many different e-mail addresses)
+    if len(_login_failures) > _LOGIN_RATE_PRUNE_THRESHOLD:
+        cutoff = now - _LOGIN_RATE_WINDOW_S
+        _login_failures = {
+            k: [t for t in ts if t >= cutoff]
+            for k, ts in _login_failures.items()
+            if any(t >= cutoff for t in ts)
+        }
+
     fails = _login_failures.get(key, [])
     fails = [t for t in fails if now - t < _LOGIN_RATE_WINDOW_S]
 
+    if len(fails) >= _LOGIN_RATE_MAX_FAILS:
+        # 11th attempt (and further) within window is blocked, even if the password is correct.
+        # This stops brute-force and prevents Argon2 work for locked keys.
+        return RedirectResponse(
+            url="/login?error=rate_limited",
+            status_code=status.HTTP_302_FOUND,
+        )
+
     user = get_user_by_email(db, email)
     if user is None or not verify_password(user.password_hash, password):
-        # bad attempt: count it, then decide rate or normal error
+        # bad attempt: count it
         fails.append(now)
         _login_failures[key] = fails
-        if len(fails) > _LOGIN_RATE_MAX_FAILS:
-            # 11th fail (and further) within window
-            return RedirectResponse(
-                url="/login?error=rate_limited",
-                status_code=status.HTTP_302_FOUND,
-            )
         return RedirectResponse(
             url="/login?error=1",
             status_code=status.HTTP_302_FOUND,
         )
 
-    # success (even if previous fails were at limit): reset window
+    # success: reset window for this key
     _login_failures.pop(key, None)
     request.session.clear()
     request.session["user_id"] = user.id
