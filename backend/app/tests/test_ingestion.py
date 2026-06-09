@@ -7,6 +7,7 @@ from app.ingestion import (
     get_document_text,
     ingest_text,
     list_documents,
+    reindex_document,
     update_document_content,
 )
 from app.tests.conftest import create_customer
@@ -147,6 +148,59 @@ def test_update_document_content_reindexes(db_session, fake_vector_store, fake_e
     chunk_points = [payload for _, payload in bucket.values() if payload.get("kind") != "document_fingerprint"]
     assert len(chunk_points) == result.document.chunk_count
     assert any(payload.get("kind") == "document_fingerprint" for _, payload in bucket.values())
+
+
+def test_reindex_document_restores_lost_vectors(db_session, fake_vector_store, fake_embeddings):
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    created = ingest_text(
+        db_session,
+        customer_id="bg-ludwigshafen",
+        title="Vergütung Rufbereitschaft",
+        text="Vergütungstabelle für die 24/7-Rufbereitschaft mit genügend Zeichen für den Re-Index-Test.",
+        embeddings=fake_embeddings,
+        vector_store=fake_vector_store,
+    ).document
+    doc_id = created.id
+    created_at = created.created_at
+    source_type = created.source_type
+
+    # Schadensfall: Qdrant-Punkte weg (z. B. Collection-Reset), SQLite intakt.
+    bucket = fake_vector_store.collections[collection_name("bg-ludwigshafen")]
+    bucket.clear()
+
+    result = reindex_document(
+        db_session,
+        "bg-ludwigshafen",
+        doc_id,
+        embeddings=fake_embeddings,
+        vector_store=fake_vector_store,
+    )
+
+    assert result.document.id == doc_id
+    assert result.document.created_at == created_at
+    assert result.document.title == "Vergütung Rufbereitschaft"
+    assert result.document.source_type == source_type
+    assert result.document.status == "indexed"
+    chunk_points = [payload for _, payload in bucket.values() if payload.get("kind") != "document_fingerprint"]
+    assert len(chunk_points) == result.document.chunk_count >= 1
+    assert any(payload.get("kind") == "document_fingerprint" for _, payload in bucket.values())
+
+
+def test_reindex_document_wrong_customer_raises_not_found(db_session, fake_vector_store, fake_embeddings):
+    create_customer(db_session, "bg-ludwigshafen", "BG Ludwigshafen")
+    create_customer(db_session, "kkrr", "KKRR")
+    doc = ingest_text(
+        db_session,
+        customer_id="bg-ludwigshafen",
+        title="X",
+        text="Isolationstest für Re-Index mit genügend Zeichen in diesem Dokument.",
+        embeddings=fake_embeddings,
+        vector_store=fake_vector_store,
+    ).document
+
+    with pytest.raises(IngestionError) as exc:
+        reindex_document(db_session, "kkrr", doc.id, embeddings=fake_embeddings, vector_store=fake_vector_store)
+    assert exc.value.code == "not_found"
 
 
 def test_update_document_wrong_customer_raises_not_found(db_session, fake_vector_store, fake_embeddings):

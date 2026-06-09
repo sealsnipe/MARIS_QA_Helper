@@ -330,6 +330,58 @@ def update_document_content(
     return IngestResult(document=document)
 
 
+def reindex_document(
+    db: Session,
+    customer_id: str,
+    document_id: str,
+    *,
+    embeddings: EmbeddingsBackend | None = None,
+    vector_store: VectorStore | None = None,
+) -> IngestResult:
+    """Rebuild chunks + vectors for an existing document without changing its content.
+
+    For repairing documents whose Qdrant points are missing or inconsistent
+    (e.g. after a collection reset). Title, source_type and created_at stay as-is.
+    """
+    document = get_document(db, customer_id, document_id)
+    if document is None:
+        raise IngestionError("not_found")
+
+    text = document.source_text or _reconstruct_text_from_chunks(document)
+    try:
+        normalized = validate_ingest_text(text)
+    except ValueError as exc:
+        raise IngestionError(str(exc)) from exc
+
+    pieces = chunk_text(normalized)
+    if not pieces:
+        raise IngestionError("empty_text")
+
+    embeddings = embeddings or get_embeddings_backend()
+    vector_store = vector_store or get_vector_store()
+    now = utc_now_iso()
+
+    # Embed first so a failure leaves the existing index untouched.
+    vectors = _embed_pieces(embeddings, pieces)
+    vector_store.delete_document(customer_id, document_id)
+    db.execute(delete(Chunk).where(Chunk.document_id == document_id))
+
+    _index_document_chunks(
+        db,
+        document,
+        title=document.title,
+        normalized_text=normalized,
+        pieces=pieces,
+        embeddings=embeddings,
+        vector_store=vector_store,
+        now=now,
+        vectors=vectors,
+    )
+    db.commit()
+    db.refresh(document)
+    return IngestResult(document=document)
+
+
 def _filter_documents_by_search(stmt, search: str | None):
     if not search or not search.strip():
         return stmt
