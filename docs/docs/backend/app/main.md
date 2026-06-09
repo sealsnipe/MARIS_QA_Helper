@@ -132,3 +132,13 @@ Beim Start (`lifespan`): `init_db()`, Seed des Global-Kunden und Default-System-
 **Ablauf / lokale Variablen:** `status_by_code` — u. a. `file_too_large` → 413, `extraction_failed` → 422.
 
 **Aufrufer / Aufgerufene:** Registriert für `UploadError` aus `app.upload`.
+
+---
+
+### `unhandled_exception_handler(request: Request, exc: Exception)` (F4 update)
+
+**Beschreibung:** Fängt alle nicht behandelten Exceptions. Für API-Routen: JSON mit `{"error":"internal_error","ref":"..."}` (kein `detail`/`str(exc)` Leak mehr). Kurze ref für Log-Korrelation.
+
+**Ablauf:** `ref = uuid.uuid4().hex[:8]`; `logger.exception(..., ref, path)`; Response ohne sensitive Details.
+
+**Aufrufer / Aufgerufene:** Registriert global. (grep in `app.js` auf "internal_error" ergab keine Stellen, die `detail` parsen — sichere Änderung; ref kann bei Bedarf in Status/Toasts gezeigt werden.)

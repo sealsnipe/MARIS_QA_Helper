@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -203,12 +204,14 @@ logger = logging.getLogger(__name__)
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    logger.exception("Unhandled exception during request to %s", request.url.path)
+    ref = uuid.uuid4().hex[:8]
+    logger.exception("Unhandled exception ref=%s during request to %s", ref, request.url.path)
     if str(request.url.path).startswith("/api/"):
         # Always JSON for API routes so the frontend can show a useful message
         # and we don't get "Unexpected token '<'" parse errors in the browser console.
+        # No "detail" (would leak paths/SQL etc.); short ref for correlation with server logs.
         return JSONResponse(
-            {"error": "internal_error", "detail": str(exc)},
+            {"error": "internal_error", "ref": ref},
             status_code=500,
         )
     # For non-API requests let the normal error page / debug page be produced.

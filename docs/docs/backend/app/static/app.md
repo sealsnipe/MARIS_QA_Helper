@@ -8,7 +8,7 @@ Clientseitige **Single-Page-Logik** für alle App-Views: IIFE liest `window.APP_
 
 Lesereihenfolge: Boot-Variablen aus `APP_BOOT` → Utility-Funktionen → Sidebar/Kunde → Dokumenten-Rendering → Dropzone/Ingest → Seiten-Init (`initChatPage`, …) → Boot am Ende (Sync Kunde, `init*Page` nach `page`).
 
-Datenfluss: Fast alle Aktionen gehen über `fetch` mit Session-Cookie (`credentials: "same-origin"`) an `/api/*`-Endpunkte in `routes.py`.
+Datenfluss: Fast alle Aktionen gehen über `fetch` mit Session-Cookie (`credentials: "same-origin"`) an `/api/*`-Endpunkte in `routes.py`. 500er von `unhandled_exception_handler` liefern jetzt `{"error":"internal_error","ref":"..."}` (kein `detail` Leak); ref für Support-Logs (kein Parse von altem `detail` im Code gefunden).
 
 ## Abhängigkeiten und Traces
 
