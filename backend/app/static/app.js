@@ -138,6 +138,53 @@
     }
   }
 
+  // Helper for consistent modal basics (Escape, backdrop, focus restore) — no full trap (internal tool scope).
+  function bindModalBasics(modal, { onClose } = {}) {
+    if (!modal) return;
+
+    const focusableSelector = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+    function onKey(e) {
+      if (e.key === "Escape" && !modal.classList.contains("hidden")) {
+        if (onClose) onClose();
+        else modal.classList.add("hidden");
+      }
+    }
+
+    function onBackdrop(e) {
+      if (e.target === modal) {
+        if (onClose) onClose();
+        else modal.classList.add("hidden");
+      }
+    }
+
+    // attach once
+    if (!modal._modalBasicsBound) {
+      document.addEventListener("keydown", onKey);
+      modal.addEventListener("click", onBackdrop);
+      modal._modalBasicsBound = true;
+      modal._onKey = onKey;
+      modal._onBackdrop = onBackdrop;
+    }
+
+    // public open/close hooks (called by page code)
+    modal._openModal = function() {
+      modal._lastFocus = document.activeElement;
+      modal.classList.remove("hidden");
+      // focus first focusable
+      const first = modal.querySelector(focusableSelector);
+      if (first) first.focus();
+    };
+
+    modal._closeModal = function() {
+      modal.classList.add("hidden");
+      if (modal._lastFocus && modal._lastFocus.focus) {
+        modal._lastFocus.focus();
+      }
+      if (onClose) onClose();
+    };
+  }
+
   function syncActiveCustomerFromSelect() {
     if (!customerSelect) return;
     if (customerSelect.tagName === "SELECT") {
@@ -817,12 +864,11 @@
     `;
     document.body.appendChild(lightbox);
 
-    const close = () => lightbox.classList.add("hidden");
-    lightbox.querySelector(".image-lightbox-backdrop")?.addEventListener("click", close);
-    lightbox.querySelector(".image-lightbox-close")?.addEventListener("click", close);
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && !lightbox.classList.contains("hidden")) close();
-    });
+    bindModalBasics(lightbox, { onClose: () => lightbox.classList.add("hidden") });
+
+    // keep explicit close buttons working with the helper's close
+    const closeBtn = lightbox.querySelector(".image-lightbox-close");
+    if (closeBtn) closeBtn.addEventListener("click", () => lightbox._closeModal && lightbox._closeModal());
 
     return lightbox;
   }
@@ -836,7 +882,8 @@
       img.alt = label || "Extrahiertes Bild";
     }
     if (caption) caption.textContent = label || "";
-    lightbox.classList.remove("hidden");
+    if (lightbox._openModal) lightbox._openModal();
+    else lightbox.classList.remove("hidden");
   }
 
   function bindDocumentImagePreviews(container) {
@@ -857,6 +904,7 @@
     modal = document.createElement("div");
     modal.id = "image-vision-modal";
     modal.className = "image-vision-modal hidden";
+    if (modal) bindModalBasics(modal);
     modal.innerHTML = `
       <div class="image-vision-dialog" role="dialog" aria-modal="true" aria-labelledby="image-vision-title">
         <div class="image-vision-header">
@@ -2940,6 +2988,7 @@
     const statusEl = document.getElementById("preset-status");
     const createBtn = document.getElementById("preset-create-btn");
     const formModal = document.getElementById("preset-form-modal");
+    if (formModal) bindModalBasics(formModal, { onClose: closeFormModal });
     const form = document.getElementById("preset-form");
     const formTitle = document.getElementById("preset-form-title");
     const nameInput = document.getElementById("preset-name");
@@ -2953,6 +3002,7 @@
     const oauthWizardBody = document.getElementById("oauth-wizard-body");
     const oauthWizardCancel = document.getElementById("oauth-wizard-cancel");
     const oauthWizardDone = document.getElementById("oauth-wizard-done");
+    if (oauthModal) bindModalBasics(oauthModal, { onClose: closeOAuthModal });
 
     let catalog = { providers: [] };
     let presets = [];
@@ -2998,7 +3048,8 @@
     }
 
     function closeFormModal() {
-      formModal?.classList.add("hidden");
+      if (formModal && formModal._closeModal) formModal._closeModal();
+      else formModal?.classList.add("hidden");
       editingPresetId = null;
     }
 
@@ -3020,7 +3071,7 @@
       stopOAuthPoll();
       oauthDone = false;
       oauthPollInFlight = false;
-      oauthModal?.classList.add("hidden");
+      if (oauthModal) oauthModal.classList.add("hidden");
       oauthSession = null;
       if (oauthStatus) oauthStatus.textContent = "";
       setOAuthWizardActions("pending");
@@ -3119,7 +3170,8 @@
       if (oauthHint) oauthHint.textContent = "Warte auf Bestätigung im Browser …";
       if (oauthStatus) oauthStatus.textContent = "";
       setOAuthWizardActions("pending");
-      oauthModal?.classList.remove("hidden");
+      if (oauthModal && oauthModal._openModal) oauthModal._openModal();
+      else oauthModal?.classList.remove("hidden");
       startOAuthPoll();
     }
 
@@ -3204,7 +3256,8 @@
       if (formTitle) formTitle.textContent = "Preset anlegen";
       if (nameInput) nameInput.value = "";
       fillProviderSelect();
-      formModal?.classList.remove("hidden");
+      if (formModal && formModal._openModal) formModal._openModal();
+      else formModal?.classList.remove("hidden");
     });
     document.getElementById("preset-form-close")?.addEventListener("click", closeFormModal);
     document.getElementById("preset-form-cancel")?.addEventListener("click", closeFormModal);
