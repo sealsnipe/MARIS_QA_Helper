@@ -17,10 +17,11 @@ Fehler: `IntegrationDisabledError` (kein/leerer Token in Env), `InvalidIntegrati
   - `app.config.get_settings`
   - `app.db.get_db`
   - `app.models.User`
+  - `app.secrets_admin.get_effective_secret`
   - `fastapi.Header`, `secrets.compare_digest`
 - **Wird genutzt von:** `app.integration_routes` (Depends), `main.py` (Exception-Handler für die Errors)
 - **HTTP / UI:** `Authorization: Bearer <token>` auf `/api/v1/ask` und `/api/v1/knowledge-content`
-- **Daten:** Users (per Email), Settings (INTEGRATION_*)
+- **Daten:** Users (per Email), AppSecret (integration_api_token mit ENV Fallback), Settings (INTEGRATION_USER_EMAIL)
 
 ## Konstanten, Typen und Modulebene
 
@@ -38,7 +39,8 @@ Parst "Bearer xxx"; robust gegen Whitespace/Fehlform.
 
 ### `get_integration_user(authorization=Header..., db=Depends(get_db)) -> User`
 
-- Prüft `settings.integration_enabled` (bool(token.strip())) → DisabledError.
-- Extrahiert + `compare_digest` gegen `INTEGRATION_API_TOKEN`.
-- Lädt User per `INTEGRATION_USER_EMAIL`; active-Check.
+- Ermittelt Token via `get_effective_secret(db, "integration_api_token")` (DB AppSecret override first, dann ENV/Settings-Fallback; leer → DisabledError).
+- Extrahiert Bearer + `compare_digest` gegen den effective Wert.
+- Lädt User per `settings.INTEGRATION_USER_EMAIL`; active-Check.
 - Wird als Depends in v1-Routen verwendet (erzeugt "integration user" Kontext).
+- Quelle der Wahrheit für das Secret: DB (via Admin-UI `update_secret`) mit ENV-Fallback. Ermöglicht Rotation ohne Restart.

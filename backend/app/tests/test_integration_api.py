@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.agent import ChatResult
 from app.chats import list_messages
+from app.secrets_admin import update_secret
 from app.tests.conftest import create_customer, create_user
 
 INTEGRATION_TOKEN = "test-integration-token-secret"
@@ -14,6 +15,22 @@ def _enable_integration(monkeypatch) -> None:
     from app import config
 
     config.get_settings.cache_clear()
+    _rebind_secrets_to_current_db()
+
+
+def _rebind_secrets_to_current_db() -> None:
+    """Ensure get_effective_secret(None) path uses the current test DB engine
+    (the db_session fixture replaces db.SessionLocal; secrets_admin may have captured
+    the maker at import time). Called after env/clear in integration tests that now
+    exercise DB secrets.
+    """
+    try:
+        import app.db as dbm
+        import app.secrets_admin as sm
+        if hasattr(dbm, "SessionLocal"):
+            sm.SessionLocal = dbm.SessionLocal
+    except Exception:
+        pass
 
 
 def _auth_headers() -> dict[str, str]:
@@ -204,3 +221,91 @@ def test_ask_scopes_run_agent_to_requested_customer(client, db_session, monkeypa
     assert response.status_code == 200
     assert captured["customer_id"] == "bg-frankfurt"
     assert captured["scope_customer_ids"] == ["bg-frankfurt"]
+
+
+def test_integration_token_from_db_only_works(client, db_session, monkeypatch):
+    """DB token (set via update_secret) is used for auth even without/with ENV.
+    Verifies Admin-UI set token takes effect.
+    """
+    # Ensure no ENV token interferes for this test
+    monkeypatch.setenv("INTEGRATION_API_TOKEN", "")
+    from app import config
+    config.get_settings.cache_clear()
+    _rebind_secrets_to_current_db()
+
+    _seed_integration_user(db_session)
+    # Set ONLY via DB (simulates Admin UI rotate/set)
+    update_secret(db_session, "integration_api_token", INTEGRATION_TOKEN, updated_by="test-admin")
+
+    monkeypatch.setattr(
+        "app.integration_routes.run_agent",
+        lambda *args, **kwargs: ChatResult("Antwort aus DB Token", [], True),
+    )
+
+    response = client.post(
+        "/api/v1/ask",
+        headers=_auth_headers(),
+        json={"question": "Von DB Token", "customer_id": "bg-frankfurt"},
+    )
+    assert response.status_code == 200
+
+
+def test_db_rotated_token_makes_old_env_token_invalid(client, db_session, monkeypatch):
+    """After DB rotate, old ENV token is rejected (401); only current DB value works.
+    """
+    _enable_integration(monkeypatch)  # sets old ENV
+    _seed_integration_user(db_session)
+    # Initially no DB row for token -> falls back to ENV, success with old
+    monkeypatch.setattr(
+        "app.integration_routes.run_agent",
+        lambda *args, **kwargs: ChatResult("old env before rotate", [], True),
+    )
+    response_old_ok = client.post(
+        "/api/v1/ask",
+        headers=_auth_headers(),
+        json={"question": "old env ok before rotate", "customer_id": "bg-frankfurt"},
+    )
+    assert response_old_ok.status_code == 200
+
+    # Rotate in DB to a new value
+    NEW_TOKEN = "new-db-rotated-token-xyz"
+    update_secret(db_session, "integration_api_token", NEW_TOKEN, updated_by="test-admin")
+
+    # Old ENV token now invalid
+    resp_old = client.post(
+        "/api/v1/ask",
+        headers=_auth_headers(),
+        json={"question": "old after rotate", "customer_id": "bg-frankfurt"},
+    )
+    assert resp_old.status_code == 401
+    assert resp_old.json() == {"error": "invalid_token"}
+
+    # New DB token works
+    monkeypatch.setattr(
+        "app.integration_routes.run_agent",
+        lambda *args, **kwargs: ChatResult("new db token", [], True),
+    )
+    resp_new = client.post(
+        "/api/v1/ask",
+        headers={"Authorization": f"Bearer {NEW_TOKEN}"},
+        json={"question": "new db token", "customer_id": "bg-frankfurt"},
+    )
+    assert resp_new.status_code == 200
+
+
+def test_db_empty_overrides_env_and_disables(client, db_session, monkeypatch):
+    """Explicit empty in DB (override to disable) -> 503 disabled, even if ENV has a token.
+    This is the documented 'override to empty' semantics.
+    """
+    _enable_integration(monkeypatch)  # ENV has token
+    _seed_integration_user(db_session)
+    # DB override to empty disables
+    update_secret(db_session, "integration_api_token", "", updated_by="test-admin")
+
+    response = client.post(
+        "/api/v1/ask",
+        headers=_auth_headers(),
+        json={"question": "should be disabled by db empty", "customer_id": "bg-frankfurt"},
+    )
+    assert response.status_code == 503
+    assert response.json() == {"error": "integration_disabled"}

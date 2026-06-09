@@ -17,10 +17,12 @@ Kein WebSocket im MVP: sync JSON reicht für Tool-Calls.
 
 | Methode | Pfad | Auth |
 |---|---|---|
-| `POST` | `/api/v1/ask` | `Authorization: Bearer <INTEGRATION_API_TOKEN>` |
-| `POST` | `/api/v1/knowledge-content` | `Authorization: Bearer <INTEGRATION_API_TOKEN>` |
+| `POST` | `/api/v1/ask` | `Authorization: Bearer <integration_api_token>` |
+| `POST` | `/api/v1/knowledge-content` | `Authorization: Bearer <integration_api_token>` |
 
 OpenAPI: `http://localhost:8088/docs` (Tag **Integration**).
+
+**Token-Quelle (Stand nach 2026-06-09 Review):** `get_effective_secret` — DB (`AppSecret` via Admin-UI `update_secret` / secrets_admin) mit ENV-Fallback (`INTEGRATION_API_TOKEN`). Leerer DB-Wert deaktiviert (auch bei gesetztem ENV). Ermöglicht Rotation ohne Container-Restart.
 
 ---
 

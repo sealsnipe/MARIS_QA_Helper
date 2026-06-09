@@ -20,3 +20,4 @@ Tests für /api/v1 Integration: Bearer-Token, disabled, ask (scoped agent + chat
 - ask: scoped (no cross-customer), chat_id roundtrip, sources.
 - knowledge ingest: created/updated/skipped, external_id dedup, invalid items → errors[].
 - Forbidden customer in ask.
+- DB-only token (update_secret) funktioniert; nach Rotate im DB ist alter ENV-Token invalid; DB-leer override deaktiviert trotz ENV-Token.
