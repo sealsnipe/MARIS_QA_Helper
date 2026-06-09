@@ -9,6 +9,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.models import Customer, SystemPrompt, User, UserCustomer, utc_now_iso
+from app.roles_admin import assign_new_customer_to_auto_roles
 
 CUSTOMER_SLUG_PATTERN = re.compile(r"^[a-z0-9_-]+$")
 
@@ -157,7 +158,6 @@ def create_tenant_customer(db: Session, customer_id: str, name: str) -> Customer
         link = db.get(UserCustomer, {"user_id": admin.id, "customer_id": slug})
         if link is None:
             db.add(UserCustomer(user_id=admin.id, customer_id=slug))
-    from app.roles_admin import assign_new_customer_to_auto_roles
 
     assign_new_customer_to_auto_roles(db, slug)
     db.commit()

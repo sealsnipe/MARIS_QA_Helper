@@ -5,7 +5,6 @@ import uuid
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.customers import get_customer, is_global_customer, validate_customer_slug
 from app.models import Role, RoleCustomer, User, UserCustomer, UserRole, utc_now_iso
 
 
@@ -24,6 +23,8 @@ def _role_customer_ids(db: Session, role_id: str) -> list[str]:
 
 
 def _validate_customer_ids(db: Session, customer_ids: list[str]) -> list[str]:
+    from app.customers import get_customer, is_global_customer, validate_customer_slug
+
     slugs: list[str] = []
     for raw in customer_ids:
         slug = raw.strip().lower()
@@ -180,6 +181,8 @@ def delete_admin_role(db: Session, role_id: str) -> None:
 
 
 def assign_new_customer_to_auto_roles(db: Session, customer_id: str) -> None:
+    from app.customers import get_customer, is_global_customer
+
     if is_global_customer(customer_id):
         return
     customer = get_customer(db, customer_id)
