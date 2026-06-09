@@ -1,6 +1,6 @@
 # 15 — Implementierungsstatus (Plan vs Ist)
 
-**Stand:** 2026-06-05 (Review-Sync: 25 Spiegel + Querschnitt nachgezogen)
+**Stand:** 2026-06-09 (Review 2026-06-09 + 7 Aufgaben umgesetzt; siehe `docs/orchestration/2026-06-09-review-und-implementationsplan.md` (archiviert nach _old))
 
 ---
 
@@ -50,6 +50,7 @@ Abgleich zwischen **Planungsdocs** (`docs/01–14`, Stand teils 2026-06-02) und 
 |---|---|
 | Planung `01–14` | vorhanden, **teilweise aktualisiert** (05, 08, 11, 14) |
 | Spiegel `docs/docs/` | ~115+ Dateien (file-per-file; alle 25 fehlenden nach Review 2026-06 nachgezogen; INDEX komplett) |
+| Review 2026-06-09 + Impl-Plan | 7 Aufgaben (F1–F6) einzeln committed, Tests+Tenant+ Doku-Spiegel nach jeder; CI, Rate-Limit, no-leak 500, pdfimages cleanup, DB-Token, Image-Heuristik-Fix; InMemory copy fix (kein move mehr); Secrets-at-rest doku; Status aktualisiert. Plan nach _old verschoben (ERLEDIGT). |
 | Querschnitt `docs/system/` | ✅ 00–11 |
 | Regelwerk | `DOCUMENTATION_RULES.md` inkl. Ebene 3 |
 

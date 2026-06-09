@@ -179,11 +179,9 @@ Collection-Namen werden über `app.customers.collection_name` mit konfigurierbar
 
 ### `InMemoryVectorStore.copy_collection(old_customer_id: str, new_customer_id: str) -> None`
 
-**Beschreibung:** Verschiebt Bucket unter neuem Namen, setzt `customer_id` in Payloads.
+**Beschreibung:** Dupliziert die Daten in neue Collection (ohne pop der Quelle) — jetzt semantisch identisch zu Qdrant-Prod-`copy_collection` (F7 Fix). Payloads bekommen aktualisiertes `customer_id`. Quelle bleibt erhalten (Rename-Caller macht explizites delete danach).
 
-**Ablauf / lokale Variablen:** `bucket` — pop von alter Collection; alte Collection wird in `copy_collection` entfernt (nicht in separatem `delete_collection`).
-
-**Aufrufer / Aufgerufene:** Tests für Mandanten-Migration.
+**Aufrufer / Aufgerufene:** Tests für Mandanten-Migration (in `customers.py` + Admin-Tests).
 
 ---
 

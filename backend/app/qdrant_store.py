@@ -263,6 +263,10 @@ class InMemoryVectorStore:
                 del bucket[point_id]
 
     def copy_collection(self, old_customer_id: str, new_customer_id: str) -> None:
+        """Copy (duplicate) data to new collection; leave source intact.
+        Matches QdrantVectorStore semantics (prod). The pop/move behavior was
+        the InMemory-only deviation noted in reviews.
+        """
         old_name = collection_name(old_customer_id)
         new_name = collection_name(new_customer_id)
         if old_name not in self.collections:
@@ -270,12 +274,14 @@ class InMemoryVectorStore:
             return
         if new_name in self.collections:
             del self.collections[new_name]
-        bucket = self.collections.pop(old_name, {})
-        for pid, (vec, payload) in list(bucket.items()):
+        old_bucket = self.collections.get(old_name, {})
+        new_bucket: dict[str, tuple[list[float], dict[str, Any]]] = {}
+        for pid, (vec, payload) in list(old_bucket.items()):
             p = dict(payload or {})
             p["customer_id"] = new_customer_id
-            bucket[pid] = (vec, p)
-        self.collections[new_name] = bucket
+            new_bucket[pid] = (vec, p)
+        self.collections[new_name] = new_bucket
+        # NOTE: old collection remains (caller of rename does explicit delete after SQLite step)
 
     def delete_collection(self, customer_id: str) -> None:
         name = collection_name(customer_id)

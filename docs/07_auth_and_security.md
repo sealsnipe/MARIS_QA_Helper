@@ -74,7 +74,8 @@ ph.verify(password_hash, plaintext)    # beim Login (wirft bei Mismatch)
 - **CSRF:** Bewusste Entscheidung — **kein** CSRF-Token-Mechanismus im MVP. Begründung: internes
   Tool hinter Login, `samesite=lax` + Session genügen für den Prototyp; Token-Maschinerie würde
   Scope kosten. **Als bekannte Lücke dokumentiert**, Roadmap: CSRF-Token für Formulare/Upload.
-- **Rate-Limiting/Brute-Force-Schutz beim Login:** nicht im MVP (intern akzeptiert).
+- **Rate-Limiting/Brute-Force-Schutz beim Login:** nicht im MVP (intern akzeptiert). (F5 umgesetzt 2026-06-09.)
+- **Secrets at rest (AppSecret, LlmPreset.oauth_token etc. in SQLite):** bewusste Entscheidung für Self-Hosting-Szenario. Die DB-Datei liegt im Volume des Betreibers (`data/*.sqlite3`), Zugriffsschutz über Dateisystem-Rechte / Container-Isolation / Backup-Verschlüsselung (z. B. restic+passphrase oder LUKS). Keine zusätzliche App-seitige Verschlüsselung (würde Key-Management einführen und Self-Host-Hürde erhöhen). Risiko: bei kompromittiertem Host/Backup sind Secrets lesbar. Mitigation: strenge FS-Rechte, separate Backup-Verschlüsselung, kurze Rotation bei Verdacht, Dokumentation in `15_implementation_status.md`. (F7-Nachtrag 2026-06-09)
 - **Kein RBAC:** Login + `user_customers` regeln *welche Kunden*; innerhalb eines Kunden keine
   Rollen. Inhaltliche Trennung **zwischen** Kunden ist hingegen Invariant (S11).
 - **Transport:** lokal HTTP; produktiv TLS via Reverse-Proxy.
