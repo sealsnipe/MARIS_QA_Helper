@@ -1711,6 +1711,46 @@
         no_text_content: "kein verwertbarer Inhalt",
       })[reason] || reason;
 
+    function createBatchProgressBar() {
+      const wrap = document.createElement("div");
+      wrap.className = "batch-progress";
+      wrap.innerHTML = `
+        <div class="batch-progress-head">
+          <span class="batch-progress-label">Wird gestartet…</span>
+          <span class="batch-progress-percent">0%</span>
+        </div>
+        <div class="batch-progress-track">
+          <div class="batch-progress-fill indeterminate" style="width: 0%"></div>
+        </div>`;
+      if (statusEl?.parentNode) statusEl.parentNode.insertBefore(wrap, statusEl);
+      else form?.appendChild(wrap);
+      const labelEl = wrap.querySelector(".batch-progress-label");
+      const percentEl = wrap.querySelector(".batch-progress-percent");
+      const fillEl = wrap.querySelector(".batch-progress-fill");
+      let lastPercent = 0;
+      return {
+        update(percent, label) {
+          const value = Math.max(lastPercent, Math.min(Number(percent) || 0, 100));
+          lastPercent = value;
+          fillEl?.classList.remove("indeterminate");
+          if (fillEl) fillEl.style.width = `${value}%`;
+          if (percentEl) percentEl.textContent = `${Math.round(value)}%`;
+          if (labelEl && label) labelEl.textContent = label;
+          if (value >= 100) wrap.classList.add("done");
+        },
+        finish(label) {
+          this.update(100, label || "Fertig.");
+          window.setTimeout(() => {
+            wrap.classList.add("fade-out");
+            window.setTimeout(() => wrap.remove(), 450);
+          }, 1400);
+        },
+        remove() {
+          wrap.remove();
+        },
+      };
+    }
+
     async function submitBatch(prefixText) {
       const resolvedPath = typeof apiPath === "function" ? apiPath() : apiPath;
       submitBtn.disabled = true;
@@ -1747,10 +1787,19 @@
           }
         }
 
-        showStatus(
-          statusEl,
-          `${inspection.file_count || selectedFiles.length} Dokument(e) werden nacheinander verarbeitet…`,
-        );
+        showStatus(statusEl, "");
+        const progressToken = (window.crypto?.randomUUID?.() ||
+          `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`).replace(/[^A-Za-z0-9-]/g, "");
+        const progressBar = createBatchProgressBar();
+        const progressTimer = window.setInterval(async () => {
+          try {
+            const progress = await api(`/api/documents/batch-progress/${progressToken}`);
+            progressBar.update(progress.percent, progress.label);
+          } catch (_error) {
+            /* 404 vor der ersten Meldung — ignorieren */
+          }
+        }, 400);
+
         const formData = new FormData();
         selectedFiles.forEach((file) => formData.append("files", file));
         if (titleInput?.value.trim()) formData.append("title", titleInput.value.trim());
@@ -1759,13 +1808,21 @@
           formData.append("process_images", "true");
           formData.append("transcribe_map", JSON.stringify(transcribeMap));
         }
+        formData.append("progress_token", progressToken);
         let result;
         try {
           result = await api(`${resolvedPath}/batch`, { method: "POST", body: formData });
         } catch (error) {
+          window.clearInterval(progressTimer);
+          progressBar.remove();
           showStatus(statusEl, batchMessages[error.code] || "Einpflegen fehlgeschlagen.", "error");
           return;
+        } finally {
+          window.clearInterval(progressTimer);
         }
+        progressBar.finish(
+          `Fertig — ${(result.entries || []).filter((entry) => entry.status === "created").length} Eintrag/Einträge angelegt.`,
+        );
 
         const entries = result.entries || [];
         const created = entries.filter((entry) => entry.status === "created");

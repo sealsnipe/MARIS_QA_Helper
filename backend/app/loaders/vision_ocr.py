@@ -5,6 +5,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 from app.loaders.docx_content import compose_docx_text, extract_docx_images_ordered
 from docx import Document as DocxDocument
@@ -153,6 +154,7 @@ def run_vision_ocr(
     *,
     transcribe_ids: set[str] | None = None,
     saved_images: list[SavedDocumentImage] | None = None,
+    on_image: Callable[[int, int], None] | None = None,
 ) -> VisionOcrResult:
     settings = get_settings()
     if not settings.vision_enabled:
@@ -164,11 +166,18 @@ def run_vision_ocr(
     saved_by_id = {item.id: item for item in output_saved}
     processed = 0
     failed = 0
+    selected_total = sum(
+        1 for image in images if transcribe_ids is None or _image_id(image) in transcribe_ids
+    )
+    attempted = 0
 
     for image in images:
         image_id = _image_id(image)
         if transcribe_ids is not None and image_id not in transcribe_ids:
             continue
+        attempted += 1
+        if on_image is not None:
+            on_image(attempted, selected_total)
 
         if assets_dir is not None and image_id not in saved_by_id:
             saved = save_document_image(

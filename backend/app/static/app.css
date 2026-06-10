@@ -740,6 +740,99 @@ button.dropzone-file-tile:hover .dropzone-file-remove {
   color: var(--danger);
 }
 
+/* Fortschrittsanzeige für den Batch-Upload */
+.batch-progress {
+  margin-top: 0.65rem;
+  opacity: 1;
+  transition: opacity 0.4s ease;
+}
+
+.batch-progress.fade-out {
+  opacity: 0;
+}
+
+.batch-progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.batch-progress-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.batch-progress-percent {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.batch-progress-track {
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.batch-progress-fill {
+  position: relative;
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), #7aa8ff);
+  transition: width 0.35s ease;
+  overflow: hidden;
+}
+
+.batch-progress-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+  animation: batch-progress-shimmer 1.3s linear infinite;
+}
+
+.batch-progress-fill.indeterminate {
+  width: 30% !important;
+  animation: batch-progress-slide 1.2s ease-in-out infinite;
+}
+
+.batch-progress.done .batch-progress-fill {
+  background: var(--ok);
+}
+
+.batch-progress.done .batch-progress-fill::after {
+  animation: none;
+  content: none;
+}
+
+@keyframes batch-progress-shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes batch-progress-slide {
+  0%,
+  100% {
+    margin-left: 0%;
+  }
+  50% {
+    margin-left: 70%;
+  }
+}
+
 .kb-panel {
   display: flex;
   flex-direction: column;

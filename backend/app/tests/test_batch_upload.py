@@ -244,6 +244,52 @@ def test_batch_upload_skips_duplicates(client, db_session, monkeypatch):
     assert created[0]["filenames"] == ["neu.txt"]
 
 
+def test_batch_progress_endpoint_tracks_run(client, db_session, monkeypatch):
+    _login_customer(client, db_session)
+    monkeypatch.setattr("app.llm.get_llm", lambda db=None: (_ for _ in ()).throw(RuntimeError("no llm")))
+
+    token = "test-progress-token-1234"
+    missing = client.get(f"/api/documents/batch-progress/{token}")
+    assert missing.status_code == 404
+
+    response = client.post(
+        "/api/documents/batch",
+        data={"progress_token": token},
+        files=[
+            ("files", ("a.txt", b"Erster Inhalt mit ausreichend Laenge fuer die Indexierung.", "text/plain")),
+            ("files", ("b.txt", b"Zweiter Inhalt mit ausreichend Laenge fuer die Indexierung.", "text/plain")),
+        ],
+    )
+    assert response.status_code == 200
+
+    progress = client.get(f"/api/documents/batch-progress/{token}")
+    assert progress.status_code == 200
+    payload = progress.json()
+    assert payload["percent"] == 100
+    assert payload["done"] is True
+    assert "angelegt" in payload["label"]
+
+
+def test_batch_progress_rejects_invalid_token(client, db_session):
+    _login_customer(client, db_session)
+    response = client.get("/api/documents/batch-progress/..%2Fboese")
+    assert response.status_code == 404
+
+
+def test_batch_progress_marks_failed_runs_done(client, db_session):
+    _login_customer(client, db_session)
+    token = "test-progress-token-fail"
+    response = client.post(
+        "/api/documents/batch",
+        data={"progress_token": token},
+        files=[("files", ("kaputt.zip", b"kein zip", "application/zip"))],
+    )
+    assert response.status_code == 400
+    progress = client.get(f"/api/documents/batch-progress/{token}")
+    assert progress.status_code == 200
+    assert progress.json()["done"] is True
+
+
 def test_batch_upload_zip_via_admin_route(client, db_session, monkeypatch):
     create_user(db_session, "admin@example.com", "secret123", (), is_admin=True)
     login(client, "admin@example.com", "secret123")

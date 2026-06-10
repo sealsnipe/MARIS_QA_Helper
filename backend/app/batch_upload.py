@@ -16,10 +16,13 @@ import mimetypes
 import re
 import shutil
 import tempfile
+import threading
+import time
 import uuid
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 from sqlalchemy.orm import Session
 
@@ -54,6 +57,45 @@ ZIP_EXTENSION = ".zip"
 MAX_BATCH_FILES = 20
 
 _IMAGE_ID_TOKEN = re.compile(r"\bimg_(\d{3})\b")
+
+# --- Fortschritts-Tracking für den Batch-Upload -------------------------------
+# Der POST läuft synchron; das Frontend pollt parallel mit dem Token, das es
+# selbst generiert und mitschickt. Einträge verfallen nach kurzer Zeit.
+
+PROGRESS_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9-]{8,64}$")
+_PROGRESS_TTL_SECONDS = 600
+_progress_store: dict[str, dict] = {}
+_progress_lock = threading.Lock()
+
+
+def _cleanup_progress_locked(now: float) -> None:
+    expired = [token for token, entry in _progress_store.items() if now - entry["updated_at"] > _PROGRESS_TTL_SECONDS]
+    for token in expired:
+        _progress_store.pop(token, None)
+
+
+def report_batch_progress(token: str | None, percent: float, label: str) -> None:
+    if not token:
+        return
+    now = time.time()
+    with _progress_lock:
+        _cleanup_progress_locked(now)
+        _progress_store[token] = {
+            "percent": round(min(max(percent, 0.0), 100.0), 1),
+            "label": label,
+            "done": percent >= 100,
+            "updated_at": now,
+        }
+
+
+def get_batch_progress(token: str) -> dict | None:
+    now = time.time()
+    with _progress_lock:
+        _cleanup_progress_locked(now)
+        entry = _progress_store.get(token)
+        if entry is None:
+            return None
+        return {"percent": entry["percent"], "label": entry["label"], "done": entry["done"]}
 
 
 @dataclass
@@ -277,6 +319,7 @@ def _process_file(
     *,
     process_images: bool,
     transcribe_ids: set[str],
+    on_vision_image: Callable[[int, int], None] | None = None,
 ) -> ExtractedDoc:
     settings = get_settings()
     doc = ExtractedDoc(file=batch_file)
@@ -316,6 +359,7 @@ def _process_file(
             assets_dir=assets_dir,
             transcribe_ids=transcribe_ids,
             saved_images=saved_images,
+            on_image=on_vision_image,
         )
         saved_images = ocr_result.saved_images
         if extension == ".docx":
@@ -427,24 +471,73 @@ def ingest_batch(
     process_images: bool = False,
     transcribe_map_raw: str | None = None,
     allow_duplicate: bool = False,
+    progress_token: str | None = None,
 ) -> dict:
+    try:
+        return _ingest_batch_inner(
+            db,
+            customer_id,
+            uploads,
+            title=title,
+            prefix_text=prefix_text,
+            process_images=process_images,
+            transcribe_map_raw=transcribe_map_raw,
+            allow_duplicate=allow_duplicate,
+            progress_token=progress_token,
+        )
+    except Exception:
+        report_batch_progress(progress_token, 100, "Abgebrochen.")
+        raise
+
+
+def _ingest_batch_inner(
+    db: Session,
+    customer_id: str,
+    uploads: list[tuple[str, bytes]],
+    *,
+    title: str | None,
+    prefix_text: str | None,
+    process_images: bool,
+    transcribe_map_raw: str | None,
+    allow_duplicate: bool,
+    progress_token: str | None,
+) -> dict:
+    # Fortschritts-Budget: 0-2% Vorbereitung, 2-78% Dateiverarbeitung (anteilig
+    # pro Datei, Vision-Bilder innerhalb der Datei), 78-85% KI-Gruppierung,
+    # 85-100% Einträge anlegen.
+    report = lambda percent, label: report_batch_progress(progress_token, percent, label)  # noqa: E731
+
+    report(0, "Dateien werden vorbereitet…")
     files, skipped = expand_batch_files(uploads)
     transcribe_map = _parse_transcribe_map(transcribe_map_raw)
     prefix = (prefix_text or "").strip()
     entries: list[dict] = []
     failed: list[dict] = []
+    total_files = len(files)
+    report(2, f"{total_files} Dokument(e) erkannt…")
 
     with tempfile.TemporaryDirectory(prefix="batch-upload-") as tmp:
         tmp_root = Path(tmp)
         docs: list[ExtractedDoc] = []
         for index, batch_file in enumerate(files):
+            base = 2 + 76 * index / total_files
+            span = 76 / total_files
+            file_label = f"Datei {index + 1}/{total_files}: {batch_file.filename}"
+            report(base, f"{file_label} wird verarbeitet…")
+
+            def on_vision_image(current: int, total: int, _base=base, _span=span, _label=file_label) -> None:
+                fraction = 0.25 + 0.7 * (current - 1) / max(total, 1)
+                report(_base + _span * fraction, f"{_label} — Vision-OCR Bild {current}/{total}…")
+
             doc = _process_file(
                 batch_file,
                 tmp_root / f"doc_{index}",
                 process_images=process_images,
                 transcribe_ids=transcribe_map.get(batch_file.key, set()),
+                on_vision_image=on_vision_image,
             )
             docs.append(doc)
+            report(base + span, f"{file_label} verarbeitet.")
 
         usable = [doc for doc in docs if doc.error is None]
         failed = [
@@ -455,9 +548,15 @@ def ingest_batch(
         if not usable:
             raise UploadError("no_text_content")
 
+        report(78, "KI bewertet und gruppiert die Inhalte…")
         plan = plan_kb_entries(db, usable)
+        total_groups = len(plan)
 
         for group_index, group in enumerate(plan):
+            report(
+                85 + 14 * group_index / total_groups,
+                f"Eintrag {group_index + 1}/{total_groups} wird angelegt…",
+            )
             members = [usable[i] for i in group["indices"]]
             text, merged_images, asset_copies, image_count, images_processed = _merge_group(members)
             if group_index == 0 and prefix:
@@ -541,4 +640,6 @@ def ingest_batch(
                 }
             )
 
+    created_count = sum(1 for entry in entries if entry["status"] == "created")
+    report(100, f"Fertig — {created_count} Eintrag/Einträge angelegt.")
     return {"entries": entries, "skipped": skipped, "failed": failed, "file_count": len(files)}

@@ -78,7 +78,9 @@ from app.upload import (
     parse_form_bool,
     resolve_upload_source_text,
 )
-from app.batch_upload import ingest_batch, inspect_batch
+from starlette.concurrency import run_in_threadpool
+
+from app.batch_upload import PROGRESS_TOKEN_PATTERN, get_batch_progress, ingest_batch, inspect_batch
 from app.document_merge import MergeError, apply_document_merge, merge_preview_for_documents
 from app.users_admin import (
     UserAdminError,
@@ -908,6 +910,25 @@ async def _read_batch_uploads(files: list[UploadFile]) -> list[tuple[str, bytes]
     return uploads
 
 
+def _clean_progress_token(token: str | None) -> str | None:
+    if token and PROGRESS_TOKEN_PATTERN.match(token):
+        return token
+    return None
+
+
+@router.get("/api/documents/batch-progress/{token}")
+def api_batch_progress(
+    token: str,
+    _user: User = Depends(get_current_user),
+) -> dict:
+    if not PROGRESS_TOKEN_PATTERN.match(token):
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    progress = get_batch_progress(token)
+    if progress is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return progress
+
+
 @router.post("/api/documents/inspect-batch")
 async def api_inspect_document_batch(
     customer: Customer = Depends(get_current_customer),
@@ -917,7 +938,7 @@ async def api_inspect_document_batch(
     if blocked := _reject_global_write(customer):
         return blocked
     uploads = await _read_batch_uploads(files)
-    return inspect_batch(db, customer.id, uploads)
+    return await run_in_threadpool(inspect_batch, db, customer.id, uploads)
 
 
 @router.post("/api/documents/batch")
@@ -930,11 +951,15 @@ async def api_upload_document_batch(
     process_images: str | None = Form(default=None),
     transcribe_map: str | None = Form(default=None),
     allow_duplicate: str | None = Form(default=None),
+    progress_token: str | None = Form(default=None),
 ) -> dict:
     if blocked := _reject_global_write(customer):
         return blocked
     uploads = await _read_batch_uploads(files)
-    return ingest_batch(
+    # Threadpool statt direktem Aufruf: die Verarbeitung dauert (Vision/LLM) und
+    # darf die Event-Loop nicht blockieren, sonst kommen die Progress-Polls nicht durch.
+    return await run_in_threadpool(
+        ingest_batch,
         db,
         customer.id,
         uploads,
@@ -943,6 +968,7 @@ async def api_upload_document_batch(
         process_images=parse_form_bool(process_images),
         transcribe_map_raw=transcribe_map,
         allow_duplicate=parse_form_bool(allow_duplicate),
+        progress_token=_clean_progress_token(progress_token),
     )
 
 
@@ -1435,7 +1461,7 @@ async def api_admin_inspect_document_batch(
     files: list[UploadFile] = File(...),
 ) -> dict:
     uploads = await _read_batch_uploads(files)
-    return inspect_batch(db, GLOBAL_CUSTOMER_ID, uploads)
+    return await run_in_threadpool(inspect_batch, db, GLOBAL_CUSTOMER_ID, uploads)
 
 
 @router.post("/api/admin/documents/batch")
@@ -1448,9 +1474,13 @@ async def api_admin_upload_document_batch(
     process_images: str | None = Form(default=None),
     transcribe_map: str | None = Form(default=None),
     allow_duplicate: str | None = Form(default=None),
+    progress_token: str | None = Form(default=None),
 ) -> dict:
     uploads = await _read_batch_uploads(files)
-    return ingest_batch(
+    # Threadpool statt direktem Aufruf: die Verarbeitung dauert (Vision/LLM) und
+    # darf die Event-Loop nicht blockieren, sonst kommen die Progress-Polls nicht durch.
+    return await run_in_threadpool(
+        ingest_batch,
         db,
         GLOBAL_CUSTOMER_ID,
         uploads,
@@ -1459,6 +1489,7 @@ async def api_admin_upload_document_batch(
         process_images=parse_form_bool(process_images),
         transcribe_map_raw=transcribe_map,
         allow_duplicate=parse_form_bool(allow_duplicate),
+        progress_token=_clean_progress_token(progress_token),
     )
 
 
@@ -1689,7 +1720,7 @@ async def api_admin_inspect_customer_document_batch(
 ) -> dict:
     customer = _admin_tenant_customer(db, customer_id)
     uploads = await _read_batch_uploads(files)
-    return inspect_batch(db, customer.id, uploads)
+    return await run_in_threadpool(inspect_batch, db, customer.id, uploads)
 
 
 @router.post("/api/admin/customers/{customer_id}/documents/batch")
@@ -1703,10 +1734,14 @@ async def api_admin_upload_customer_document_batch(
     process_images: str | None = Form(default=None),
     transcribe_map: str | None = Form(default=None),
     allow_duplicate: str | None = Form(default=None),
+    progress_token: str | None = Form(default=None),
 ) -> dict:
     customer = _admin_tenant_customer(db, customer_id)
     uploads = await _read_batch_uploads(files)
-    return ingest_batch(
+    # Threadpool statt direktem Aufruf: die Verarbeitung dauert (Vision/LLM) und
+    # darf die Event-Loop nicht blockieren, sonst kommen die Progress-Polls nicht durch.
+    return await run_in_threadpool(
+        ingest_batch,
         db,
         customer.id,
         uploads,
@@ -1715,6 +1750,7 @@ async def api_admin_upload_customer_document_batch(
         process_images=parse_form_bool(process_images),
         transcribe_map_raw=transcribe_map,
         allow_duplicate=parse_form_bool(allow_duplicate),
+        progress_token=_clean_progress_token(progress_token),
     )
 
 
