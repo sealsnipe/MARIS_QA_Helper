@@ -681,13 +681,8 @@
     return null;
   }
 
-  function setupDropzone(dropzone, fileInput, fileLabel, onSelect, isFileSelected) {
+  function setupDropzone(dropzone, fileInput, fileLabel, { addFiles, removeAt }) {
     if (!dropzone || !fileInput) return;
-
-    const clearSelectedFile = () => {
-      fileInput.value = "";
-      onSelect(null);
-    };
 
     dropzone.addEventListener("click", (event) => {
       // The file input lives inside the dropzone: a programmatic fileInput.click()
@@ -695,25 +690,20 @@
       if (event.target === fileInput) return;
       event.preventDefault();
       event.stopPropagation();
-      // If a file is already in the box ("kästchen"), left-click removes it (no file dialog).
-      // If the box is empty, left-click opens the file dialog.
-      // Use the "has-file" class (maintained in setFile) for reliable decision instead of closure,
-      // to avoid previous issues with dialog opening on remove or no dialog on add.
-      if (dropzone.classList.contains("has-file")) {
-        clearSelectedFile();
+      const tile = event.target.closest(".dropzone-file-tile");
+      if (tile) {
+        removeAt(Number(tile.dataset.index));
         return;
       }
-      fileInput.click();
+      // Klick auf freie Fläche öffnet den Dateidialog nur bei leerer Dropzone;
+      // Entfernen geht pro Datei über die Kacheln.
+      if (!dropzone.classList.contains("has-file")) fileInput.click();
     });
     dropzone.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        if (dropzone.classList.contains("has-file")) {
-          clearSelectedFile();
-          return;
-        }
-        fileInput.click();
-      }
+      if (event.key !== "Enter" && event.key !== " ") return;
+      if (event.target.closest(".dropzone-file-tile")) return;
+      event.preventDefault();
+      if (!dropzone.classList.contains("has-file")) fileInput.click();
     });
     dropzone.addEventListener("dragover", (event) => {
       event.preventDefault();
@@ -723,19 +713,46 @@
     dropzone.addEventListener("drop", (event) => {
       event.preventDefault();
       dropzone.classList.remove("dragover");
-      const file = event.dataTransfer?.files?.[0];
-      if (file) onSelect(file);
+      const files = Array.from(event.dataTransfer?.files || []);
+      if (files.length) addFiles(files);
     });
     fileInput.addEventListener("change", () => {
       const file = fileInput.files?.[0];
-      onSelect(file || null);
+      if (file) addFiles([file]);
+      fileInput.value = "";
     });
     dropzone.addEventListener("paste", (event) => {
       const file = fileFromClipboard(event.clipboardData);
       if (!file) return;
       event.preventDefault();
-      onSelect(file);
+      addFiles([file]);
     });
+  }
+
+  function renderDropzoneFiles(dropzone, files) {
+    if (!dropzone) return;
+    dropzone.classList.toggle("has-file", files.length > 0);
+    dropzone.querySelectorAll(":scope > p").forEach((p) => p.classList.toggle("hidden", files.length > 0));
+    let tilesEl = dropzone.querySelector(".dropzone-files");
+    if (!files.length) {
+      tilesEl?.remove();
+      return;
+    }
+    if (!tilesEl) {
+      tilesEl = document.createElement("div");
+      tilesEl.className = "dropzone-files";
+      dropzone.appendChild(tilesEl);
+    }
+    tilesEl.style.gridTemplateColumns = `repeat(${files.length}, minmax(0, 1fr))`;
+    tilesEl.innerHTML = files
+      .map(
+        (file, index) => `
+          <button type="button" class="dropzone-file-tile" data-index="${index}" title="„${escapeHtml(file.name || "Datei")}" entfernen">
+            <span class="dropzone-file-name">${escapeHtml(file.name || "Datei")}</span>
+            <span class="dropzone-file-remove" aria-hidden="true">✕</span>
+          </button>`,
+      )
+      .join("");
   }
 
   function formatDocSourceType(sourceType) {
@@ -931,6 +948,7 @@
             <button type="button" class="secondary small modal-unselect-all">Alle abwählen</button>
           </div>
         </div>
+        <div class="image-vision-tabs hidden" role="tablist" aria-label="Dokumente"></div>
         <p class="image-vision-text">
           <span class="modal-count">0</span> Bild(er) gefunden. Wähle, welche per Vision-OCR transkribiert werden.
           Alle Bilder werden im Eintrag als klickbare Vorschau gespeichert.
@@ -964,16 +982,51 @@
     return modal;
   }
 
-  function askImageVisionChoice(inspection) {
+  // docs: [{ key, filename, images, image_count }] — eine Registerkarte pro Dokument.
+  // Ergebnis: { action: "transcribe"|"text"|"cancel", map: { [key]: [imageIds] } }
+  function askImageVisionChoiceMulti(docs) {
     return new Promise((resolve) => {
       const modal = ensureImageVisionModal();
+      const titleEl = modal.querySelector("#image-vision-title");
+      const tabsEl = modal.querySelector(".image-vision-tabs");
       const countEl = modal.querySelector(".modal-count");
       const grid = modal.querySelector(".image-vision-grid");
-      const images = Array.isArray(inspection?.images) ? inspection.images : [];
-      const imageCount = inspection?.image_count || images.length || 0;
-      if (countEl) countEl.textContent = String(imageCount);
+      const selections = new Map(); // doc key -> Set(image ids)
+      let activeKey = docs[0]?.key;
 
-      if (grid) {
+      if (titleEl) titleEl.textContent = docs.length > 1 ? "Bilder in den Dateien erkannt" : "Bilder in der Datei erkannt";
+
+      const activeDoc = () => docs.find((doc) => doc.key === activeKey) || docs[0];
+
+      const syncActiveSelection = () => {
+        const checked = Array.from(modal.querySelectorAll('input[name="transcribe-image"]:checked'))
+          .map((input) => input.value)
+          .filter(Boolean);
+        selections.set(activeKey, new Set(checked));
+      };
+
+      const renderTabs = () => {
+        if (!tabsEl) return;
+        tabsEl.classList.toggle("hidden", docs.length <= 1);
+        tabsEl.innerHTML = docs
+          .map((doc) => {
+            const selectedCount = selections.get(doc.key)?.size || 0;
+            const badge = selectedCount ? ` (${selectedCount})` : "";
+            return `
+              <button type="button" role="tab" class="image-vision-tab ${doc.key === activeKey ? "active" : ""}"
+                aria-selected="${doc.key === activeKey}" data-key="${escapeHtml(doc.key)}">
+                ${escapeHtml(doc.filename || doc.key)}${badge}
+              </button>`;
+          })
+          .join("");
+      };
+
+      const renderGrid = () => {
+        const doc = activeDoc();
+        const images = Array.isArray(doc?.images) ? doc.images : [];
+        const selected = selections.get(doc?.key) || new Set();
+        if (countEl) countEl.textContent = String(doc?.image_count || images.length || 0);
+        if (!grid) return;
         grid.innerHTML = images.length
           ? images
               .map((image) => {
@@ -981,7 +1034,7 @@
                 const preview = image.preview_data_url || "";
                 return `
                   <label class="image-vision-option">
-                    <input type="checkbox" name="transcribe-image" value="${escapeHtml(image.id || "")}">
+                    <input type="checkbox" name="transcribe-image" value="${escapeHtml(image.id || "")}" ${selected.has(image.id) ? "checked" : ""}>
                     <span class="image-vision-thumb-wrap">
                       <img src="${preview}" alt="${escapeHtml(label)}" loading="lazy">
                     </span>
@@ -991,8 +1044,21 @@
               })
               .join("")
           : `<p class="image-vision-empty">Keine Vorschau verfügbar — alle Bilder werden gespeichert.</p>`;
+      };
+
+      if (tabsEl) {
+        tabsEl.onclick = (event) => {
+          const tab = event.target.closest(".image-vision-tab");
+          if (!tab || tab.dataset.key === activeKey) return;
+          syncActiveSelection();
+          activeKey = tab.dataset.key;
+          renderTabs();
+          renderGrid();
+        };
       }
 
+      renderTabs();
+      renderGrid();
       modal.classList.remove("hidden");
 
       const finish = (result) => {
@@ -1000,27 +1066,36 @@
         resolve(result);
       };
 
-      const selectedIds = () =>
-        Array.from(modal.querySelectorAll('input[name="transcribe-image"]:checked'))
-          .map((input) => input.value)
-          .filter(Boolean);
+      const selectionMap = () => {
+        syncActiveSelection();
+        const map = {};
+        docs.forEach((doc) => {
+          const ids = Array.from(selections.get(doc.key) || []);
+          if (ids.length) map[doc.key] = ids;
+        });
+        return map;
+      };
 
-      modal.querySelector(".modal-vision")?.addEventListener(
-        "click",
-        () => finish({ action: "transcribe", selectedIds: selectedIds() }),
-        { once: true },
-      );
-      modal.querySelector(".modal-text")?.addEventListener(
-        "click",
-        () => finish({ action: "text", selectedIds: [] }),
-        { once: true },
-      );
-      modal.querySelector(".modal-cancel")?.addEventListener(
-        "click",
-        () => finish({ action: "cancel", selectedIds: [] }),
-        { once: true },
-      );
+      // onclick-Zuweisung statt addEventListener: das Modal wird wiederverwendet,
+      // alte Listener aus früheren Aufrufen dürfen nicht liegen bleiben.
+      const visionBtn = modal.querySelector(".modal-vision");
+      const textBtn = modal.querySelector(".modal-text");
+      const cancelBtn = modal.querySelector(".modal-cancel");
+      if (visionBtn) visionBtn.onclick = () => finish({ action: "transcribe", map: selectionMap() });
+      if (textBtn) textBtn.onclick = () => finish({ action: "text", map: {} });
+      if (cancelBtn) cancelBtn.onclick = () => finish({ action: "cancel", map: {} });
     });
+  }
+
+  async function askImageVisionChoice(inspection) {
+    const doc = {
+      key: "single",
+      filename: inspection?.filename || "",
+      images: Array.isArray(inspection?.images) ? inspection.images : [],
+      image_count: inspection?.image_count || 0,
+    };
+    const result = await askImageVisionChoiceMulti([doc]);
+    return { action: result.action, selectedIds: result.map?.single || [] };
   }
 
   function mergeBlockLabel(kind) {
@@ -1432,13 +1507,21 @@
     apiPath,
     onSuccess,
   }) {
-    let selectedFile = null;
+    let selectedFiles = [];
     let fileInspection = null;
     let pendingInspection = false;
 
+    const isZipFile = (file) => /\.zip$/i.test(file?.name || "");
+    // Genau eine normale Datei => klassischer Einzel-Flow (Inspektion, Duplikat-Dialog, Merge).
+    // Mehrere Dateien oder ein ZIP => Batch-Flow mit KI-Gruppierung.
+    const singleFile = () =>
+      selectedFiles.length === 1 && !isZipFile(selectedFiles[0]) ? selectedFiles[0] : null;
+    const isBatchMode = () =>
+      selectedFiles.length > 1 || (selectedFiles.length === 1 && isZipFile(selectedFiles[0]));
+
     function updateSubmitEnabled() {
       if (!submitBtn) return;
-      const hasContent = !!(textInput?.value.trim() || selectedFile);
+      const hasContent = !!(textInput?.value.trim() || selectedFiles.length);
       submitBtn.disabled = !hasContent || pendingInspection;
     }
 
@@ -1460,8 +1543,8 @@
     let textInspectTimer = null;
 
     const runTextInspect = async (prefixText) => {
-      if (selectedFile || !prefixText || prefixText.length < 20) {
-        if (!selectedFile && !prefixText) {
+      if (selectedFiles.length || !prefixText || prefixText.length < 20) {
+        if (!selectedFiles.length && !prefixText) {
           fileInspection = null;
           applyInspectWarnings(null, warningEl, mergeActionsEl);
         }
@@ -1484,28 +1567,15 @@
       }
     };
 
-    const setFile = async (file) => {
-      selectedFile = file;
+    const clearInspection = () => {
       fileInspection = null;
       warningEl.textContent = "";
       warningEl.classList.add("hidden");
       mergeActionsEl.innerHTML = "";
       mergeActionsEl.classList.add("hidden");
+    };
 
-      if (fileLabel) {
-        fileLabel.textContent = file
-          ? `${file.name} — klicken zum Entfernen`
-          : "Datei hierher ziehen oder klicken";
-      }
-      dropzone?.classList.toggle("has-file", Boolean(file));
-      dropzone?.setAttribute("aria-label", file ? "Ausgewählte Datei entfernen" : "Datei auswählen");
-
-      if (!file) {
-        pendingInspection = false;
-        updateSubmitEnabled();
-        return;
-      }
-
+    const inspectSingleFile = async (file) => {
       const lowerName = file.name.toLowerCase();
       if (!INSPECTABLE_FILE_PATTERN.test(lowerName)) {
         updateSubmitEnabled();
@@ -1532,9 +1602,46 @@
       }
     };
 
-    setupDropzone(dropzone, fileInput, fileLabel, (file) => {
-      setFile(file).catch(() => {});
-    }, () => Boolean(selectedFile));
+    const setFiles = async (files) => {
+      selectedFiles = files;
+      clearInspection();
+      renderDropzoneFiles(dropzone, selectedFiles);
+      if (fileLabel) fileLabel.textContent = "Datei(en) hierher ziehen, klicken oder Strg+V";
+      dropzone?.setAttribute(
+        "aria-label",
+        selectedFiles.length ? "Ausgewählte Dateien — Klick auf eine Datei entfernt sie" : "Datei auswählen",
+      );
+      pendingInspection = false;
+      updateSubmitEnabled();
+      const single = singleFile();
+      if (single) await inspectSingleFile(single);
+    };
+
+    const acceptedExts = (fileInput?.getAttribute("accept") || "")
+      .split(",")
+      .map((part) => part.trim().toLowerCase())
+      .filter(Boolean);
+    const isAcceptedFile = (file) => {
+      if (!acceptedExts.length) return true;
+      const name = (file?.name || "").toLowerCase();
+      return acceptedExts.some((ext) => name.endsWith(ext));
+    };
+
+    const addFiles = (files) => {
+      const accepted = files.filter(isAcceptedFile);
+      const rejectedCount = files.length - accepted.length;
+      if (rejectedCount > 0) {
+        showStatus(statusEl, `${rejectedCount} Datei(en) mit nicht unterstütztem Format ignoriert.`, "error");
+      }
+      if (!accepted.length) return;
+      setFiles(selectedFiles.concat(accepted).slice(0, 20)).catch(() => {});
+    };
+
+    const removeFileAt = (index) => {
+      setFiles(selectedFiles.filter((_, i) => i !== index)).catch(() => {});
+    };
+
+    setupDropzone(dropzone, fileInput, fileLabel, { addFiles, removeAt: removeFileAt });
 
     textInput?.addEventListener("input", () => {
       updateSubmitEnabled();
@@ -1550,7 +1657,8 @@
       const targetDocumentId = button.dataset.targetId;
       const targetTitle = button.dataset.targetTitle || "Bestehendes Dokument";
       const prefixText = textInput?.value.trim() || "";
-      if (!prefixText && !selectedFile) {
+      const mergeFile = singleFile();
+      if (!prefixText && !mergeFile) {
         showStatus(statusEl, "Bitte Text und/oder Datei für den Merge angeben.", "error");
         return;
       }
@@ -1564,14 +1672,14 @@
           const formData = new FormData();
           formData.append("target_document_id", targetDocumentId);
           if (prefixText) formData.append("text", prefixText);
-          if (selectedFile) formData.append("file", selectedFile);
+          if (mergeFile) formData.append("file", mergeFile);
           return formData;
         },
         onSuccess: async () => {
           if (titleInput) titleInput.value = "";
           if (textInput) textInput.value = "";
           if (fileInput) fileInput.value = "";
-          await setFile(null);
+          await setFiles([]);
           await onSuccess();
         },
         statusEl,
@@ -1582,18 +1690,127 @@
       const file = fileFromClipboard(event.clipboardData);
       if (!file) return;
       event.preventDefault();
-      setFile(file).catch(() => {}).finally(() => updateSubmitEnabled());
+      addFiles([file]);
     });
 
     updateSubmitEnabled();
 
+    const batchMessages = {
+      invalid_zip: "ZIP-Datei konnte nicht gelesen werden.",
+      no_supported_files: "Keine unterstützten Dateien gefunden (auch im ZIP nicht).",
+      too_many_files: "Zu viele Dateien — maximal 20 pro Vorgang.",
+      no_text_content: "Keine verwertbaren Inhalte — ggf. Vision-OCR für Bilder auswählen.",
+      file_too_large: "Mindestens eine Datei überschreitet 30 MB.",
+    };
+
+    const skipReasonLabel = (reason) =>
+      ({
+        unsupported_file_type: "Format nicht unterstützt",
+        file_too_large: "größer als 30 MB",
+        nested_zip: "ZIP im ZIP",
+        no_text_content: "kein verwertbarer Inhalt",
+      })[reason] || reason;
+
+    async function submitBatch(prefixText) {
+      const resolvedPath = typeof apiPath === "function" ? apiPath() : apiPath;
+      submitBtn.disabled = true;
+      try {
+        showStatus(statusEl, `${selectedFiles.length} Datei(en) werden geprüft…`);
+        const inspectData = new FormData();
+        selectedFiles.forEach((file) => inspectData.append("files", file));
+        let inspection;
+        try {
+          inspection = await api(`${resolvedPath}/inspect-batch`, { method: "POST", body: inspectData });
+        } catch (error) {
+          showStatus(statusEl, batchMessages[error.code] || "Dateien konnten nicht geprüft werden.", "error");
+          return;
+        }
+
+        const docsWithImages = (inspection.documents || []).filter(
+          (doc) => doc.has_images && Array.isArray(doc.images) && doc.images.length,
+        );
+        let processImages = false;
+        let transcribeMap = {};
+        if (docsWithImages.length) {
+          const choice = await askImageVisionChoiceMulti(docsWithImages);
+          if (choice.action === "cancel") {
+            showStatus(statusEl, "");
+            return;
+          }
+          if (choice.action === "transcribe") {
+            transcribeMap = choice.map || {};
+            processImages = Object.keys(transcribeMap).length > 0;
+            if (!processImages) {
+              showStatus(statusEl, "Bitte mindestens ein Bild für Vision-OCR auswählen.", "error");
+              return;
+            }
+          }
+        }
+
+        showStatus(
+          statusEl,
+          `${inspection.file_count || selectedFiles.length} Dokument(e) werden nacheinander verarbeitet…`,
+        );
+        const formData = new FormData();
+        selectedFiles.forEach((file) => formData.append("files", file));
+        if (titleInput?.value.trim()) formData.append("title", titleInput.value.trim());
+        if (prefixText) formData.append("text", prefixText);
+        if (processImages) {
+          formData.append("process_images", "true");
+          formData.append("transcribe_map", JSON.stringify(transcribeMap));
+        }
+        let result;
+        try {
+          result = await api(`${resolvedPath}/batch`, { method: "POST", body: formData });
+        } catch (error) {
+          showStatus(statusEl, batchMessages[error.code] || "Einpflegen fehlgeschlagen.", "error");
+          return;
+        }
+
+        const entries = result.entries || [];
+        const created = entries.filter((entry) => entry.status === "created");
+        const duplicates = entries.filter((entry) => entry.status === "duplicate");
+        const failedEntries = entries.filter((entry) => entry.status === "failed");
+        const failedFiles = result.failed || [];
+        const skipped = result.skipped || [];
+
+        const parts = [
+          `${result.file_count || selectedFiles.length} Dokument(e) → ${created.length} Eintrag/Einträge angelegt`,
+        ];
+        if (created.length) parts.push(created.map((entry) => `„${entry.document.title}"`).join(", "));
+        if (duplicates.length) parts.push(`${duplicates.length} Duplikat(e) übersprungen`);
+        if (failedEntries.length || failedFiles.length) {
+          const names = failedFiles.map((item) => `${item.filename} (${skipReasonLabel(item.error)})`);
+          parts.push(`${failedEntries.length + failedFiles.length} ohne Ergebnis${names.length ? `: ${names.join(", ")}` : ""}`);
+        }
+        if (skipped.length) {
+          parts.push(`ignoriert: ${skipped.map((item) => `${item.filename} (${skipReasonLabel(item.reason)})`).join(", ")}`);
+        }
+        showStatus(statusEl, parts.join(" · "), created.length ? "ok" : "error");
+
+        if (created.length) {
+          if (titleInput) titleInput.value = "";
+          if (textInput) textInput.value = "";
+          await setFiles([]);
+          await onSuccess();
+        }
+      } finally {
+        submitBtn.disabled = false;
+      }
+    }
+
     form?.addEventListener("submit", async (event) => {
       event.preventDefault();
       const prefixText = textInput?.value.trim() || "";
-      if (!prefixText && !selectedFile) {
+      if (!prefixText && !selectedFiles.length) {
         showStatus(statusEl, "Bitte Text und/oder Datei angeben.", "error");
         return;
       }
+      if (isBatchMode()) {
+        await submitBatch(prefixText);
+        return;
+      }
+      const selectedFile = singleFile();
 
       let processImages = false;
       let transcribeImageIds = [];
@@ -1651,7 +1868,7 @@
         if (titleInput) titleInput.value = "";
         if (textInput) textInput.value = "";
         if (fileInput) fileInput.value = "";
-        await setFile(null);
+        await setFiles([]);
         await onSuccess();
       } catch (error) {
         const messages = {

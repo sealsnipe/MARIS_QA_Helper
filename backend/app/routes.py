@@ -78,6 +78,7 @@ from app.upload import (
     parse_form_bool,
     resolve_upload_source_text,
 )
+from app.batch_upload import ingest_batch, inspect_batch
 from app.document_merge import MergeError, apply_document_merge, merge_preview_for_documents
 from app.users_admin import (
     UserAdminError,
@@ -896,6 +897,55 @@ async def api_upload_document(
     return {"document": _document_payload(document)}
 
 
+async def _read_batch_uploads(files: list[UploadFile]) -> list[tuple[str, bytes]]:
+    uploads: list[tuple[str, bytes]] = []
+    for upload in files:
+        if not upload.filename:
+            continue
+        uploads.append((upload.filename, await upload.read()))
+    if not uploads:
+        raise UploadError("no_supported_files")
+    return uploads
+
+
+@router.post("/api/documents/inspect-batch")
+async def api_inspect_document_batch(
+    customer: Customer = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+    files: list[UploadFile] = File(...),
+) -> dict:
+    if blocked := _reject_global_write(customer):
+        return blocked
+    uploads = await _read_batch_uploads(files)
+    return inspect_batch(db, customer.id, uploads)
+
+
+@router.post("/api/documents/batch")
+async def api_upload_document_batch(
+    customer: Customer = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+    files: list[UploadFile] = File(...),
+    title: str | None = Form(default=None),
+    text: str | None = Form(default=None),
+    process_images: str | None = Form(default=None),
+    transcribe_map: str | None = Form(default=None),
+    allow_duplicate: str | None = Form(default=None),
+) -> dict:
+    if blocked := _reject_global_write(customer):
+        return blocked
+    uploads = await _read_batch_uploads(files)
+    return ingest_batch(
+        db,
+        customer.id,
+        uploads,
+        title=title,
+        prefix_text=text,
+        process_images=parse_form_bool(process_images),
+        transcribe_map_raw=transcribe_map,
+        allow_duplicate=parse_form_bool(allow_duplicate),
+    )
+
+
 @router.post("/api/documents/inspect-text")
 async def api_inspect_document_text(
     customer: Customer = Depends(get_current_customer),
@@ -1378,6 +1428,40 @@ async def api_admin_upload_document(
     return {"document": _document_payload(document)}
 
 
+@router.post("/api/admin/documents/inspect-batch")
+async def api_admin_inspect_document_batch(
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+    files: list[UploadFile] = File(...),
+) -> dict:
+    uploads = await _read_batch_uploads(files)
+    return inspect_batch(db, GLOBAL_CUSTOMER_ID, uploads)
+
+
+@router.post("/api/admin/documents/batch")
+async def api_admin_upload_document_batch(
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+    files: list[UploadFile] = File(...),
+    title: str | None = Form(default=None),
+    text: str | None = Form(default=None),
+    process_images: str | None = Form(default=None),
+    transcribe_map: str | None = Form(default=None),
+    allow_duplicate: str | None = Form(default=None),
+) -> dict:
+    uploads = await _read_batch_uploads(files)
+    return ingest_batch(
+        db,
+        GLOBAL_CUSTOMER_ID,
+        uploads,
+        title=title,
+        prefix_text=text,
+        process_images=parse_form_bool(process_images),
+        transcribe_map_raw=transcribe_map,
+        allow_duplicate=parse_form_bool(allow_duplicate),
+    )
+
+
 @router.get("/api/admin/documents/{document_id}")
 def api_admin_get_document(
     document_id: str,
@@ -1594,6 +1678,44 @@ async def api_admin_upload_customer_document(
     except UploadError:
         raise
     return {"document": _document_payload(document)}
+
+
+@router.post("/api/admin/customers/{customer_id}/documents/inspect-batch")
+async def api_admin_inspect_customer_document_batch(
+    customer_id: str,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+    files: list[UploadFile] = File(...),
+) -> dict:
+    customer = _admin_tenant_customer(db, customer_id)
+    uploads = await _read_batch_uploads(files)
+    return inspect_batch(db, customer.id, uploads)
+
+
+@router.post("/api/admin/customers/{customer_id}/documents/batch")
+async def api_admin_upload_customer_document_batch(
+    customer_id: str,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+    files: list[UploadFile] = File(...),
+    title: str | None = Form(default=None),
+    text: str | None = Form(default=None),
+    process_images: str | None = Form(default=None),
+    transcribe_map: str | None = Form(default=None),
+    allow_duplicate: str | None = Form(default=None),
+) -> dict:
+    customer = _admin_tenant_customer(db, customer_id)
+    uploads = await _read_batch_uploads(files)
+    return ingest_batch(
+        db,
+        customer.id,
+        uploads,
+        title=title,
+        prefix_text=text,
+        process_images=parse_form_bool(process_images),
+        transcribe_map_raw=transcribe_map,
+        allow_duplicate=parse_form_bool(allow_duplicate),
+    )
 
 
 @router.get("/api/admin/customers/{customer_id}/documents/{document_id}")
