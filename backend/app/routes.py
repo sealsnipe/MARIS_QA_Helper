@@ -81,6 +81,7 @@ from app.upload import (
 from starlette.concurrency import run_in_threadpool
 
 from app.batch_upload import PROGRESS_TOKEN_PATTERN, get_batch_progress, ingest_batch, inspect_batch
+from app.document_retranscribe import retranscribe_document_images
 from app.document_merge import MergeError, apply_document_merge, merge_preview_for_documents
 from app.users_admin import (
     UserAdminError,
@@ -1228,6 +1229,64 @@ def api_get_document_image(
     if document is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
     return _document_image_file_response(document, image_id)
+
+
+class TranscribeImagesRequest(BaseModel):
+    image_ids: list[str] = Field(min_length=1, max_length=50)
+    progress_token: str | None = Field(default=None, max_length=64)
+
+
+async def _run_retranscribe(
+    db: Session,
+    customer_id: str,
+    document_id: str,
+    payload: TranscribeImagesRequest,
+):
+    result = await run_in_threadpool(
+        retranscribe_document_images,
+        db,
+        customer_id,
+        document_id,
+        payload.image_ids,
+        progress_token=_clean_progress_token(payload.progress_token),
+    )
+    if result is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return result
+
+
+@router.post("/api/documents/{document_id}/transcribe-images")
+async def api_transcribe_document_images(
+    document_id: str,
+    payload: TranscribeImagesRequest,
+    customer: Customer = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+):
+    if blocked := _reject_global_write(customer):
+        return blocked
+    return await _run_retranscribe(db, customer.id, document_id, payload)
+
+
+@router.post("/api/admin/documents/{document_id}/transcribe-images")
+async def api_admin_transcribe_document_images(
+    document_id: str,
+    payload: TranscribeImagesRequest,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    return await _run_retranscribe(db, GLOBAL_CUSTOMER_ID, document_id, payload)
+
+
+@router.post("/api/admin/customers/{customer_id}/documents/{document_id}/transcribe-images")
+async def api_admin_transcribe_customer_document_images(
+    customer_id: str,
+    document_id: str,
+    payload: TranscribeImagesRequest,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    customer = _admin_tenant_customer(db, customer_id)
+    return await _run_retranscribe(db, customer.id, document_id, payload)
 
 
 @router.get("/api/admin/system-prompt")

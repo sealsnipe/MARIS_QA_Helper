@@ -526,8 +526,9 @@ def _ingest_batch_inner(
             report(base, f"{file_label} wird verarbeitet…")
 
             def on_vision_image(current: int, total: int, _base=base, _span=span, _label=file_label) -> None:
-                fraction = 0.25 + 0.7 * (current - 1) / max(total, 1)
-                report(_base + _span * fraction, f"{_label} — Vision-OCR Bild {current}/{total}…")
+                # on_image meldet abgeschlossene Bilder (Pool arbeitet parallel)
+                fraction = 0.25 + 0.7 * current / max(total, 1)
+                report(_base + _span * fraction, f"{_label} — Vision-OCR {current}/{total} Bild(er) fertig…")
 
             doc = _process_file(
                 batch_file,

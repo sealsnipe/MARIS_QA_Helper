@@ -3,6 +3,8 @@ from __future__ import annotations
 import io
 import json
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -161,24 +163,15 @@ def run_vision_ocr(
         return VisionOcrResult(blocks=[], images_processed=0, images_failed=0, saved_images=saved_images or [])
 
     images = extract_embedded_images(path, extension)[: settings.vision_max_images]
-    blocks: list[str] = []
     output_saved = list(saved_images or [])
     saved_by_id = {item.id: item for item in output_saved}
-    processed = 0
-    failed = 0
-    selected_total = sum(
-        1 for image in images if transcribe_ids is None or _image_id(image) in transcribe_ids
-    )
-    attempted = 0
 
+    # Phase 1 (sequentiell): Bilder speichern und Arbeitsliste aufbauen.
+    worklist: list[EmbeddedImage] = []
     for image in images:
         image_id = _image_id(image)
         if transcribe_ids is not None and image_id not in transcribe_ids:
             continue
-        attempted += 1
-        if on_image is not None:
-            on_image(attempted, selected_total)
-
         if assets_dir is not None and image_id not in saved_by_id:
             saved = save_document_image(
                 assets_dir,
@@ -190,17 +183,23 @@ def run_vision_ocr(
             saved.transcribed = False
             saved_by_id[image_id] = saved
             output_saved.append(saved)
+        worklist.append(image)
 
-        try:
-            raw = transcribe_image(image.data, image.mime_type, prompt=OCR_PROMPT).strip()
-            text, _mermaid = parse_ocr_response(raw)
-        except LLMError:
-            failed += 1
-            continue
+    # Phase 2 (parallel): Worker-Pool arbeitet die Bild-Queue dynamisch ab.
+    results = transcribe_images_pooled(
+        [(image.data, image.mime_type) for image in worklist],
+        on_done=on_image,
+    )
+
+    # Phase 3 (sequentiell): Blöcke in ursprünglicher Bild-Reihenfolge zusammensetzen.
+    blocks: list[str] = []
+    processed = 0
+    failed = 0
+    for image, text in zip(worklist, results):
         if not text:
             failed += 1
             continue
-
+        image_id = _image_id(image)
         blocks.append(format_image_block(image_id=image_id, page=image.page, transcription=text))
         if image_id in saved_by_id:
             saved_by_id[image_id].transcribed = True
@@ -212,6 +211,54 @@ def run_vision_ocr(
         images_failed=failed,
         saved_images=output_saved,
     )
+
+
+def transcribe_images_pooled(
+    items: list[tuple[bytes, str]],
+    *,
+    on_done: Callable[[int, int], None] | None = None,
+) -> list[str | None]:
+    """Transcribe images concurrently (worker pool, size = VISION_CONCURRENCY).
+
+    Returns one entry per input item in input order: the transcription text,
+    or None when the LLM failed or produced no content. `on_done(completed, total)`
+    fires after each finished image regardless of completion order.
+    """
+    if not items:
+        return []
+    settings = get_settings()
+    total = len(items)
+    results: list[str | None] = [None] * total
+    progress_lock = threading.Lock()
+    completed = 0
+
+    def transcribe_one(index: int) -> None:
+        nonlocal completed
+        data, mime_type = items[index]
+        try:
+            raw = transcribe_image(data, mime_type, prompt=OCR_PROMPT).strip()
+            text, _mermaid = parse_ocr_response(raw)
+            results[index] = text or None
+        except LLMError:
+            results[index] = None
+        finally:
+            with progress_lock:
+                completed += 1
+                done = completed
+            if on_done is not None:
+                on_done(done, total)
+
+    max_workers = min(settings.vision_concurrency, total)
+    if max_workers <= 1:
+        for index in range(total):
+            transcribe_one(index)
+    else:
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = [pool.submit(transcribe_one, index) for index in range(total)]
+            for future in futures:
+                future.result()
+
+    return results
 
 
 def merge_ocr_blocks(base_text: str, blocks: list[str]) -> str:

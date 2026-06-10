@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     VISION_MODEL: str = "gpt-5.4-mini"
     VISION_MAX_IMAGES: int = 20
     VISION_ENABLED: bool = True
+    VISION_CONCURRENCY: int = 4
     CODEX_AUTH_PATH: str = "~/.codex/auth.json"
     CODEX_OAUTH_AUTH_PATH: str = "~/.oauth_codex/auth.json"
     CODEX_BASE_URL: str = "https://chatgpt.com/backend-api/codex"
@@ -84,6 +85,10 @@ class Settings(BaseSettings):
     @property
     def vision_max_images(self) -> int:
         return max(1, self.VISION_MAX_IMAGES)
+
+    @property
+    def vision_concurrency(self) -> int:
+        return max(1, self.VISION_CONCURRENCY)
 
     @property
     def integration_enabled(self) -> bool:

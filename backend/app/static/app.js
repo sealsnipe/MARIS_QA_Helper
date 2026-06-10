@@ -463,14 +463,35 @@
         ? `<p class="muted doc-edit-hint">Text stammt aus einer Datei. Speichern ersetzt den indexierten Inhalt; die Originaldatei bleibt archiviert.</p>`
         : "";
       const images = Array.isArray(data.images) ? data.images : [];
+      const openImages = images.filter((image) => !image.transcribed);
+      const modeSwitchHtml = openImages.length
+        ? `<label class="mode-switch" title="Umschalten: Bilder ansehen oder zur Nachverarbeitung auswählen">
+             <span class="mode-switch-label">Ansehen</span>
+             <input type="checkbox" class="retranscribe-toggle">
+             <span class="mode-switch-slider" aria-hidden="true"></span>
+             <span class="mode-switch-label">Nachverarbeiten</span>
+           </label>`
+        : "";
       const imagesHtml = images.length
-        ? `<div class="doc-edit-images"><p class="doc-edit-images-title">Extrahierte Bilder — klicken für Vollbild</p><div class="doc-edit-image-grid">${images
-            .map((image) => {
-              const base = image.page ? `Seite ${image.page}` : image.id;
-              const label = image.transcribed ? `${base} · OCR` : `${base} · Vorschau`;
-              return `<button type="button" class="doc-edit-image-item" title="Vollbild anzeigen"><img src="${escapeHtml(image.url)}" alt="${escapeHtml(label)}" loading="lazy"><span class="doc-edit-image-label">${escapeHtml(label)}</span></button>`;
-            })
-            .join("")}</div></div>`
+        ? `<div class="doc-edit-images">
+             <div class="doc-edit-images-head">
+               <p class="doc-edit-images-title">Extrahierte Bilder — klicken für Vollbild${openImages.length ? ` · ${openImages.length} offen` : ""}</p>
+               ${modeSwitchHtml}
+             </div>
+             <div class="doc-edit-image-grid">${images
+               .map((image) => {
+                 const base = image.page ? `Seite ${image.page}` : image.id;
+                 const label = image.transcribed ? `${base} · OCR` : `${base} · offen`;
+                 return `<button type="button" class="doc-edit-image-item${image.transcribed ? "" : " is-open"}" data-image-id="${escapeHtml(image.id)}" title="Vollbild anzeigen"><img src="${escapeHtml(image.url)}" alt="${escapeHtml(label)}" loading="lazy"><span class="doc-edit-image-label">${escapeHtml(label)}</span></button>`;
+               })
+               .join("")}</div>
+             ${openImages.length
+               ? `<div class="retranscribe-bar hidden">
+                    <button type="button" class="small retranscribe-run" disabled>Ausgewählte nachverarbeiten (0)</button>
+                    <span class="muted retranscribe-hint">Offene Bilder anklicken, um sie auszuwählen.</span>
+                  </div>`
+               : ""}
+           </div>`
         : "";
       panel.innerHTML = `
         <label>Titel<input type="text" class="doc-edit-title" maxlength="200" value="${escapeHtml(data.document.title)}"></label>
@@ -486,6 +507,70 @@
       const textArea = panel.querySelector(".doc-edit-text");
       if (textArea) textArea.value = data.text || "";
       bindDocumentImagePreviews(panel);
+
+      const imagesWrap = panel.querySelector(".doc-edit-images");
+      const retranscribeToggle = panel.querySelector(".retranscribe-toggle");
+      const retranscribeBar = panel.querySelector(".retranscribe-bar");
+      const retranscribeBtn = panel.querySelector(".retranscribe-run");
+
+      const selectedImageIds = () =>
+        Array.from(panel.querySelectorAll(".doc-edit-image-item.selected"))
+          .map((item) => item.dataset.imageId)
+          .filter(Boolean);
+
+      const updateRetranscribeBtn = () => {
+        if (!retranscribeBtn) return;
+        const count = selectedImageIds().length;
+        retranscribeBtn.textContent = `Ausgewählte nachverarbeiten (${count})`;
+        retranscribeBtn.disabled = count === 0;
+      };
+
+      retranscribeToggle?.addEventListener("change", () => {
+        const selectMode = retranscribeToggle.checked;
+        imagesWrap?.classList.toggle("retranscribe-mode", selectMode);
+        retranscribeBar?.classList.toggle("hidden", !selectMode);
+        if (!selectMode) {
+          panel.querySelectorAll(".doc-edit-image-item.selected").forEach((item) => item.classList.remove("selected"));
+        }
+        updateRetranscribeBtn();
+      });
+      imagesWrap?.addEventListener("retranscribe-selection", updateRetranscribeBtn);
+
+      retranscribeBtn?.addEventListener("click", async () => {
+        const imageIds = selectedImageIds();
+        const statusEl = panel.querySelector(".doc-edit-status");
+        if (!imageIds.length) return;
+        retranscribeBtn.disabled = true;
+        if (retranscribeToggle) retranscribeToggle.disabled = true;
+        const progressToken = makeProgressToken();
+        const progressBar = createProgressBar(statusEl, panel);
+        const progressTimer = pollProgress(progressToken, progressBar);
+        try {
+          const result = await api(`${basePath}/${docId}/transcribe-images`, {
+            method: "POST",
+            body: JSON.stringify({ image_ids: imageIds, progress_token: progressToken }),
+          });
+          window.clearInterval(progressTimer);
+          const failedNote = result.failed?.length ? `, ${result.failed.length} fehlgeschlagen` : "";
+          progressBar.finish(`Fertig — ${result.processed?.length || 0} Bild(er) nachverarbeitet${failedNote}.`);
+          await onRefresh();
+          window.setTimeout(() => {
+            openAdminDocumentEditor(docId, basePath, listEl, onRefresh).catch(() => {});
+          }, 1200);
+        } catch (error) {
+          window.clearInterval(progressTimer);
+          progressBar.remove();
+          const messages = {
+            no_images_selected: "Keine offenen Bilder ausgewählt.",
+            image_assets_missing: "Bilddateien fehlen im Archiv — Nachverarbeitung nicht möglich.",
+            vision_failed: "Vision-OCR fehlgeschlagen — bitte erneut versuchen oder API/Token prüfen.",
+            not_found: "Dokument nicht gefunden oder falscher Mandant.",
+          };
+          showStatus(statusEl, messages[error.code] || "Nachverarbeitung fehlgeschlagen.", "error");
+          retranscribeBtn.disabled = false;
+          if (retranscribeToggle) retranscribeToggle.disabled = false;
+        }
+      });
 
       panel.querySelector(".doc-edit-cancel")?.addEventListener("click", () => editRow.remove());
       panel.querySelector(".doc-edit-save")?.addEventListener("click", async () => {
@@ -924,11 +1009,76 @@
     if (!container) return;
     container.querySelectorAll(".doc-edit-image-item").forEach((item) => {
       item.addEventListener("click", () => {
+        const wrap = item.closest(".doc-edit-images");
+        if (wrap?.classList.contains("retranscribe-mode")) {
+          // Nachverarbeiten-Modus: offene Bilder per Klick (de)selektieren statt Lightbox.
+          if (!item.classList.contains("is-open")) return;
+          item.classList.toggle("selected");
+          wrap.dispatchEvent(new CustomEvent("retranscribe-selection", { bubbles: true }));
+          return;
+        }
         const img = item.querySelector("img");
         const label = item.querySelector(".doc-edit-image-label")?.textContent?.trim() || "";
         if (img?.src) openImageLightbox(img.src, label);
       });
     });
+  }
+
+  function makeProgressToken() {
+    return (
+      window.crypto?.randomUUID?.() || `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`
+    ).replace(/[^A-Za-z0-9-]/g, "");
+  }
+
+  function createProgressBar(anchorEl, fallbackParent = null) {
+    const wrap = document.createElement("div");
+    wrap.className = "batch-progress";
+    wrap.innerHTML = `
+      <div class="batch-progress-head">
+        <span class="batch-progress-label">Wird gestartet…</span>
+        <span class="batch-progress-percent">0%</span>
+      </div>
+      <div class="batch-progress-track">
+        <div class="batch-progress-fill indeterminate" style="width: 0%"></div>
+      </div>`;
+    if (anchorEl?.parentNode) anchorEl.parentNode.insertBefore(wrap, anchorEl);
+    else fallbackParent?.appendChild(wrap);
+    const labelEl = wrap.querySelector(".batch-progress-label");
+    const percentEl = wrap.querySelector(".batch-progress-percent");
+    const fillEl = wrap.querySelector(".batch-progress-fill");
+    let lastPercent = 0;
+    return {
+      update(percent, label) {
+        const value = Math.max(lastPercent, Math.min(Number(percent) || 0, 100));
+        lastPercent = value;
+        fillEl?.classList.remove("indeterminate");
+        if (fillEl) fillEl.style.width = `${value}%`;
+        if (percentEl) percentEl.textContent = `${Math.round(value)}%`;
+        if (labelEl && label) labelEl.textContent = label;
+        if (value >= 100) wrap.classList.add("done");
+      },
+      finish(label) {
+        this.update(100, label || "Fertig.");
+        window.setTimeout(() => {
+          wrap.classList.add("fade-out");
+          window.setTimeout(() => wrap.remove(), 450);
+        }, 1400);
+      },
+      remove() {
+        wrap.remove();
+      },
+    };
+  }
+
+  function pollProgress(token, bar) {
+    return window.setInterval(async () => {
+      try {
+        const progress = await api(`/api/documents/batch-progress/${token}`);
+        bar.update(progress.percent, progress.label);
+      } catch (_error) {
+        /* 404 vor der ersten Meldung — ignorieren */
+      }
+    }, 400);
   }
 
   function ensureImageVisionModal() {
@@ -1711,46 +1861,6 @@
         no_text_content: "kein verwertbarer Inhalt",
       })[reason] || reason;
 
-    function createBatchProgressBar() {
-      const wrap = document.createElement("div");
-      wrap.className = "batch-progress";
-      wrap.innerHTML = `
-        <div class="batch-progress-head">
-          <span class="batch-progress-label">Wird gestartet…</span>
-          <span class="batch-progress-percent">0%</span>
-        </div>
-        <div class="batch-progress-track">
-          <div class="batch-progress-fill indeterminate" style="width: 0%"></div>
-        </div>`;
-      if (statusEl?.parentNode) statusEl.parentNode.insertBefore(wrap, statusEl);
-      else form?.appendChild(wrap);
-      const labelEl = wrap.querySelector(".batch-progress-label");
-      const percentEl = wrap.querySelector(".batch-progress-percent");
-      const fillEl = wrap.querySelector(".batch-progress-fill");
-      let lastPercent = 0;
-      return {
-        update(percent, label) {
-          const value = Math.max(lastPercent, Math.min(Number(percent) || 0, 100));
-          lastPercent = value;
-          fillEl?.classList.remove("indeterminate");
-          if (fillEl) fillEl.style.width = `${value}%`;
-          if (percentEl) percentEl.textContent = `${Math.round(value)}%`;
-          if (labelEl && label) labelEl.textContent = label;
-          if (value >= 100) wrap.classList.add("done");
-        },
-        finish(label) {
-          this.update(100, label || "Fertig.");
-          window.setTimeout(() => {
-            wrap.classList.add("fade-out");
-            window.setTimeout(() => wrap.remove(), 450);
-          }, 1400);
-        },
-        remove() {
-          wrap.remove();
-        },
-      };
-    }
-
     async function submitBatch(prefixText) {
       const resolvedPath = typeof apiPath === "function" ? apiPath() : apiPath;
       submitBtn.disabled = true;
@@ -1788,17 +1898,9 @@
         }
 
         showStatus(statusEl, "");
-        const progressToken = (window.crypto?.randomUUID?.() ||
-          `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`).replace(/[^A-Za-z0-9-]/g, "");
-        const progressBar = createBatchProgressBar();
-        const progressTimer = window.setInterval(async () => {
-          try {
-            const progress = await api(`/api/documents/batch-progress/${progressToken}`);
-            progressBar.update(progress.percent, progress.label);
-          } catch (_error) {
-            /* 404 vor der ersten Meldung — ignorieren */
-          }
-        }, 400);
+        const progressToken = makeProgressToken();
+        const progressBar = createProgressBar(statusEl, form);
+        const progressTimer = pollProgress(progressToken, progressBar);
 
         const formData = new FormData();
         selectedFiles.forEach((file) => formData.append("files", file));
