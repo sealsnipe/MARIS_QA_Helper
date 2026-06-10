@@ -682,9 +682,16 @@
     };
 
     dropzone.addEventListener("click", (event) => {
+      // The file input lives inside the dropzone: a programmatic fileInput.click()
+      // bubbles back up here, and preventDefault() would cancel the file dialog.
+      if (event.target === fileInput) return;
       event.preventDefault();
       event.stopPropagation();
-      if (isFileSelected?.()) {
+      // If a file is already in the box ("kästchen"), left-click removes it (no file dialog).
+      // If the box is empty, left-click opens the file dialog.
+      // Use the "has-file" class (maintained in setFile) for reliable decision instead of closure,
+      // to avoid previous issues with dialog opening on remove or no dialog on add.
+      if (dropzone.classList.contains("has-file")) {
         clearSelectedFile();
         return;
       }
@@ -693,7 +700,7 @@
     dropzone.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        if (isFileSelected?.()) {
+        if (dropzone.classList.contains("has-file")) {
           clearSelectedFile();
           return;
         }
