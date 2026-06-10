@@ -177,11 +177,19 @@
     };
 
     modal._closeModal = function() {
-      modal.classList.add("hidden");
-      if (modal._lastFocus && modal._lastFocus.focus) {
-        modal._lastFocus.focus();
+      // Re-entrancy guard: page-level close handlers (onClose) often call
+      // modal._closeModal() themselves — without the guard that recurses forever.
+      if (modal._closing) return;
+      modal._closing = true;
+      try {
+        modal.classList.add("hidden");
+        if (modal._lastFocus && modal._lastFocus.focus) {
+          modal._lastFocus.focus();
+        }
+        if (onClose) onClose();
+      } finally {
+        modal._closing = false;
       }
-      if (onClose) onClose();
     };
   }
 

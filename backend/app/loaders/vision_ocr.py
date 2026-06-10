@@ -58,9 +58,10 @@ Pflichtinhalt in "text" (Sprache des Bildes beibehalten):
   • unterschiedliche Linien- oder Pfeiltypen nur soweit Legende oder Beschriftung es vorgibt
 - Visuelle tragende Elemente knapp benennen (z. B. Knoten, Pfeil, gestrichelte Linie, Gruppe) — ohne Farb-/Schrift-Kommentare.
 - Tabellen: als Markdown-Tabelle; Fotos: sachliche Beschreibung plus sichtbarer Text.
+- Fotos ohne erkennbaren Text (z. B. Landschaft, Stadt, Gebäude, Personen, Gegenstände): ausführliche sachliche Bildbeschreibung — was zu sehen ist (Motiv, Objekte, Umgebung, Vorder-/Hintergrund), erkennbare Orte oder Bauwerke beim Namen nennen, Tageszeit/Wetter/Jahreszeit nur soweit eindeutig erkennbar. Diese Beschreibung gehört in "text".
 - Nichts erfinden, nichts weglassen. Eine reine Textliste ohne Beschreibung der Verknüpfungen ist in Fall B unvollständig.
 
-Allgemein: Keine Zusammenfassung in FALL A. Keine doppelte Wiederholung.
+Allgemein: Keine Zusammenfassung in FALL A. Keine doppelte Wiederholung. "text" darf NIE leer sein — jedes Bild hat beschreibbaren Inhalt; gib niemals {"text":""} zurück.
 
 Antwortformat — AUSSCHLIESSLICH gültiges JSON, kein Markdown drumherum:
 {"text": "…", "mermaid": null}
@@ -91,7 +92,9 @@ def parse_ocr_response(raw: str) -> tuple[str, str | None]:
         if mermaid:
             mermaid = re.sub(r"^```(?:mermaid)?\s*", "", mermaid, flags=re.IGNORECASE)
             mermaid = re.sub(r"\s*```$", "", mermaid).strip() or None
-        return text or cleaned, mermaid
+        # Trust the parsed JSON: an empty "text" means the model produced nothing —
+        # falling back to `cleaned` would store the raw JSON string as transcription.
+        return text, mermaid
     return cleaned, None
 
 
