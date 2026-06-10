@@ -135,15 +135,74 @@ def inspect_text_content(
     }
 
 
-def _resolve_title(title: str | None, filename: str | None) -> str:
+MAX_TITLE_LENGTH = 200
+
+TITLE_KEYWORDS_PROMPT = """\
+Du erzeugst den Titel für einen Eintrag in einer Support-Wissensdatenbank.
+Extrahiere aus dem folgenden Inhalt 1 bis 5 kurze Schlagworte (je 1-3 Wörter), die den Inhalt am besten beschreiben — die wichtigsten zuerst. Nur so viele wie nötig, nicht künstlich auffüllen.
+Antworte AUSSCHLIESSLICH mit den Schlagworten, getrennt durch " + ". Keine Anführungszeichen, kein Punkt am Ende, keine Erklärung.
+Beispiel: VPN-Zugang + Zertifikat erneuern + Windows 11"""
+
+
+def _apply_title_rule(customer_id: str, content_part: str) -> str:
+    """Titel-Regel: "<kundenkürzel>: <inhalt1> + … + <inhalt5>". Präfix nur ergänzen, wenn es fehlt."""
+    prefix = f"{customer_id}: "
+    cleaned = content_part.strip()
+    if cleaned.lower().startswith(prefix.lower()):
+        return cleaned[:MAX_TITLE_LENGTH]
+    return f"{prefix}{cleaned}"[:MAX_TITLE_LENGTH]
+
+
+def generate_title_keywords(db: Session, text: str) -> str | None:
+    """Ask the chat-slot LLM for 1-5 content keywords ("inhalt1 + inhalt2 + …").
+
+    Returns None on any failure — title generation must never break ingestion.
+    """
+    from app.llm import get_llm
+
+    snippet = normalize_text(text)[:4000]
+    if not snippet:
+        return None
+    try:
+        response = get_llm(db=db).chat(
+            [
+                {"role": "system", "content": TITLE_KEYWORDS_PROMPT},
+                {"role": "user", "content": snippet},
+            ]
+        )
+        content = (response.content or "").strip()
+    except Exception:
+        return None
+    if not content:
+        return None
+    first_line = content.splitlines()[0].strip().strip('"').rstrip(".")
+    parts = [part.strip() for part in first_line.split("+")]
+    parts = [part for part in parts if part][:5]
+    if not parts:
+        return None
+    return " + ".join(parts)
+
+
+def _resolve_title(
+    title: str | None,
+    filename: str | None,
+    *,
+    customer_id: str,
+    db: Session | None = None,
+    content_text: str = "",
+) -> str:
     cleaned = (title or "").strip()
     if cleaned:
-        return cleaned[:200]
+        return _apply_title_rule(customer_id, cleaned)
+    if db is not None and content_text:
+        generated = generate_title_keywords(db, content_text)
+        if generated:
+            return _apply_title_rule(customer_id, generated)
     if filename:
         stem = Path(sanitize_filename(filename)).stem.strip()
         if stem:
-            return stem[:200]
-    return "Wissenseintrag"
+            return _apply_title_rule(customer_id, stem)
+    return _apply_title_rule(customer_id, "Wissenseintrag")
 
 
 def _validate_upload_file(content: bytes, filename: str) -> tuple[str, str]:
@@ -398,7 +457,7 @@ def ingest_combined(
                 detail=json.dumps(duplicate_document_payload(duplicate)),
             )
 
-    doc_title = _resolve_title(title, safe_name)
+    doc_title = _resolve_title(title, safe_name, customer_id=customer_id, db=db, content_text=combined)
     source_type = file_source_type if file_text else "manual"
 
     try:

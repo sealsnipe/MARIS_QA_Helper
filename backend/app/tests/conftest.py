@@ -43,7 +43,10 @@ def fake_vector_store():
 
 
 @pytest.fixture(autouse=True)
-def _auto_mock_ai(fake_embeddings, fake_vector_store):
+def _auto_mock_ai(fake_embeddings, fake_vector_store, monkeypatch):
+    # No real LLM calls for auto-generated titles in tests; individual tests
+    # monkeypatch app.upload.generate_title_keywords themselves when needed.
+    monkeypatch.setattr("app.upload.generate_title_keywords", lambda _db, _text: None)
     yield
 
 

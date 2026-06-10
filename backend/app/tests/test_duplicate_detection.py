@@ -95,4 +95,4 @@ def test_upload_allows_duplicate_with_allow_flag(client, db_session, fake_vector
         files={"file": ("copy.txt", content, "text/plain")},
     )
     assert allowed.status_code == 200
-    assert allowed.json()["document"]["title"] == "copy"
+    assert allowed.json()["document"]["title"] == "bg-ludwigshafen: copy"

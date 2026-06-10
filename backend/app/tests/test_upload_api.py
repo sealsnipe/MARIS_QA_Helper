@@ -16,7 +16,7 @@ def test_upload_txt_only(client, db_session):
     payload = response.json()
     assert payload["document"]["source_type"] == "txt"
     assert payload["document"]["status"] == "indexed"
-    assert payload["document"]["title"] == "notes"
+    assert payload["document"]["title"] == "bg-ludwigshafen: notes"
     assert payload["document"]["chunk_count"] >= 1
 
 
@@ -33,7 +33,7 @@ def test_upload_text_only(client, db_session):
     assert response.status_code == 200
     payload = response.json()
     assert payload["document"]["source_type"] == "manual"
-    assert payload["document"]["title"] == "Manueller Eintrag"
+    assert payload["document"]["title"] == "bg-ludwigshafen: Manueller Eintrag"
 
 
 def test_upload_combined_text_and_file(client, db_session):
@@ -50,7 +50,7 @@ def test_upload_combined_text_and_file(client, db_session):
     )
     assert response.status_code == 200
     payload = response.json()
-    assert payload["document"]["title"] == "Kombi-Dokument"
+    assert payload["document"]["title"] == "bg-ludwigshafen: Kombi-Dokument"
     assert payload["document"]["source_type"] == "txt"
 
 
