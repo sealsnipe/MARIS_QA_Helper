@@ -128,16 +128,20 @@ def image_payloads(document: Document, *, base_url: str) -> list[dict[str, Any]]
         image_id = item.get("id")
         if not isinstance(image_id, str):
             continue
+        if "transcribed" in item:
+            # Per-Bild-Flag ist die Wahrheit — sonst gelten bei teilweise
+            # verarbeiteten Dokumenten alle Bilder fälschlich als transkribiert.
+            transcribed = bool(item.get("transcribed"))
+        else:
+            # Alt-Einträge ohne Per-Bild-Flag: grobe Heuristik über das Dokument.
+            transcribed = bool(meta and meta.get("vision_used") and meta.get("images_processed", 0) > 0)
         payloads.append(
             {
                 "id": image_id,
                 "filename": item.get("filename"),
                 "page": item.get("page"),
                 "mime_type": item.get("mime_type"),
-                "transcribed": bool(
-                    item.get("transcribed")
-                    or (meta and meta.get("vision_used") and meta.get("images_processed", 0) > 0)
-                ),
+                "transcribed": transcribed,
                 "url": f"{base_url.rstrip('/')}/images/{image_id}",
             }
         )

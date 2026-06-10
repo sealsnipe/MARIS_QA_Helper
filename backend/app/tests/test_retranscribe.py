@@ -69,6 +69,60 @@ def test_pooled_transcription_marks_failures(monkeypatch):
     assert results == ["ok", None]
 
 
+# --- image_payloads: Per-Bild-Flag bei Teilverarbeitung ------------------
+
+
+def test_image_payloads_respects_per_image_flags_on_partial_coverage():
+    import json
+
+    from app.document_assets import image_payloads
+    from app.models import Document
+
+    document = Document(
+        id="doc-1",
+        customer_id="global",
+        title="Partial",
+        extraction_meta=json.dumps(
+            {
+                "image_count": 2,
+                "images_processed": 1,
+                "vision_used": True,
+                "coverage": "partial",
+                "images": [
+                    {"id": "img_001", "filename": "img_001.png", "page": None, "mime_type": "image/png", "transcribed": True},
+                    {"id": "img_002", "filename": "img_002.png", "page": None, "mime_type": "image/png", "transcribed": False},
+                ],
+            }
+        ),
+    )
+    payloads = image_payloads(document, base_url="/api/admin/documents/doc-1")
+    assert [item["transcribed"] for item in payloads] == [True, False]
+
+
+def test_image_payloads_legacy_items_without_flag_use_heuristic():
+    import json
+
+    from app.document_assets import image_payloads
+    from app.models import Document
+
+    document = Document(
+        id="doc-2",
+        customer_id="global",
+        title="Legacy",
+        extraction_meta=json.dumps(
+            {
+                "image_count": 1,
+                "images_processed": 1,
+                "vision_used": True,
+                "coverage": "full",
+                "images": [{"id": "img_001", "filename": "img_001.png", "page": None, "mime_type": "image/png"}],
+            }
+        ),
+    )
+    payloads = image_payloads(document, base_url="/x")
+    assert payloads[0]["transcribed"] is True
+
+
 # --- Nachverarbeitung über die API ---------------------------------------
 
 
