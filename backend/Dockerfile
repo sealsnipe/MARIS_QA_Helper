@@ -10,6 +10,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/pyproject.toml .
+# PyPI antwortet auf manchen Deploy-Hosts schleppend; mit dem pip-Default
+# (15s Timeout, 5 Retries) reißt dann der Metadaten-Abruf einzelner Pakete ab
+# und pip meldet irreführend "ResolutionImpossible" statt des Netzwerkfehlers.
+ENV PIP_DEFAULT_TIMEOUT=60 \
+    PIP_RETRIES=10
 RUN pip install --no-cache-dir \
     "fastapi>=0.115" \
     "uvicorn[standard]>=0.32" \
