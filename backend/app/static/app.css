@@ -864,6 +864,55 @@ button.dropzone-file-tile:hover .dropzone-file-remove {
   padding-left: 1.25rem;
 }
 
+/* Mit Resizer übernimmt der Griff die Trennlinie; Breite der rechten Spalte
+   kommt aus --kb-side-width (Fallback entspricht dem alten 1.7fr/1fr-Layout). */
+.kb-workspace.has-resizer {
+  grid-template-columns: minmax(0, 1fr) 11px var(--kb-side-width, minmax(260px, 37%));
+  gap: 0.65rem;
+}
+
+.kb-workspace.has-resizer .kb-workspace-side {
+  border-left: none;
+  padding-left: 0;
+}
+
+.kb-resizer {
+  position: relative;
+  align-self: stretch;
+  cursor: col-resize;
+  border-radius: 4px;
+  touch-action: none;
+}
+
+.kb-resizer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--border);
+  border-radius: 999px;
+  transition: background 0.15s ease, width 0.15s ease;
+}
+
+.kb-resizer:hover::before,
+.kb-resizer.dragging::before,
+.kb-resizer:focus-visible::before {
+  width: 3px;
+  background: var(--accent);
+}
+
+.kb-resizer:focus-visible {
+  outline: none;
+}
+
+body.kb-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
 .kb-ingest-form {
   max-width: none;
   margin-bottom: 0;
@@ -1011,9 +1060,14 @@ button.dropzone-file-tile:hover .dropzone-file-remove {
 }
 
 @media (max-width: 960px) {
-  .kb-workspace {
+  .kb-workspace,
+  .kb-workspace.has-resizer {
     grid-template-columns: 1fr;
     gap: 1.25rem;
+  }
+
+  .kb-resizer {
+    display: none;
   }
 
   .kb-workspace-side {

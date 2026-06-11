@@ -4805,6 +4805,92 @@
     loadSources().catch(() => {});
   }
 
+  // Verschiebbarer Trenner zwischen Einpflege-Formular und Dokumentenliste
+  // (KB- und Admin-Wissensdatenbanken-Seite teilen sich das Layout).
+  function initKbWorkspaceResizer() {
+    const workspace = document.querySelector(".kb-workspace");
+    const side = workspace?.querySelector(".kb-workspace-side");
+    if (!workspace || !side) return;
+
+    const STORAGE_KEY = "kb-workspace-side-width";
+    const resizer = document.createElement("div");
+    resizer.className = "kb-resizer";
+    resizer.setAttribute("role", "separator");
+    resizer.setAttribute("aria-orientation", "vertical");
+    resizer.setAttribute("aria-label", "Bereiche anpassen");
+    resizer.title = "Ziehen zum Anpassen der Bereiche — Doppelklick setzt zurück";
+    resizer.tabIndex = 0;
+    workspace.insertBefore(resizer, side);
+    workspace.classList.add("has-resizer");
+
+    const clampWidth = (px) => {
+      const total = workspace.getBoundingClientRect().width;
+      const min = 260;
+      const max = Math.max(min, total * 0.65);
+      return Math.min(Math.max(px, min), max);
+    };
+
+    const applyWidth = (px) => {
+      if (px == null) workspace.style.removeProperty("--kb-side-width");
+      else workspace.style.setProperty("--kb-side-width", `${Math.round(px)}px`);
+    };
+
+    const persistWidth = (px) => {
+      try {
+        if (px == null) window.localStorage.removeItem(STORAGE_KEY);
+        else window.localStorage.setItem(STORAGE_KEY, String(Math.round(px)));
+      } catch (_error) {
+        /* localStorage gesperrt — Breite gilt dann nur für diese Sitzung */
+      }
+    };
+
+    let stored = null;
+    try {
+      stored = Number(window.localStorage.getItem(STORAGE_KEY));
+    } catch (_error) {
+      stored = null;
+    }
+    if (stored && stored > 0) applyWidth(clampWidth(stored));
+
+    let dragging = false;
+    resizer.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      dragging = true;
+      resizer.setPointerCapture(event.pointerId);
+      resizer.classList.add("dragging");
+      document.body.classList.add("kb-resizing");
+    });
+    resizer.addEventListener("pointermove", (event) => {
+      if (!dragging) return;
+      const rect = workspace.getBoundingClientRect();
+      applyWidth(clampWidth(rect.right - event.clientX - resizer.offsetWidth / 2));
+    });
+    const stopDrag = () => {
+      if (!dragging) return;
+      dragging = false;
+      resizer.classList.remove("dragging");
+      document.body.classList.remove("kb-resizing");
+      const px = parseFloat(workspace.style.getPropertyValue("--kb-side-width"));
+      if (px > 0) persistWidth(px);
+    };
+    resizer.addEventListener("pointerup", stopDrag);
+    resizer.addEventListener("pointercancel", stopDrag);
+    resizer.addEventListener("dblclick", () => {
+      applyWidth(null);
+      persistWidth(null);
+    });
+    resizer.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      const current =
+        parseFloat(workspace.style.getPropertyValue("--kb-side-width")) || side.getBoundingClientRect().width;
+      const next = clampWidth(current + (event.key === "ArrowLeft" ? 16 : -16));
+      applyWidth(next);
+      persistWidth(next);
+    });
+  }
+  initKbWorkspaceResizer();
+
   syncActiveCustomerFromSelect();
   setCustomerUiEnabled(Boolean(activeCustomerId));
   initCollapsibleNav();
