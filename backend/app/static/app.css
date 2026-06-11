@@ -329,6 +329,70 @@ body {
   flex-shrink: 0;
 }
 
+.sidebar-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.sidebar-footer-actions form {
+  flex: 1 1 auto;
+}
+
+.sidebar-footer-actions form button {
+  width: 100%;
+}
+
+/* Schneefall-Toggle: quadratisch, grau inaktiv, frostblau aktiv */
+button.snow-toggle {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+button.snow-toggle:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+button.snow-toggle.active {
+  color: #a8dcff;
+  border-color: #4a9eda;
+  background: rgba(96, 165, 250, 0.14);
+  box-shadow: 0 0 9px rgba(125, 190, 255, 0.35);
+}
+
+/* Schnee-Overlay: nicht interaktiv, unter den Modals */
+.snow-overlay {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 950;
+  contain: strict;
+}
+
+.snow-layer {
+  position: absolute;
+  background-repeat: repeat;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .snow-layer {
+    animation: none !important;
+  }
+}
+
 .sidebar-footer .user-email {
   overflow: hidden;
   text-overflow: ellipsis;

@@ -100,9 +100,18 @@
 
       <div class="sidebar-footer">
         <span class="user-email">{{ user.email }}</span>
-        <form method="post" action="/logout">
-          <button type="submit" class="secondary small">Abmelden</button>
-        </form>
+        <div class="sidebar-footer-actions">
+          <button type="button" id="snow-toggle" class="snow-toggle" aria-pressed="false" title="Schneefall einschalten">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+              <path d="M12 3v18M12 3l-2 2m2-2l2 2M12 21l-2-2m2 2l2-2"/>
+              <path d="M4.2 7.5l15.6 9M4.2 7.5l.7-2.7m-.7 2.7l2.7.7M19.8 16.5l-.7 2.7m.7-2.7l-2.7-.7"/>
+              <path d="M19.8 7.5l-15.6 9M19.8 7.5l-.7-2.7m.7 2.7l-2.7.7M4.2 16.5l.7 2.7m-.7-2.7l2.7-.7"/>
+            </svg>
+          </button>
+          <form method="post" action="/logout">
+            <button type="submit" class="secondary small">Abmelden</button>
+          </form>
+        </div>
       </div>
     </aside>
 
@@ -136,6 +145,7 @@
   </script>
   {% block vendor_scripts %}{% endblock %}
   <script src="/static/app.js"></script>
+  <script src="/static/snow.js"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
