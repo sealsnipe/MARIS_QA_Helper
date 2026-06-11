@@ -22,7 +22,10 @@
   "use strict";
 
   const STORAGE_KEY = "maris-ui-snow";
-  const PROBE_THRESHOLD_MS = 28; // ~35 fps — darunter wird reduziert
+  // Schwelle bewusst unter 30-fps-Niveau (33ms): RDP-Sitzungen sind oft auf
+  // 30 fps gedeckelt, ohne dass die Maschine überlastet wäre — erst echtes
+  // Ruckeln (<25 fps) reduziert auf die Spar-Ebene.
+  const PROBE_THRESHOLD_MS = 40;
 
   // Drei Tiefen-Ebenen: fern (klein, langsam, blass) bis nah (groß, schnell).
   // phase: negative animation-delay, damit die Ebenen nie synchron pendeln.

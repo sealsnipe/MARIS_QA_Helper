@@ -387,11 +387,10 @@ button.snow-toggle.active {
   will-change: transform;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .snow-layer {
-    animation: none !important;
-  }
-}
+/* Bewusst KEINE prefers-reduced-motion-Pause: RDP-Sitzungen setzen die
+   Systemvorgabe automatisch auf "reduce" und froren den Schnee sofort ein.
+   Der Schnee ist explizites Opt-in per Button — wer ihn anschaltet, will ihn
+   sehen; Ausschalten geht über denselben Button. */
 
 .sidebar-footer .user-email {
   overflow: hidden;
